@@ -105,6 +105,7 @@ export default function GameShell() {
 
     if (demoRequested && config.demoGuestsEnabled) {
       setPreviewMode(true);
+      setMember(demoMember);
       setMessage("Preview mode");
       return;
     }
