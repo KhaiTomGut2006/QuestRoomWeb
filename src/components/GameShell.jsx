@@ -1,0 +1,301 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
+import { ChevronLeft, ChevronRight, Coins, Trophy, Zap } from "lucide-react";
+import { io } from "socket.io-client";
+import RoomCanvas from "@/components/RoomCanvas";
+import PlayerLayer from "@/components/PlayerLayer";
+import { getWalkablePoint } from "@/lib/walkableArea";
+
+const seedPlayers = [
+  { id: "nsc-11", name: "NSC-11", x: 70, y: 58, avatar: "" },
+  { id: "nsc-23", name: "NSC-23", x: 33, y: 70, avatar: "" },
+  { id: "nsc-38", name: "NSC-38", x: 77, y: 70, avatar: "" },
+  { id: "nsc-58", name: "NSC-58", x: 50, y: 63, avatar: "" }
+];
+
+const demoMember = {
+  discordId: "demo-local",
+  name: "Demo Guest",
+  username: "demo",
+  avatar: "",
+  stage: "game-demo-1",
+  coins: 1080,
+  quest: {
+    current: "Find the quiet corner",
+    status: "active",
+    completed: [],
+    cooldownUntil: new Date(Date.now() + 40 * 60 * 1000).toISOString()
+  },
+  position: { x: 56, y: 72 }
+};
+
+function stageLabel(stage) {
+  const stageNumber = String(stage || "game-demo-1").split("-").pop() || "1";
+  return `Game Demo - ${stageNumber}`;
+}
+
+function playerFromMember(member) {
+  return {
+    id: member.discordId || "demo-local",
+    name: member.name || member.username || "Player",
+    avatar: member.avatar || "",
+    stage: member.stage || "game-demo-1",
+    x: Number(member.position?.x || 56),
+    y: Number(member.position?.y || 72),
+    action: "idle"
+  };
+}
+
+function LoginScreen({ authConfigured, authError }) {
+  const hasError = Boolean(authError);
+  return (
+    <main className="login-screen">
+      <section className="login-card" aria-label="Login with Discord">
+        <p className="login-room">Bed Room</p>
+        <h1>Quest Room</h1>
+        <p className="login-copy">
+          {hasError
+            ? "Discord login could not finish. Check the redirect URL and try again."
+            : authConfigured
+              ? "Opening Discord login..."
+              : "Set Discord OAuth credentials before players can enter."}
+        </p>
+        <button className="discord-button" type="button" onClick={() => signIn("discord")}>
+          Login with Discord
+        </button>
+        {hasError && <p className="login-note">Auth error: {authError}</p>}
+        {!authConfigured && <p className="login-note">Missing Discord Client ID / Secret</p>}
+      </section>
+    </main>
+  );
+}
+
+export default function GameShell() {
+  const { data: session, status } = useSession();
+  const [config, setConfig] = useState(null);
+  const [member, setMember] = useState(null);
+  const [players, setPlayers] = useState(seedPlayers);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [demoRequested, setDemoRequested] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [target, setTarget] = useState(null);
+  const [message, setMessage] = useState("Pedding...");
+  const socketRef = useRef(null);
+  const emitTimerRef = useRef(null);
+  const autoLoginStartedRef = useRef(false);
+
+  const isAuthed = status === "authenticated";
+  const activeMember = member || (previewMode ? demoMember : null);
+  const selfPlayer = useMemo(() => (activeMember ? playerFromMember(activeMember) : null), [activeMember]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setDemoRequested(params.get("demo") === "1");
+    setAuthError(params.get("error") || "");
+    fetch("/api/config")
+      .then((res) => res.json())
+      .then(setConfig)
+      .catch(() => setConfig({ authConfigured: false, demoGuestsEnabled: true }));
+  }, []);
+
+  useEffect(() => {
+    if (!config) return;
+
+    if (demoRequested && config.demoGuestsEnabled) {
+      setPreviewMode(true);
+      setMessage("Preview mode");
+      return;
+    }
+
+    if (
+      status === "unauthenticated" &&
+      config.authConfigured &&
+      !authError &&
+      !autoLoginStartedRef.current
+    ) {
+      autoLoginStartedRef.current = true;
+      signIn("discord", { callbackUrl: "/" });
+    }
+  }, [authError, config, demoRequested, status]);
+
+  useEffect(() => {
+    if (!isAuthed) return;
+    fetch("/api/player/me")
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => setMember(data.member))
+      .catch(() => setMessage("DB setup needed"));
+  }, [isAuthed]);
+
+  useEffect(() => {
+    if (!selfPlayer) return;
+    const socket = io({
+      transports: ["websocket", "polling"],
+      reconnectionAttempts: 6
+    });
+    socketRef.current = socket;
+
+    socket.emit("player:join", selfPlayer);
+    socket.on("room:state", (roomPlayers) => {
+      setPlayers((prev) => {
+        const seeded = previewMode ? seedPlayers : [];
+        const merged = new Map([...seeded, ...roomPlayers].map((p) => [p.id, p]));
+        return Array.from(merged.values());
+      });
+    });
+    socket.on("player:upsert", (player) => {
+      setPlayers((prev) => {
+        const map = new Map(prev.map((item) => [item.id, item]));
+        map.set(player.id, player);
+        return Array.from(map.values());
+      });
+    });
+    socket.on("player:leave", (id) => {
+      setPlayers((prev) => prev.filter((player) => player.id !== id));
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [selfPlayer?.id, selfPlayer?.stage, previewMode]);
+
+  useEffect(() => {
+    if (!selfPlayer) return;
+    setPlayers((prev) => {
+      const map = new Map(prev.map((item) => [item.id, item]));
+      map.set(selfPlayer.id, selfPlayer);
+      return Array.from(map.values());
+    });
+  }, [selfPlayer]);
+
+  const moveSelf = useCallback(
+    (x, y) => {
+      if (!activeMember || !selfPlayer) return;
+      const nextPosition = getWalkablePoint({ x, y });
+      if (!nextPosition) return;
+      setTarget(nextPosition);
+      setMember((current) =>
+        current
+          ? { ...current, position: nextPosition }
+          : current
+      );
+      if (previewMode) {
+        demoMember.position = nextPosition;
+      }
+
+      const payload = { x, y, action: "move" };
+      socketRef.current?.emit("player:move", payload);
+
+      window.clearTimeout(emitTimerRef.current);
+      emitTimerRef.current = window.setTimeout(() => {
+        if (!isAuthed) return;
+        fetch("/api/player/me", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ position: nextPosition })
+        }).catch(() => {});
+      }, 240);
+    },
+    [activeMember, isAuthed, previewMode, selfPlayer]
+  );
+
+  const handleStageClick = useCallback(
+    (event) => {
+      if (!activeMember) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 100;
+      const y = ((event.clientY - rect.top) / rect.height) * 100;
+      moveSelf(x, y);
+    },
+    [activeMember, moveSelf]
+  );
+
+  const handleChallenge = async () => {
+    if (!isAuthed) {
+      setMessage("Preview mode");
+      return;
+    }
+
+    setMessage("Pedding...");
+    const response = await fetch("/api/player/challenge", { method: "POST" });
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.reason === "not_enough_coins" ? "Need more coins" : "Try again");
+      return;
+    }
+    setMember(data.member);
+    setMessage("Next room ready");
+  };
+
+  const visiblePlayers = useMemo(() => {
+    if (!activeMember) return seedPlayers;
+    return players.filter((player) => player.stage === activeMember.stage || !player.stage);
+  }, [activeMember, players]);
+
+  if (!activeMember) {
+    return <LoginScreen authConfigured={Boolean(config?.authConfigured)} authError={authError} />;
+  }
+
+  return (
+    <main className="game-shell">
+      <section className="top-left hud-cluster">
+        <p className="room-label">Bed Room</p>
+        <h1>{stageLabel(activeMember?.stage)}</h1>
+        <div className="action-row">
+          <button className="ranking-button" type="button" aria-label="Ranking">
+            <Trophy size={38} fill="currentColor" />
+          </button>
+          <button className="challenge-button" type="button" onClick={handleChallenge}>
+            <Zap size={23} fill="currentColor" />
+            <span>Challenge</span>
+          </button>
+          <div className="cost-chip">
+            <span>-250</span>
+            <Coins size={18} />
+          </div>
+          <span className="status-text">{message}</span>
+        </div>
+      </section>
+
+      <section className="top-right hud-cluster">
+        <p className="version">Ver.Demo</p>
+        <div className="profile-row">
+          <div className="coin-pill">
+            <span>{activeMember?.coins?.toLocaleString?.() || "1,080"}</span>
+            <Coins size={36} fill="currentColor" />
+          </div>
+          <button className="circle-button global" type="button" aria-label="Global room">
+            G
+          </button>
+          <button
+            className="circle-button friends"
+            type="button"
+            aria-label={activeMember ? "Sign out" : "Login with Discord"}
+            onClick={() => (activeMember && isAuthed ? signOut() : signIn("discord"))}
+          >
+            {activeMember?.avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={activeMember.avatar} alt="" />
+            ) : (
+              "D"
+            )}
+          </button>
+        </div>
+      </section>
+
+      <button className="nav-arrow nav-left" type="button" aria-label="Previous room">
+        <ChevronLeft size={78} />
+      </button>
+      <button className="nav-arrow nav-right" type="button" aria-label="Next room">
+        <ChevronRight size={78} />
+      </button>
+
+      <section className="game-stage" onClick={handleStageClick}>
+        <RoomCanvas target={target} onTargetHandled={() => setTarget(null)} />
+        <PlayerLayer players={visiblePlayers} selfId={selfPlayer?.id} />
+      </section>
+    </main>
+  );
+}
