@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Coins, Trophy, Zap } from "lucide-react";
 import { io } from "socket.io-client";
 import RoomCanvas from "@/components/RoomCanvas";
 import PlayerLayer from "@/components/PlayerLayer";
+import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
 const seedPlayers = [
@@ -94,7 +95,7 @@ export default function GameShell() {
     const params = new URLSearchParams(window.location.search);
     setDemoRequested(params.get("demo") === "1");
     setAuthError(params.get("error") || "");
-    fetch("/api/config")
+    fetch(withBasePath("/api/config"))
       .then((res) => res.json())
       .then(setConfig)
       .catch(() => setConfig({ authConfigured: false, demoGuestsEnabled: true }));
@@ -117,13 +118,13 @@ export default function GameShell() {
       !autoLoginStartedRef.current
     ) {
       autoLoginStartedRef.current = true;
-      signIn("discord", { callbackUrl: "/" });
+      signIn("discord", { callbackUrl: withBasePath("/") });
     }
   }, [authError, config, demoRequested, status]);
 
   useEffect(() => {
     if (!isAuthed) return;
-    fetch("/api/player/me")
+    fetch(withBasePath("/api/player/me"))
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => setMember(data.member))
       .catch(() => setMessage("DB setup needed"));
@@ -132,6 +133,8 @@ export default function GameShell() {
   useEffect(() => {
     if (!selfPlayer) return;
     const socket = io({
+      path: withBasePath("/socket.io"),
+      addTrailingSlash: false,
       transports: ["websocket", "polling"],
       reconnectionAttempts: 6
     });
@@ -192,7 +195,7 @@ export default function GameShell() {
       window.clearTimeout(emitTimerRef.current);
       emitTimerRef.current = window.setTimeout(() => {
         if (!isAuthed) return;
-        fetch("/api/player/me", {
+        fetch(withBasePath("/api/player/me"), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ position: nextPosition })
@@ -220,7 +223,7 @@ export default function GameShell() {
     }
 
     setMessage("Pedding...");
-    const response = await fetch("/api/player/challenge", { method: "POST" });
+    const response = await fetch(withBasePath("/api/player/challenge"), { method: "POST" });
     const data = await response.json();
     if (!response.ok) {
       setMessage(data.reason === "not_enough_coins" ? "Need more coins" : "Try again");

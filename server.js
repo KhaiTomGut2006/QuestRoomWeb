@@ -1,11 +1,16 @@
 const { createServer } = require("node:http");
 const os = require("node:os");
+const { loadEnvConfig } = require("@next/env");
 const next = require("next");
 const { Server } = require("socket.io");
+
+loadEnvConfig(process.cwd());
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
+const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+const basePath = rawBasePath ? `/${rawBasePath.replace(/^\/+|\/+$/g, "")}` : "";
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
@@ -77,6 +82,8 @@ function compactPlayer(player) {
 app.prepare().then(() => {
   const httpServer = createServer((req, res) => handle(req, res));
   const io = new Server(httpServer, {
+    path: `${basePath}/socket.io`,
+    addTrailingSlash: false,
     cors: { origin: true },
     transports: ["websocket", "polling"]
   });
@@ -131,9 +138,9 @@ app.prepare().then(() => {
 
   httpServer.listen(port, hostname, () => {
     console.log(`QuestRoomWeb ready on http://${hostname}:${port}`);
-    console.log("Open on this computer: http://localhost:" + port);
+    console.log("Open on this computer: http://localhost:" + port + basePath);
     for (const url of getLanUrls()) {
-      console.log("Open on your phone:    " + url);
+      console.log("Open on your phone:    " + url + basePath);
     }
   });
 });
