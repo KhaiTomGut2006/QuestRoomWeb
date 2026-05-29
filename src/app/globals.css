@@ -201,13 +201,7 @@ button {
   white-space: nowrap;
 }
 
-.circle-button.global::before {
-  content: "*Global";
-}
 
-.circle-button.friends::before {
-  content: "*Friends";
-}
 
 .circle-button img {
   width: 100%;

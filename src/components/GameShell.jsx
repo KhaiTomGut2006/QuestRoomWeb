@@ -140,7 +140,6 @@ export default function GameShell() {
     });
     socketRef.current = socket;
 
-    socket.emit("player:join", selfPlayer);
     socket.on("room:state", (roomPlayers) => {
       setPlayers((prev) => {
         const seeded = previewMode ? seedPlayers : [];
@@ -158,6 +157,13 @@ export default function GameShell() {
     socket.on("player:leave", (id) => {
       setPlayers((prev) => prev.filter((player) => player.id !== id));
     });
+    socket.on("connect", () => {
+      socket.emit("player:join", selfPlayer);
+    });
+
+    if (socket.connected) {
+      socket.emit("player:join", selfPlayer);
+    }
 
     return () => {
       socket.disconnect();
@@ -245,7 +251,6 @@ export default function GameShell() {
   return (
     <main className="game-shell">
       <section className="top-left hud-cluster">
-        <p className="room-label">Bed Room</p>
         <h1>{stageLabel(activeMember?.stage)}</h1>
         <div className="action-row">
           <button className="ranking-button" type="button" aria-label="Ranking">
@@ -259,7 +264,6 @@ export default function GameShell() {
             <span>-250</span>
             <Coins size={18} />
           </div>
-          <span className="status-text">{message}</span>
         </div>
       </section>
 
@@ -289,12 +293,7 @@ export default function GameShell() {
         </div>
       </section>
 
-      <button className="nav-arrow nav-left" type="button" aria-label="Previous room">
-        <ChevronLeft size={78} />
-      </button>
-      <button className="nav-arrow nav-right" type="button" aria-label="Next room">
-        <ChevronRight size={78} />
-      </button>
+
 
       <section className="game-stage" onClick={handleStageClick}>
         <RoomCanvas target={target} onTargetHandled={() => setTarget(null)} />
