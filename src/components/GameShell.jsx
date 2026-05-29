@@ -262,7 +262,8 @@ export default function GameShell() {
           </button>
           <div className="cost-chip">
             <span>-250</span>
-            <Coins size={18} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={withBasePath("/assets/Coin.png")} alt="coin" />
           </div>
         </div>
       </section>
@@ -272,24 +273,28 @@ export default function GameShell() {
         <div className="profile-row">
           <div className="coin-pill">
             <span>{activeMember?.coins?.toLocaleString?.() || "1,080"}</span>
-            <Coins size={36} fill="currentColor" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={withBasePath("/assets/Coin.png")} alt="coin" />
           </div>
-          <button className="circle-button global" type="button" aria-label="Global room">
-            G
-          </button>
-          <button
-            className="circle-button friends"
-            type="button"
-            aria-label={activeMember ? "Sign out" : "Login with Discord"}
-            onClick={() => (activeMember && isAuthed ? signOut() : signIn("discord"))}
-          >
-            {activeMember?.avatar ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={activeMember.avatar} alt="" />
-            ) : (
-              "D"
-            )}
-          </button>
+          <div className="profile-action">
+            <button className="circle-button global" type="button" aria-label="Social">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={withBasePath("/assets/Global.png")} alt="" />
+            </button>
+            <span>Social</span>
+          </div>
+          <div className="profile-action">
+            <button
+              className="circle-button friends"
+              type="button"
+              aria-label={activeMember ? "Sign out" : "Login with Discord"}
+              onClick={() => (activeMember && isAuthed ? signOut() : signIn("discord"))}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={withBasePath("/assets/Friends.png")} alt="" />
+            </button>
+            <span>Friends</span>
+          </div>
         </div>
       </section>
 

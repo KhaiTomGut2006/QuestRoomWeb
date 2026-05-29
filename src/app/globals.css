@@ -101,6 +101,8 @@ button {
   font-weight: 900;
   box-shadow: 0 4px 0 rgba(0, 0, 0, 0.13);
   cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 .challenge-button:hover {
@@ -113,18 +115,32 @@ button {
   gap: 9px;
   height: clamp(48px, 3.2vw, 56px);
   min-width: clamp(112px, 6.8vw, 132px);
-  padding: 0 15px 0 19px;
-  margin-left: -12px;
+  padding: 0 18px 0 44px;
+  margin-left: -45px;
   border-radius: 999px;
   background: rgba(122, 111, 91, 0.44);
   color: #fff;
-  font-size: clamp(19px, 1.22vw, 23px);
+  font-size: clamp(23px, 1.35vw, 25px);
   font-weight: 900;
+}
+
+.cost-chip img {
+  height: clamp(32px, 2vw, 40px);
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 0 #9d5b12);
 }
 
 .cost-chip svg,
 .coin-pill svg {
   color: #ffbf28;
+  filter: drop-shadow(0 2px 0 #9d5b12);
+}
+
+.coin-pill img {
+  height: clamp(40px, 2.6vw, 50px);
+  width: auto;
+  object-fit: contain;
   filter: drop-shadow(0 2px 0 #9d5b12);
 }
 
@@ -188,6 +204,29 @@ button {
   font-weight: 950;
   box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.28);
   cursor: pointer;
+  overflow: hidden;
+}
+
+.circle-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.profile-action {
+  display: grid;
+  justify-items: center;
+  gap: clamp(4px, 0.45vw, 8px);
+}
+
+.profile-action span {
+  color: var(--coral);
+  font-size: clamp(17px, 1.05vw, 21px);
+  font-weight: 950;
+  line-height: 1;
+  text-shadow: 0 2px 0 rgba(43, 38, 34, 0.12);
+  white-space: nowrap;
 }
 
 .circle-button::before {
@@ -203,20 +242,15 @@ button {
 
 
 
-.circle-button img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-}
+
 
 .game-stage {
   position: absolute;
   left: 50%;
-  bottom: clamp(22px, 3vh, 46px);
+  top: 55%;
   width: var(--stage-w);
   aspect-ratio: var(--stage-ratio);
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   cursor: crosshair;
   z-index: 5;
 }
@@ -438,13 +472,21 @@ button {
     font-size: 23px;
   }
 
+  .profile-action {
+    gap: 3px;
+  }
+
+  .profile-action span {
+    font-size: 12px;
+  }
+
   .circle-button::before {
     display: none;
   }
 
   .game-stage {
     width: min(138vw, 900px, calc((100dvh - 260px) * 1.778));
-    bottom: 9vh;
+    top: 55%;
   }
 
   .nav-arrow {
@@ -512,6 +554,6 @@ button {
 
   .game-stage {
     width: min(156vw, calc((100dvh - 300px) * 1.778));
-    bottom: 100px;
+    top: 55%;
   }
 }
