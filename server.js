@@ -16,6 +16,20 @@ const handle = app.getRequestHandler();
 
 const rooms = new Map();
 const playerStages = new Map(); // playerId → current stage (cross-socket tracking)
+
+// ─── NPC Cycle Timer ────────────────────────────────────────────────
+const CYCLE_MS = 40 * 60 * 1000;
+const NPC_POOL = [
+  { id: "near",   name: "Near" },
+  { id: "smith",  name: "Smith" },
+  { id: "witch",  name: "Witch" },
+  { id: "dog",    name: "Dog" },
+  { id: "milt",   name: "Milt" },
+  { id: "begger", name: "Begger" },
+];
+let cycleStartedAt = Date.now();
+// ────────────────────────────────────────────────────────────────────
+
 const walkableFloorPolygon = [
   { x: 23, y: 59 },
   { x: 50, y: 38 },
@@ -106,7 +120,27 @@ app.prepare().then(() => {
     transports: ["websocket", "polling"]
   });
 
+  // ─── NPC Cycle Scheduler ────────────────────────────────────────
+  function scheduleCycle() {
+    const remaining = CYCLE_MS - ((Date.now() - cycleStartedAt) % CYCLE_MS);
+    setTimeout(() => {
+      // Send a unique random NPC to each connected socket
+      for (const [, socket] of io.sockets.sockets) {
+        const npc = NPC_POOL[Math.floor(Math.random() * NPC_POOL.length)];
+        socket.emit("npc:visit", npc);
+      }
+      cycleStartedAt = Date.now();
+      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: CYCLE_MS });
+      scheduleCycle();
+    }, remaining);
+  }
+  scheduleCycle();
+  // ────────────────────────────────────────────────────────────────
+
   io.on("connection", (socket) => {
+    // Send current cycle state immediately on connect
+    socket.emit("timer:sync", { cycleStartedAt, cycleDurationMs: CYCLE_MS });
+
     let activeStage = null;
     let activePlayerId = null;
 

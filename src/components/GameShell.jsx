@@ -8,6 +8,7 @@ import RoomCanvas from "@/components/RoomCanvas";
 import PlayerLayer from "@/components/PlayerLayer";
 import ProfileModal from "@/components/ProfileModal";
 import RewardModal from "@/components/RewardModal";
+import NpcVisitModal from "@/components/NpcVisitModal";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -26,6 +27,35 @@ const demoMember = {
   },
   position: { x: 56, y: 72 }
 };
+
+// ─── Room Clock (synchronized 40-min countdown) ─────────────────
+function RoomClock({ cycleInfo }) {
+  const [timeLeft, setTimeLeft] = useState(null);
+
+  useEffect(() => {
+    if (!cycleInfo) return;
+    const tick = () => {
+      const elapsed = Date.now() - cycleInfo.cycleStartedAt;
+      const remaining = Math.max(0, cycleInfo.cycleDurationMs - elapsed);
+      setTimeLeft(remaining);
+    };
+    tick();
+    const id = window.setInterval(tick, 500);
+    return () => window.clearInterval(id);
+  }, [cycleInfo]);
+
+  if (timeLeft === null) return null;
+  const mins = String(Math.floor(timeLeft / 60000)).padStart(2, "0");
+  const secs = String(Math.floor((timeLeft % 60000) / 1000)).padStart(2, "0");
+  const urgent = timeLeft < 60000;
+
+  return (
+    <div className={`room-clock${urgent ? " room-clock--urgent" : ""}`} aria-label="Event countdown">
+      <span className="room-clock-time">{mins}:{secs}</span>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────
 
 function stageLabel(stage) {
   const stageNumber = Number.parseInt(String(stage || "game-demo-1").split("-").pop(), 10) || 1;
@@ -85,6 +115,8 @@ export default function GameShell() {
   const [profilePlayerId, setProfilePlayerId] = useState(null);
   const [reward, setReward] = useState(null);
   const [message, setMessage] = useState("Pedding...");
+  const [cycleInfo, setCycleInfo] = useState(null);
+  const [npcVisit, setNpcVisit] = useState(null);
   const socketRef = useRef(null);
   const emitTimerRef = useRef(null);
   const autoLoginStartedRef = useRef(false);
@@ -211,6 +243,8 @@ export default function GameShell() {
     socket.on("player:leave", (id) => {
       setPlayers((prev) => prev.filter((player) => player.id !== id));
     });
+    socket.on("timer:sync", (data) => setCycleInfo(data));
+    socket.on("npc:visit", (npc) => setNpcVisit(npc));
     socket.on("connect", () => {
       socket.emit("player:join", selfPlayer);
     });
@@ -384,9 +418,11 @@ export default function GameShell() {
           selfId={selfPlayer?.id}
           onOpenProfile={(player) => setProfilePlayerId(player.id)}
         />
+        <RoomClock cycleInfo={cycleInfo} />
       </section>
       {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayerId(null)} />}
       {reward && <RewardModal reward={reward} onClose={handleRewardClose} />}
+      {npcVisit && <NpcVisitModal npc={npcVisit} onClose={() => setNpcVisit(null)} />}
     </main>
   );
 }
