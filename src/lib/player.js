@@ -2,24 +2,29 @@ import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
+import Level from "@/models/Level";
+
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 1080;
 
+let cachedLevels = null;
+
+async function ensureLevels() {
+  if (!cachedLevels) {
+    try {
+      await connectDb();
+      const levels = await Level.find().sort({ order: 1 });
+      cachedLevels = levels.map(l => ({ stageId: l.stageId, name: l.name, order: l.order }));
+    } catch (err) {
+      console.error("Failed to load levels in player.js", err);
+      cachedLevels = [];
+    }
+  }
+}
+
 function toRoman(number) {
   const values = [
-    [1000, "M"],
-    [900, "CM"],
-    [500, "D"],
-    [400, "CD"],
-    [100, "C"],
-    [90, "XC"],
-    [50, "L"],
-    [40, "XL"],
-    [10, "X"],
-    [9, "IX"],
-    [5, "V"],
-    [4, "IV"],
-    [1, "I"]
+    [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]
   ];
   let remaining = Math.max(1, Number(number) || 1);
   let result = "";
@@ -33,10 +38,18 @@ function toRoman(number) {
 }
 
 function getStageNumber(stage = DEFAULT_STAGE) {
+  if (cachedLevels && cachedLevels.length > 0) {
+    const idx = cachedLevels.findIndex(l => l.stageId === stage);
+    if (idx !== -1) return idx + 1;
+  }
   return Number.parseInt(String(stage).split("-").pop(), 10) || 1;
 }
 
 function getTaskName(stage = DEFAULT_STAGE) {
+  if (cachedLevels && cachedLevels.length > 0) {
+    const lvl = cachedLevels.find(l => l.stageId === stage);
+    if (lvl) return lvl.name;
+  }
   return `Game Demo - ${toRoman(getStageNumber(stage))}`;
 }
 
@@ -103,6 +116,7 @@ export function normalizeMember(member) {
 
 export async function upsertMemberFromDiscord(profile) {
   await connectDb();
+  await ensureLevels();
 
   const discordId = String(profile?.id || "");
   if (!discordId) throw new Error("Discord profile is missing id");
@@ -174,12 +188,14 @@ export async function upsertMemberFromDiscord(profile) {
 
 export async function getMemberByDiscordId(discordId) {
   await connectDb();
+  await ensureLevels();
   const member = await Member.findOne({ discord_id: String(discordId || "") });
   return member ? normalizeMember(member) : null;
 }
 
 export async function getRoomPlayers(stage = DEFAULT_STAGE) {
   await connectDb();
+  await ensureLevels();
   const members = await Member.find({
     stage: String(stage || DEFAULT_STAGE),
     discord_id: { $exists: true, $ne: "" },
@@ -206,6 +222,7 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
 
 export async function updateMemberPosition(discordId, position) {
   await connectDb();
+  await ensureLevels();
   const nextPosition = getWalkablePoint(position);
   if (!nextPosition) {
     const existing = await getMemberByDiscordId(discordId);
@@ -231,6 +248,7 @@ export async function updateMemberPosition(discordId, position) {
 
 export async function requestChallenge(discordId) {
   await connectDb();
+  await ensureLevels();
   const member = await Member.findOne({ discord_id: String(discordId || "") });
   if (!member) return null;
 
