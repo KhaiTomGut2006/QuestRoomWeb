@@ -1714,7 +1714,7 @@ button {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 10px 16px;
+  padding: 12px 20px;
   background: #f1f3f5; /* Clean light grey mock-up background */
   border-radius: 12px;
   transition: transform 0.15s ease, background 0.15s ease;
@@ -1725,16 +1725,16 @@ button {
 }
 
 .ranking-item-rank-num {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 950;
   color: #495057;
-  width: 44px;
+  width: 48px;
   text-align: left;
 }
 
 .ranking-item-player-name {
   flex: 1;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 900;
   color: #212529;
   text-align: left;
@@ -1745,23 +1745,32 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  width: 60px;
 }
 
 .ranking-badge-img {
-  width: 32px;
-  height: auto;
+  width: 46px;
+  height: 46px;
   object-fit: contain;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.15));
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.ranking-item:hover .ranking-badge-img {
+  transform: scale(1.22) rotate(4deg);
 }
 
 .ranking-badge-fallback {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   color: #fff;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.ranking-item:hover .ranking-badge-fallback {
+  transform: scale(1.22) rotate(4deg);
 }
 .ranking-badge-fallback.is-master { background: linear-gradient(135deg, #a855f7, #6b21a8); }
 .ranking-badge-fallback.is-diamond { background: linear-gradient(135deg, #38bdf8, #0369a1); }
