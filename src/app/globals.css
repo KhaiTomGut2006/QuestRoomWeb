@@ -530,25 +530,20 @@ button {
   height: 88px;
   place-items: center;
   overflow: hidden;
-  border: 4px solid #d2dde6;
   border-radius: 24px;
-  background: linear-gradient(145deg, #eff7fb, #cdd9e2);
-  color: #546878;
+  background: transparent;
   font-size: 22px;
   font-weight: 950;
-  box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.52);
 }
 
 .profile-badge-medal.is-gold {
-  border-color: #ffbd16;
-  background: linear-gradient(145deg, #ffe45a, #ffb900);
-  color: #9b5d00;
+  background: transparent;
 }
 
 .profile-badge-medal img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .profile-badge strong {
@@ -640,41 +635,28 @@ button {
   height: 132px;
   margin: 14px 0 4px;
   place-items: center;
-  border: 8px solid #ffc21e;
   border-radius: 34px;
-  background: linear-gradient(145deg, #ffef76, #ffb70c);
-  color: #9d5e00;
+  background: transparent;
   font-size: 48px;
   font-weight: 950;
-  box-shadow:
-    inset 0 0 0 6px rgba(255, 255, 255, 0.52),
-    0 0 0 6px rgba(255, 208, 50, 0.28),
-    0 0 28px rgba(255, 183, 12, 0.68);
 }
 
 .reward-badge.is-silver {
-  border-color: #b9c8d4;
-  background: linear-gradient(145deg, #f7fbfd, #c5d4df);
-  color: #647989;
+  background: transparent;
 }
 
 .reward-badge.is-blue {
-  border-color: #508de9;
-  background: linear-gradient(145deg, #c9f3ff, #5b9bee);
-  color: #315f9d;
+  background: transparent;
 }
 
 .reward-badge.is-master {
-  border-color: #8a5bf1;
-  background: linear-gradient(145deg, #f2c4ff, #7960e9);
-  color: #513599;
+  background: transparent;
 }
 
 .reward-badge img {
   width: 100%;
   height: 100%;
-  border-radius: 24px;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .reward-earned {
