@@ -14,7 +14,7 @@ export async function POST() {
   try {
     const result = await requestChallenge(discordId);
     if (!result) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
-    if (!result.ok) return NextResponse.json(result, { status: 409 });
+    if (!result.ok) return NextResponse.json(result, { status: 200 });
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503 });

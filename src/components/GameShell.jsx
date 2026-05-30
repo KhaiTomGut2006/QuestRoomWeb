@@ -9,6 +9,7 @@ import PlayerLayer from "@/components/PlayerLayer";
 import ProfileModal from "@/components/ProfileModal";
 import RewardModal from "@/components/RewardModal";
 import NpcVisitModal from "@/components/NpcVisitModal";
+import NoCoinsModal from "@/components/NoCoinsModal";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -117,6 +118,8 @@ export default function GameShell() {
   const [message, setMessage] = useState("Pedding...");
   const [cycleInfo, setCycleInfo] = useState(null);
   const [npcVisit, setNpcVisit] = useState(null);
+  const [showNoCoins, setShowNoCoins] = useState(false);
+  const [noCoinsCost, setNoCoinsCost] = useState(250);
   const socketRef = useRef(null);
   const emitTimerRef = useRef(null);
   const autoLoginStartedRef = useRef(false);
@@ -320,8 +323,12 @@ export default function GameShell() {
     setMessage("Pedding...");
     const response = await fetch(withBasePath("/api/player/challenge"), { method: "POST" });
     const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.reason === "not_enough_coins" ? "Need more coins" : "Try again");
+    if (!response.ok || (data && data.ok === false)) {
+      setMessage(data?.reason === "not_enough_coins" ? "Need more coins" : "Try again");
+      if (data?.reason === "not_enough_coins") {
+        setNoCoinsCost(data.cost || activeMember?.currentChallengeCost || 250);
+        setShowNoCoins(true);
+      }
       return;
     }
     applyMember(data.member);
@@ -426,6 +433,13 @@ export default function GameShell() {
       {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayerId(null)} />}
       {reward && <RewardModal reward={reward} onClose={handleRewardClose} />}
       {npcVisit && <NpcVisitModal npc={npcVisit} onClose={() => setNpcVisit(null)} />}
+      {showNoCoins && (
+        <NoCoinsModal
+          cost={noCoinsCost}
+          coins={activeMember?.coins || 0}
+          onClose={() => setShowNoCoins(false)}
+        />
+      )}
     </main>
   );
 }

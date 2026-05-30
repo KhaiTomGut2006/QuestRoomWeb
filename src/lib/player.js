@@ -282,7 +282,8 @@ export async function requestChallenge(discordId) {
     current: member.quest?.current || getTaskName(stage),
     status: "pending",
     completed: member.quest?.completed || [],
-    cooldownUntil: member.quest?.cooldownUntil
+    cooldownUntil: member.quest?.cooldownUntil,
+    costMultiplier: costMultiplier
   };
   await member.save({ validateModifiedOnly: true });
 
