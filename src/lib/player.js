@@ -110,7 +110,8 @@ export function normalizeMember(member) {
         }
       : null,
     position: member.roomPosition || { x: 50, y: 70 },
-    currentChallengeCost
+    currentChallengeCost,
+    costMultiplier
   };
 }
 
@@ -199,7 +200,7 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
   const members = await Member.find({
     stage: String(stage || DEFAULT_STAGE),
     discord_id: { $exists: true, $ne: "" },
-    lastAuthentication: { $exists: true }
+    lastAuthentication: { $exists: true, $ne: null }
   });
 
   return members.map((member) => {
@@ -296,7 +297,7 @@ export async function acknowledgeReward(discordId, rewardId) {
 
   if (member.questReward?.id && member.questReward.id === String(rewardId || "")) {
     member.questReward.seenAt = new Date();
-    await member.save();
+    await member.save({ validateModifiedOnly: true });
   }
 
   return normalizeMember(member);

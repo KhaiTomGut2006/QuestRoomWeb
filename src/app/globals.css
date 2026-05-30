@@ -1122,3 +1122,33 @@ button {
   transform: translateY(-1px);
 }
 
+.multiplier-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #ff4e50, #f9d423);
+  color: #fff !important;
+  font-size: clamp(12px, 0.75vw, 14px) !important;
+  font-weight: 900;
+  padding: 2px 7px;
+  border-radius: 6px;
+  box-shadow: 0 0 8px rgba(255, 78, 80, 0.6);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  margin-left: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  animation: multiplier-glow 1.5s ease-in-out infinite alternate;
+  line-height: 1 !important;
+  height: 20px;
+}
+
+@keyframes multiplier-glow {
+  0% {
+    box-shadow: 0 0 6px rgba(255, 78, 80, 0.5);
+    transform: scale(1);
+  }
+  100% {
+    box-shadow: 0 0 14px rgba(255, 78, 80, 0.9);
+    transform: scale(1.05);
+  }
+}
+

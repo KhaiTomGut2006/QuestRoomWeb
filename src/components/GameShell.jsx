@@ -372,6 +372,9 @@ export default function GameShell() {
             <span>-{activeMember?.currentChallengeCost || 250}</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+            {activeMember?.costMultiplier > 1 && (
+              <span className="multiplier-tag">x{activeMember.costMultiplier}</span>
+            )}
           </div>
           {isChallengePending && (
             <p className="challenge-pending-note">ให้น้องไปเรียกพี่ประจำห้องได้เลย</p>

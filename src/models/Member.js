@@ -26,7 +26,8 @@ const QuestSchema = new mongoose.Schema(
     current: { type: String, default: "Find the quiet corner" },
     status: { type: String, default: "active" },
     completed: { type: [String], default: [] },
-    cooldownUntil: Date
+    cooldownUntil: Date,
+    costMultiplier: { type: Number, default: 1 }
   },
   { _id: false }
 );
@@ -103,7 +104,7 @@ const MemberSchema = new mongoose.Schema(
       index: { unique: true, sparse: true },
       lowercase: true,
       trim: true,
-      match: /^[a-z0-9_-]{3,32}$/
+      match: /^[a-z0-9_.-]{1,64}$/
     },
     usernameUpdatedAt: Date,
     discord_id: { type: String, index: true, sparse: true },
