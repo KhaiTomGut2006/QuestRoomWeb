@@ -61,6 +61,12 @@ export function getDiscordAvatar(discordId, avatarHash) {
 export function normalizeMember(member) {
   const discord = member.discordData || {};
   const coinNumber = Number.parseInt(member.coin || DEFAULT_COINS, 10);
+  
+  const stage = member.stage || DEFAULT_STAGE;
+  const stageNumber = getStageNumber(stage);
+  const costMultiplier = member.quest?.costMultiplier || 1;
+  const currentChallengeCost = Math.round(250 * Math.pow(1.35, Math.max(0, stageNumber - 1))) * costMultiplier;
+
   return {
     id: String(member._id),
     discordId: member.discord_id || "",
@@ -90,7 +96,8 @@ export function normalizeMember(member) {
           seenAt: member.questReward.seenAt || null
         }
       : null,
-    position: member.roomPosition || { x: 50, y: 70 }
+    position: member.roomPosition || { x: 50, y: 70 },
+    currentChallengeCost
   };
 }
 
@@ -229,7 +236,8 @@ export async function requestChallenge(discordId) {
   const currentCoins = Number.parseInt(member.coin || DEFAULT_COINS, 10);
   const stage = member.stage || DEFAULT_STAGE;
   const stageNumber = getStageNumber(stage);
-  const cost = Math.round(250 * Math.pow(1.35, stageNumber - 1));
+  const costMultiplier = member.quest?.costMultiplier || 1;
+  const cost = Math.round(250 * Math.pow(1.35, Math.max(0, stageNumber - 1))) * costMultiplier;
 
   if (currentCoins < cost) {
     return { ok: false, reason: "not_enough_coins", cost, member: normalizeMember(member) };

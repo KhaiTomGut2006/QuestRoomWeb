@@ -369,7 +369,7 @@ export default function GameShell() {
             <span>{isChallengePending ? "Pending..." : "Challenge"}</span>
           </button>
           <div className="cost-chip">
-            <span>-250</span>
+            <span>-{activeMember?.currentChallengeCost || 250}</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={withBasePath("/assets/Coin.png")} alt="coin" />
           </div>
