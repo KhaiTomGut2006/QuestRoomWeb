@@ -79,6 +79,20 @@ const RewardSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const NpcQuestSchema = new mongoose.Schema(
+  {
+    difficulty:   String,
+    title:        String,
+    description:  String,
+    reward:       Number,
+    npcType:      String,
+    npcName:      String,
+    npcCharacter: String,
+    acceptedAt:   Date,
+  },
+  { _id: false }
+);
+
 const MemberSchema = new mongoose.Schema(
   {
     id: String,
@@ -145,6 +159,7 @@ const MemberSchema = new mongoose.Schema(
     questReward: RewardSchema,
     stage: { type: String, default: "game-demo-1", index: true },
     quest: { type: QuestSchema, default: () => ({}) },
+    npcQuest: { type: NpcQuestSchema, default: null },
     roomPosition: { type: PositionSchema, default: () => ({}) }
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }

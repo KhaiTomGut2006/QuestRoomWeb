@@ -985,52 +985,87 @@ button {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Room Clock — countdown overlay positioned on the door arch
+   Room Clock — skeuomorphic countdown overlay positioned above the door
 ═══════════════════════════════════════════════════════════════ */
 .room-clock {
   position: absolute;
-  /* Door arch center (left: ~29%, top: ~34% of the stage) */
-  left: 29%;
-  top: 34%;
+  /* Placed on the wall directly above the door archway */
+  left: 29.2%;
+  top: 21.5%;
   transform: translate(-50%, -50%);
   z-index: 15;
   pointer-events: none;
 
-  width: clamp(54px, 5vw, 76px);
-  height: clamp(54px, 5vw, 76px);
+  width: clamp(50px, 4.5vw, 68px);
+  height: clamp(50px, 4.5vw, 68px);
   border-radius: 50%;
-  background: rgba(15, 8, 2, 0.78);
-  border: 3px solid #c8943c;
+  
+  /* Warm cream/white antique clock face with radial depth */
+  background: radial-gradient(circle at 50% 30%, #ffffff 0%, #fffcf5 70%, #f6ebd6 100%);
+  
+  /* Skeuomorphic clock frame: Deep mahogany wood rim with an inner brass bezel and outer gold drop shadow */
+  border: 4px solid #4a3319; 
   box-shadow:
-    0 0 0 2px rgba(255, 217, 77, 0.25),
-    0 0 18px rgba(200, 148, 60, 0.45);
+    inset 0 2px 5px rgba(0, 0, 0, 0.2), /* Glass reflection and inner depth */
+    0 6px 12px rgba(34, 23, 12, 0.35),   /* Hanging wall shadow */
+    0 0 0 1px #cca873;                  /* Inner brass/gold accent ring */
 
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  transition: all 0.3s ease;
+}
+
+/* Subtle clock face inner detailing (tick mark ring) */
+.room-clock::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 1px dashed rgba(74, 51, 25, 0.18);
+  pointer-events: none;
 }
 
 .room-clock-time {
-  font-family: "Courier New", Courier, monospace;
-  font-size: clamp(10px, 1vw, 14px);
-  font-weight: 700;
-  color: #ffd94d;
-  letter-spacing: 0.04em;
+  font-family: "Outfit", "Inter", "Arial", sans-serif;
+  font-size: clamp(11px, 0.9vw, 14px);
+  font-weight: 950;
+  color: #362511; /* Dark wood print color */
+  letter-spacing: 0.05em;
   line-height: 1;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+  z-index: 2;
+}
+
+/* Urgent state (warning pulse) */
+.room-clock--urgent {
+  border-color: #a82c2c;
+  background: radial-gradient(circle at 50% 30%, #fff0f0 0%, #ffe5e5 70%, #ffd0d0 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(168, 44, 44, 0.2),
+    0 6px 16px rgba(168, 44, 44, 0.45),
+    0 0 0 1px #ff8080;
 }
 
 .room-clock--urgent .room-clock-time {
-  color: #ff5c66;
-  animation: clock-pulse 0.6s ease-in-out infinite alternate;
+  color: #a82c2c;
+  animation: clock-pulse 0.8s ease-in-out infinite alternate;
 }
 
 @keyframes clock-pulse {
-  from { opacity: 1; }
-  to   { opacity: 0.45; }
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.05);
+    opacity: 0.7;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   NPC Visit Modal
+   NPC Visit Overlay & Smoke Animation
 ═══════════════════════════════════════════════════════════════ */
 .npc-visit-overlay {
   position: fixed;
@@ -1039,35 +1074,59 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(31, 20, 8, 0.55);
-  backdrop-filter: blur(3px);
-  animation: npc-fade-in 0.25s ease;
+  background: rgba(31, 20, 8, 0.52);
+  backdrop-filter: blur(4px);
+  animation: npc-overlay-in 0.35s ease forwards;
 }
 
-@keyframes npc-fade-in {
+@keyframes npc-overlay-in {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 
+/* Smoke stage — full-screen absolute layer, pointer-events: none */
+.npc-smoke-stage {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 201;
+  overflow: hidden;
+}
+
+.npc-smoke-puff {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(180, 140, 220, 0.75) 0%, rgba(120, 80, 180, 0.35) 55%, transparent 100%);
+  animation: smoke-rise 1.4s ease-out forwards;
+}
+
+@keyframes smoke-rise {
+  0%   { transform: scale(0.2) translateY(0);    opacity: 0.9; filter: blur(2px); }
+  40%  { transform: scale(1)   translateY(-18px); opacity: 0.6; filter: blur(5px); }
+  100% { transform: scale(1.8) translateY(-55px); opacity: 0;   filter: blur(12px); }
+}
+
+/* Card — slides in from the left (door side) */
 .npc-visit-card {
   position: relative;
+  z-index: 202;
   background: var(--paper);
   border-radius: 24px;
   border: 3px solid #c8943c;
-  box-shadow: 0 8px 40px rgba(52, 38, 22, 0.35);
-  padding: 32px 40px 28px;
+  box-shadow: 0 8px 48px rgba(52, 38, 22, 0.40);
+  padding: 28px 36px 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 240px;
-  max-width: 360px;
-  animation: npc-pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  max-width: 340px;
+  animation: npc-slide-in 0.55s cubic-bezier(0.22, 1.2, 0.36, 1) 0.2s both;
 }
 
-@keyframes npc-pop-in {
-  from { transform: scale(0.7); opacity: 0; }
-  to   { transform: scale(1);   opacity: 1; }
+@keyframes npc-slide-in {
+  from { transform: translateX(-80px) scale(0.88); opacity: 0; }
+  to   { transform: translateX(0)     scale(1);    opacity: 1; }
 }
 
 .npc-visit-close {
@@ -1086,41 +1145,184 @@ button {
 }
 .npc-visit-close:hover { color: var(--coral); }
 
+/* Type badge */
+.npc-visit-type-badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.type-chest    { background: #c8943c22; color: #7a5a1e; border: 1px solid #c8943c; }
+.type-shop     { background: #22c55e22; color: #166534; border: 1px solid #22c55e; }
+.type-quest    { background: #8b5cf622; color: #4c1d95; border: 1px solid #8b5cf6; }
+.type-hints    { background: #f59e0b22; color: #78350f; border: 1px solid #f59e0b; }
+.type-stupid   { background: #ef444422; color: #7f1d1d; border: 1px solid #ef4444; }
+.type-gambling { background: #64748b22; color: #1e293b; border: 1px solid #64748b; }
+
 .npc-visit-img {
-  width: clamp(100px, 20vw, 160px);
-  height: clamp(100px, 20vw, 160px);
+  width: clamp(90px, 16vw, 140px);
+  height: clamp(90px, 16vw, 140px);
   object-fit: contain;
+  animation: npc-img-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.45s both;
+}
+
+@keyframes npc-img-pop {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
 }
 
 .npc-visit-name {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--ink);
   margin: 0;
 }
 
-.npc-visit-sub {
-  font-size: 15px;
+.npc-visit-desc {
+  font-size: 13px;
   color: var(--ink-soft);
   margin: 0;
+  text-align: center;
+  line-height: 1.6;
 }
 
 .npc-visit-btn {
-  margin-top: 8px;
+  margin-top: 10px;
   padding: 10px 32px;
   background: var(--gold);
   color: var(--ink);
   border: none;
   border-radius: 12px;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
 }
 .npc-visit-btn:hover {
   background: #f5c832;
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Dev Panel
+═══════════════════════════════════════════════════════════════ */
+.dev-panel {
+  position: fixed;
+  bottom: 18px;
+  left: 18px;
+  z-index: 300;
+  font-size: 13px;
+  font-family: monospace;
+}
+
+.dev-panel-toggle {
+  background: #1e1b2e;
+  color: #c084fc;
+  border: 1.5px solid #6d28d9;
+  border-radius: 10px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: monospace;
+  transition: background 0.15s;
+}
+.dev-panel-toggle:hover { background: #2d1f4e; }
+
+.dev-panel-body {
+  margin-bottom: 8px;
+  background: #0f0c1a;
+  border: 1.5px solid #6d28d9;
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 240px;
+  box-shadow: 0 4px 24px rgba(109, 40, 217, 0.35);
+}
+
+.dev-panel-title {
+  margin: 0;
+  font-weight: 700;
+  color: #c084fc;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dev-panel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dev-panel-row > label {
+  color: #a0a0b0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dev-speed-btns {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.dev-speed-btn {
+  background: #1e1b2e;
+  color: #d0d0e0;
+  border: 1px solid #3f3460;
+  border-radius: 7px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: monospace;
+  transition: background 0.12s, color 0.12s;
+}
+.dev-speed-btn:hover  { background: #2d1f4e; color: #fff; }
+.dev-speed-btn.active { background: #6d28d9; color: #fff; border-color: #a855f7; }
+
+.dev-select {
+  background: #1e1b2e;
+  color: #d0d0e0;
+  border: 1px solid #3f3460;
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: monospace;
+  width: 100%;
+  cursor: pointer;
+}
+
+.dev-action-btn {
+  background: #2d1f4e;
+  color: #e2d4f8;
+  border: 1px solid #6d28d9;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: monospace;
+  font-weight: 600;
+  transition: background 0.12s;
+  flex: 1;
+}
+.dev-action-btn:hover { background: #4c1d95; }
+
+.dev-panel-note {
+  margin: 0;
+  color: #7c6a9e;
+  font-size: 11px;
+  text-align: center;
+}
+
+
 
 .multiplier-tag {
   display: inline-flex;
@@ -1321,4 +1523,478 @@ button {
 .no-coins-btn:active {
   transform: translateY(0);
 }
+
+/* ─── Leaderboard Ranking Modal Styles ───────────────── */
+.ranking-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(34, 23, 12, 0.65);
+  backdrop-filter: blur(8px);
+}
+
+.ranking-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(480px, 100%);
+  padding: 24px 20px 28px;
+  border-radius: 20px;
+  background: #f7f3eb; /* Soft grid page color */
+  text-align: center;
+  box-shadow: 0 16px 32px rgba(34, 23, 12, 0.4);
+  animation: modal-pop 320ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.ranking-close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  color: #7c685c;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  transition: background 0.15s, color 0.15s;
+  z-index: 5;
+}
+.ranking-close-btn:hover {
+  background: rgba(124, 104, 92, 0.1);
+  color: #ff4e50;
+}
+
+.ranking-outer-title {
+  font-family: "Outfit", "Inter", "Arial", sans-serif;
+  font-size: clamp(34px, 2.5vw, 42px);
+  font-weight: 950;
+  color: #ff5c66; /* Vibrant red title */
+  margin: 0 0 16px;
+  width: 100%;
+  text-align: left;
+  padding-left: 8px;
+  letter-spacing: -0.02em;
+}
+
+.ranking-inner-panel {
+  width: 100%;
+  background: #ffffff;
+  border: 4px solid #1a1512; /* Solid outline border */
+  border-radius: 12px;
+  padding: 24px 18px;
+  box-shadow: 0 6px 0 rgba(26, 21, 18, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ranking-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px dashed #e3dec9;
+}
+
+.ranking-trophy-wrapper {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffe699 0%, #ffbf28 100%);
+  box-shadow: 0 4px 10px rgba(255, 191, 40, 0.35);
+}
+
+.ranking-trophy {
+  color: #a87200;
+  animation: float 2.5s ease-in-out infinite alternate;
+}
+
+.ranking-hamster-avatar {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  font-size: 28px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+  animation: float 2.5s ease-in-out infinite alternate;
+  animation-delay: 0.3s;
+}
+
+.ranking-header-text {
+  flex: 1;
+  text-align: left;
+}
+
+.ranking-header-text h2 {
+  font-size: 20px;
+  font-weight: 950;
+  color: #1a1512;
+  margin: 0 0 6px;
+  letter-spacing: 0.04em;
+}
+
+.ranking-select-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+}
+
+.ranking-stage-select {
+  appearance: none;
+  width: 100%;
+  padding: 6px 36px 6px 12px;
+  background: #ffebeb;
+  border: 2px solid #ff5c66;
+  border-radius: 8px;
+  color: #ff5c66;
+  font-family: "Outfit", "Inter", sans-serif;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ranking-stage-select:hover {
+  background: #ffd6d6;
+}
+.ranking-stage-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 92, 102, 0.25);
+}
+
+.ranking-select-arrow {
+  position: absolute;
+  right: 12px;
+  color: #ff5c66;
+  pointer-events: none;
+}
+
+/* Leaderboard list container */
+.ranking-list-container {
+  width: 100%;
+  max-height: 380px; /* Perfectly bounds the list so users can scroll after ~5-6 items */
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+/* Custom premium scrollbar for list */
+.ranking-list-container::-webkit-scrollbar {
+  width: 8px;
+}
+.ranking-list-container::-webkit-scrollbar-track {
+  background: #f4f2ea;
+  border-radius: 4px;
+}
+.ranking-list-container::-webkit-scrollbar-thumb {
+  background: #cca873;
+  border-radius: 4px;
+  border: 2px solid #f4f2ea;
+}
+.ranking-list-container::-webkit-scrollbar-thumb:hover {
+  background: #b8915a;
+}
+
+.ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.ranking-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 16px;
+  background: #f1f3f5; /* Clean light grey mock-up background */
+  border-radius: 12px;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.ranking-item:hover {
+  transform: translateX(3px);
+  background: #e9ecef;
+}
+
+.ranking-item-rank-num {
+  font-size: 16px;
+  font-weight: 950;
+  color: #495057;
+  width: 44px;
+  text-align: left;
+}
+
+.ranking-item-player-name {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 900;
+  color: #212529;
+  text-align: left;
+  padding-left: 8px;
+}
+
+.ranking-item-badge-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+}
+
+.ranking-badge-img {
+  width: 32px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
+}
+
+.ranking-badge-fallback {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: #fff;
+}
+.ranking-badge-fallback.is-master { background: linear-gradient(135deg, #a855f7, #6b21a8); }
+.ranking-badge-fallback.is-diamond { background: linear-gradient(135deg, #38bdf8, #0369a1); }
+.ranking-badge-fallback.is-platinum { background: linear-gradient(135deg, #2dd4bf, #0f766e); }
+.ranking-badge-fallback.is-gold { background: linear-gradient(135deg, #facc15, #a16207); }
+.ranking-badge-fallback.is-silver { background: linear-gradient(135deg, #cbd5e1, #475569); }
+.ranking-badge-fallback.is-bronze { background: linear-gradient(135deg, #fb923c, #c2410c); }
+
+.ranking-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 0;
+  color: #8b7668;
+}
+
+.ranking-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e3dec9;
+  border-top-color: #ff5c66;
+  border-radius: 50%;
+  animation: clock-pulse 1s linear infinite;
+  margin-bottom: 12px;
+}
+
+.ranking-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 16px;
+  color: #8b7668;
+  text-align: center;
+}
+
+.empty-trophy {
+  color: #e3dec9;
+  margin-bottom: 12px;
+}
+
+.ranking-empty-state p {
+  font-size: 15px;
+  font-weight: 900;
+  margin: 0 0 4px;
+  color: #614d3f;
+}
+
+.ranking-empty-state small {
+  font-size: 12px;
+  color: #8b7668;
+  font-weight: 700;
+}
+
+/* ── NPC Quest Dialog (inside .npc-visit-card--quest) ───────────────────── */
+.npc-visit-card--quest {
+  max-width: 560px;
+  min-width: 380px;
+  padding: 24px 28px 20px;
+}
+
+.npc-quest-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.npc-quest-npc-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.npc-quest-npc-img {
+  width: 100px;
+  height: 120px;
+  object-fit: contain;
+}
+
+.npc-quest-npc-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: center;
+  margin: 0;
+}
+
+.npc-quest-dialog-side {
+  flex: 1;
+  background: #fffbf0;
+  border: 2px solid #c8943c;
+  border-radius: 12px;
+  padding: 14px 16px 12px;
+  position: relative;
+}
+
+/* Speech bubble arrow pointing left */
+.npc-quest-dialog-side::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 28px;
+  border-width: 10px 14px 10px 0;
+  border-style: solid;
+  border-color: transparent #c8943c transparent transparent;
+}
+.npc-quest-dialog-side::after {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 30px;
+  border-width: 8px 11px 8px 0;
+  border-style: solid;
+  border-color: transparent #fffbf0 transparent transparent;
+}
+
+.npc-quest-warning {
+  font-size: 11px;
+  color: #dc2626;
+  font-style: italic;
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+
+.npc-quest-text {
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.65;
+  margin: 0 0 12px;
+}
+
+.npc-quest-reward {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0 0 14px;
+}
+
+.npc-quest-reward img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.npc-quest-accept-btn {
+  width: 100%;
+  padding: 9px 0;
+  background: #f59e0b;
+  color: #78350f;
+  font-weight: 700;
+  font-size: 14px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 7px;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+.npc-quest-accept-btn:hover { background: #d97706; }
+
+.npc-quest-decline-btn {
+  width: 100%;
+  padding: 9px 0;
+  background: transparent;
+  color: #92400e;
+  font-weight: 700;
+  font-size: 13px;
+  border: 2px solid #f59e0b;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+.npc-quest-decline-btn:hover { background: rgba(245,158,11,0.1); }
+
+/* ── Active Quest HUD ────────────────────────────────────────────────────── */
+.npc-active-quest-hud {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  background: rgba(245,158,11,0.15);
+  border: 1px solid rgba(245,158,11,0.4);
+  border-radius: 10px;
+  padding: 6px 12px;
+  max-width: 320px;
+  flex-wrap: wrap;
+}
+
+.npc-active-quest-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #92400e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.npc-active-quest-title {
+  font-size: 12px;
+  color: var(--ink);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.npc-active-quest-reward {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b45309;
+  white-space: nowrap;
+}
+
+.npc-active-quest-done {
+  background: #f59e0b;
+  color: #78350f;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+.npc-active-quest-done:hover { background: #d97706; }
+
 

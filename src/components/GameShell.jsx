@@ -10,6 +10,7 @@ import ProfileModal from "@/components/ProfileModal";
 import RewardModal from "@/components/RewardModal";
 import NpcVisitModal from "@/components/NpcVisitModal";
 import NoCoinsModal from "@/components/NoCoinsModal";
+import RankingModal from "@/components/RankingModal";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -76,7 +77,8 @@ function playerFromMember(member) {
     x: Number(member.position?.x || 56),
     y: Number(member.position?.y || 72),
     action: "idle",
-    online: true
+    online: true,
+    hasNpcQuest: Boolean(member.npcQuest),
   };
 }
 
@@ -104,6 +106,93 @@ function LoginScreen({ authConfigured, authError }) {
   );
 }
 
+// ─── Dev Panel ────────────────────────────────────────────────────────────
+const NPC_IDS = [
+  { id: "chest",        label: "Chest (20%)" },
+  { id: "shop",         label: "Shop/Milt (20%)" },
+  { id: "quest-easy",   label: "Quest Easy/Witch (20%)" },
+  { id: "quest-medium", label: "Quest Medium/Witch (15%)" },
+  { id: "hints",        label: "Hints/Smith (10%)" },
+  { id: "quest-hard",   label: "Quest Hard/Witch (5%)" },
+  { id: "stupid-quest", label: "Stupid Quest/Dog (5%)" },
+  { id: "gambling",     label: "Gambling/Begger (5%)" },
+];
+
+function DevPanel({ socketRef, cycleInfo }) {
+  const [open, setOpen] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [npcId, setNpcId] = useState("");
+
+  const emit = (ev, data) => socketRef.current?.emit(ev, data);
+
+  const handleSpeed = (val) => {
+    setSpeed(val);
+    emit("dev:set-speed", val);
+  };
+
+  return (
+    <div className={`dev-panel${open ? " dev-panel--open" : ""}`}>
+      <button className="dev-panel-toggle" type="button" onClick={() => setOpen((o) => !o)}>
+        🛠️ Dev
+      </button>
+      {open && (
+        <div className="dev-panel-body">
+          <p className="dev-panel-title">NPC Cycle Controls</p>
+
+          <div className="dev-panel-row">
+            <label>Speed</label>
+            <div className="dev-speed-btns">
+              {[1, 5, 10, 60, 100].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`dev-speed-btn${speed === v ? " active" : ""}`}
+                  onClick={() => handleSpeed(v)}
+                >
+                  {v === 1 ? "1×" : `${v}×`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="dev-panel-row">
+            <label>Force NPC</label>
+            <select value={npcId} onChange={(e) => setNpcId(e.target.value)} className="dev-select">
+              <option value="">Random</option>
+              {NPC_IDS.map((n) => (
+                <option key={n.id} value={n.id}>{n.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="dev-panel-row">
+            <button className="dev-action-btn" type="button"
+              onClick={() => emit("dev:trigger", { npcId: npcId || undefined })}>
+              ▶️ Trigger NPC
+            </button>
+            <button className="dev-action-btn" type="button"
+              onClick={() => emit("dev:skip", {})}>
+              ⏩ Skip Cycle
+            </button>
+            <button className="dev-action-btn" type="button"
+              onClick={() => emit("dev:reset", {})}>
+              🔄 Reset Timer
+            </button>
+          </div>
+
+          {cycleInfo && (() => {
+            const remaining = Math.max(0, cycleInfo.cycleDurationMs - (Date.now() - cycleInfo.cycleStartedAt));
+            const mins = String(Math.floor(remaining / 60000)).padStart(2, "0");
+            const secs = String(Math.floor((remaining % 60000) / 1000)).padStart(2, "0");
+            return <p className="dev-panel-note">Cycle: {mins}:{secs} | {speed}× speed</p>;
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+// ───────────────────────────────────────────────────────────────────
+
 export default function GameShell() {
   const { data: session, status } = useSession();
   const [config, setConfig] = useState(null);
@@ -112,14 +201,17 @@ export default function GameShell() {
   const [previewMode, setPreviewMode] = useState(false);
   const [demoRequested, setDemoRequested] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [devMode, setDevMode] = useState(false);
   const [target, setTarget] = useState(null);
   const [profilePlayerId, setProfilePlayerId] = useState(null);
   const [reward, setReward] = useState(null);
   const [message, setMessage] = useState("Pedding...");
   const [cycleInfo, setCycleInfo] = useState(null);
   const [npcVisit, setNpcVisit] = useState(null);
+  const [npcQuestData, setNpcQuestData] = useState(null);
   const [showNoCoins, setShowNoCoins] = useState(false);
   const [noCoinsCost, setNoCoinsCost] = useState(250);
+  const [showRanking, setShowRanking] = useState(false);
   const socketRef = useRef(null);
   const emitTimerRef = useRef(null);
   const autoLoginStartedRef = useRef(false);
@@ -146,6 +238,7 @@ export default function GameShell() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setDemoRequested(params.get("demo") === "1");
+    setDevMode(params.get("dev") === "1");
     setAuthError(params.get("error") || "");
     fetch(withBasePath("/api/config"))
       .then((res) => res.json())
@@ -334,6 +427,70 @@ export default function GameShell() {
     applyMember(data.member);
     setMessage("ให้น้องไปเรียกพี่ประจำห้องได้เลย");
   };
+  // Fetch quest template when a quest-type NPC visits
+  useEffect(() => {
+    const questNpcIds = ["quest-easy", "quest-medium", "quest-hard"];
+    if (!npcVisit || !questNpcIds.includes(npcVisit.id)) {
+      setNpcQuestData(null);
+      return;
+    }
+    const difficulty = npcVisit.id.replace("quest-", "");
+    fetch(withBasePath(`/api/quest-templates?difficulty=${difficulty}`))
+      .then((r) => r.json())
+      .then((data) => {
+        const pool = Array.isArray(data.quests) ? data.quests : [];
+        if (pool.length === 0) { setNpcQuestData(null); return; }
+        const picked = pool[Math.floor(Math.random() * pool.length)];
+        const reward = Math.round(
+          picked.rewardMin + Math.random() * (picked.rewardMax - picked.rewardMin)
+        );
+        setNpcQuestData({ ...picked, reward });
+      })
+      .catch(() => setNpcQuestData(null));
+  }, [npcVisit]);
+
+  const handleNpcQuestAccept = useCallback(async () => {
+    if (!isAuthed || !npcQuestData || !npcVisit) return;
+    try {
+      const res = await fetch(withBasePath("/api/player/npc-quest"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          difficulty:   npcQuestData.difficulty,
+          title:        npcQuestData.title,
+          description:  npcQuestData.description,
+          reward:       npcQuestData.reward,
+          npcType:      npcVisit.id,
+          npcName:      npcVisit.npcId || "",
+          npcCharacter: npcQuestData.npcCharacter || null,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        applyMember(data.member);
+        socketRef.current?.emit("quest:active", true);
+      }
+    } catch {}
+    setNpcVisit(null);
+    setNpcQuestData(null);
+  }, [applyMember, isAuthed, npcQuestData, npcVisit]);
+
+  const handleNpcQuestDismiss = useCallback(async () => {
+    if (!isAuthed) return;
+    try {
+      const res = await fetch(withBasePath("/api/player/npc-quest"), { method: "DELETE" });
+      if (res.ok) {
+        const data = await res.json();
+        applyMember(data.member);
+        socketRef.current?.emit("quest:active", false);
+      }
+    } catch {}
+  }, [applyMember, isAuthed]);
+
+  const handleNpcQuestClose = useCallback(() => {
+    setNpcVisit(null);
+    setNpcQuestData(null);
+  }, []);
 
   const handleRewardClose = useCallback(() => {
     const rewardId = reward?.id;
@@ -363,7 +520,7 @@ export default function GameShell() {
       <section className="top-left hud-cluster">
         <h1>{activeMember?.stageLabel || stageLabel(activeMember?.stage)}</h1>
         <div className="action-row">
-          <button className="ranking-button" type="button" aria-label="Ranking">
+          <button className="ranking-button" type="button" aria-label="Ranking" onClick={() => setShowRanking(true)}>
             <Trophy size={38} fill="currentColor" />
           </button>
           <button
@@ -385,6 +542,20 @@ export default function GameShell() {
           </div>
           {isChallengePending && (
             <p className="challenge-pending-note">ให้น้องไปเรียกพี่ประจำห้องได้เลย</p>
+          )}
+          {activeMember?.npcQuest && (
+            <div className="npc-active-quest-hud">
+              <span className="npc-active-quest-label">📜 เควสที่รับไว้</span>
+              <span className="npc-active-quest-title">{activeMember.npcQuest.title}</span>
+              <span className="npc-active-quest-reward">🪙 ×{activeMember.npcQuest.reward}</span>
+              <button
+                className="npc-active-quest-done"
+                type="button"
+                onClick={handleNpcQuestDismiss}
+              >
+                ✓ Done
+              </button>
+            </div>
           )}
         </div>
       </section>
@@ -432,7 +603,15 @@ export default function GameShell() {
       </section>
       {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayerId(null)} />}
       {reward && <RewardModal reward={reward} onClose={handleRewardClose} />}
-      {npcVisit && <NpcVisitModal npc={npcVisit} onClose={() => setNpcVisit(null)} />}
+      {npcVisit && (
+        <NpcVisitModal
+          npc={npcVisit}
+          questData={npcQuestData}
+          onAccept={handleNpcQuestAccept}
+          onClose={handleNpcQuestClose}
+        />
+      )}
+      {devMode && <DevPanel socketRef={socketRef} cycleInfo={cycleInfo} />}
       {showNoCoins && (
         <NoCoinsModal
           cost={noCoinsCost}
@@ -440,6 +619,7 @@ export default function GameShell() {
           onClose={() => setShowNoCoins(false)}
         />
       )}
+      {showRanking && <RankingModal onClose={() => setShowRanking(false)} />}
     </main>
   );
 }

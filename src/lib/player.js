@@ -98,6 +98,18 @@ export function normalizeMember(member) {
     stageLabel: getTaskName(member.stage),
     coins: Number.isFinite(coinNumber) ? coinNumber : DEFAULT_COINS,
     quest: member.quest || {},
+    npcQuest: member.npcQuest
+      ? {
+          difficulty:   member.npcQuest.difficulty || "",
+          title:        member.npcQuest.title || "",
+          description:  member.npcQuest.description || "",
+          reward:       member.npcQuest.reward || 0,
+          npcType:      member.npcQuest.npcType || "",
+          npcName:      member.npcQuest.npcName || "",
+          npcCharacter: member.npcQuest.npcCharacter || null,
+          acceptedAt:   member.npcQuest.acceptedAt || null,
+        }
+      : null,
     challenge: member.questChallenge || null,
     reward: member.questReward
       ? {
@@ -302,4 +314,105 @@ export async function acknowledgeReward(discordId, rewardId) {
   }
 
   return normalizeMember(member);
+}
+
+export async function getAvailableLevels() {
+  await connectDb();
+  await ensureLevels();
+  return cachedLevels || [];
+}
+
+export async function getStageRanking(stageId) {
+  await connectDb();
+  await ensureLevels();
+  
+  const level = cachedLevels.find(l => l.stageId === stageId) || cachedLevels[0];
+  if (!level) return [];
+
+  const members = await Member.find({
+    discord_id: { $exists: true, $ne: "" },
+    "profileAchievements.label": level.name
+  }).lean();
+
+  const gradeValues = {
+    master: 6,
+    diamond: 5,
+    platinum: 4,
+    gold: 3,
+    silver: 2,
+    bronze: 1
+  };
+
+  const rankedPlayers = members.map(m => {
+    const badge = m.profileAchievements.find(a => a.label === level.name);
+    const normalized = normalizeMember(m);
+    return {
+      id: normalized.id,
+      name: normalized.name,
+      username: normalized.username,
+      avatar: normalized.avatar,
+      badge: {
+        id: badge?.id || "",
+        label: badge?.label || "",
+        kind: badge?.kind || "bronze",
+        icon: badge?.icon || "",
+        awardedAt: badge?.awardedAt || null
+      },
+      gradeValue: gradeValues[badge?.kind] || 0
+    };
+  });
+
+  // Sort by gradeValue descending, then by awardedAt ascending (earliest first)
+  rankedPlayers.sort((a, b) => {
+    if (b.gradeValue !== a.gradeValue) {
+      return b.gradeValue - a.gradeValue;
+    }
+    const timeA = a.badge.awardedAt ? new Date(a.badge.awardedAt).getTime() : Infinity;
+    const timeB = b.badge.awardedAt ? new Date(b.badge.awardedAt).getTime() : Infinity;
+    return timeA - timeB;
+  });
+
+  return rankedPlayers.map((p, idx) => ({
+    rank: idx + 1,
+    id: p.id,
+    name: p.name,
+    username: p.username,
+    avatar: p.avatar,
+    badge: p.badge
+  }));
+}
+
+export async function acceptNpcQuest(discordId, questData) {
+  await connectDb();
+  await ensureLevels();
+  const member = await Member.findOneAndUpdate(
+    { discord_id: String(discordId || "") },
+    {
+      $set: {
+        npcQuest: {
+          difficulty:   questData.difficulty,
+          title:        questData.title,
+          description:  questData.description,
+          reward:       Number(questData.reward) || 0,
+          npcType:      questData.npcType || "",
+          npcName:      questData.npcName || "",
+          npcCharacter: questData.npcCharacter || null,
+          acceptedAt:   new Date(),
+        }
+      }
+    },
+    { new: true }
+  );
+  return member ? normalizeMember(member) : null;
+}
+
+export async function dismissNpcQuest(discordId) {
+  await connectDb();
+  await ensureLevels();
+  const member = await Member.findOneAndUpdate(
+    { discord_id: String(discordId || "") },
+    { $set: { npcQuest: null } },
+    { new: true }
+  );
+  return member ? normalizeMember(member) : null;
 }

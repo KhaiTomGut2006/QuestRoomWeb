@@ -15,19 +15,38 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
 const rooms = new Map();
-const playerStages = new Map(); // playerId → current stage (cross-socket tracking)
+const playerStages = new Map();   // playerId → current stage (cross-socket tracking)
+const socketToPlayer = new Map(); // socketId → playerId
+const playerNpcQuest = new Map(); // playerId → bool (has active NPC quest)
 
 // ─── NPC Cycle Timer ────────────────────────────────────────────────
 const CYCLE_MS = 40 * 60 * 1000;
+
+// Weighted NPC pool — weights sum to 100
 const NPC_POOL = [
-  { id: "near",   name: "Near" },
-  { id: "smith",  name: "Smith" },
-  { id: "witch",  name: "Witch" },
-  { id: "dog",    name: "Dog" },
-  { id: "milt",   name: "Milt" },
-  { id: "begger", name: "Begger" },
+  { weight: 20, npc: { id: "chest",        type: "chest",       name: "Treasure Chest", npcId: null,    description: "สมบัติจากอีกโลก\nx20-200 Coins" } },
+  { weight: 20, npc: { id: "shop",         type: "shop",        name: "Shop",           npcId: "milt",  description: "ขายสินค้า สุ่มราคา (ถูก-แพง) 3 ชิ้น" } },
+  { weight: 20, npc: { id: "quest-easy",   type: "quest",       name: "Quest (Easy)",   npcId: "witch", description: "ภารกิจที่เกี่ยวข้องกับ Checkpoint ระดับง่าย\nx50-100 Coins" } },
+  { weight: 15, npc: { id: "quest-medium", type: "quest",       name: "Quest (Medium)", npcId: "witch", description: "ภารกิจที่เกี่ยวข้องกับ Checkpoint ระดับกลาง\nx100-300 Coins" } },
+  { weight: 10, npc: { id: "hints",        type: "hints",       name: "Hints",          npcId: "smith", description: "เสนอเมื่อต้องการความช่วยเหลือ" } },
+  { weight: 5,  npc: { id: "quest-hard",   type: "quest",       name: "Quest (Hard)",   npcId: "witch", description: "ภารกิจที่เกี่ยวข้องกับ Checkpoint ระดับยาก\nx500-1,000 Coins" } },
+  { weight: 5,  npc: { id: "stupid-quest", type: "stupid-quest",name: "Stupid Quest",   npcId: "dog",   description: "เควสที่โคตรน่าอาย\nx100-500 Coins" } },
+  { weight: 5,  npc: { id: "gambling",     type: "gambling",    name: "Gambling",       npcId: "begger",description: "ลงทุน (หัว-ก้อย) ชนะได้ Coins\nx0-1,000 Coins" } },
 ];
+
+function pickWeightedNpc() {
+  const total = NPC_POOL.reduce((s, e) => s + e.weight, 0);
+  let rand = Math.random() * total;
+  for (const entry of NPC_POOL) {
+    rand -= entry.weight;
+    if (rand <= 0) return entry.npc;
+  }
+  return NPC_POOL[NPC_POOL.length - 1].npc;
+}
+
 let cycleStartedAt = Date.now();
+let cycleSpeedMultiplier = 1;   // dev: 1=normal, 10=10× faster, etc.
+let cycleTimer = null;
 // ────────────────────────────────────────────────────────────────────
 
 const walkableFloorPolygon = [
@@ -121,16 +140,25 @@ app.prepare().then(() => {
   });
 
   // ─── NPC Cycle Scheduler ────────────────────────────────────────
+  function effectiveDuration() {
+    return Math.max(1000, Math.floor(CYCLE_MS / cycleSpeedMultiplier));
+  }
+
   function scheduleCycle() {
-    const remaining = CYCLE_MS - ((Date.now() - cycleStartedAt) % CYCLE_MS);
-    setTimeout(() => {
-      // Send a unique random NPC to each connected socket
-      for (const [, socket] of io.sockets.sockets) {
-        const npc = NPC_POOL[Math.floor(Math.random() * NPC_POOL.length)];
-        socket.emit("npc:visit", npc);
+    if (cycleTimer) clearTimeout(cycleTimer);
+    const dur = effectiveDuration();
+    const elapsed = Date.now() - cycleStartedAt;
+    const remaining = Math.max(500, dur - (elapsed % dur));
+
+    cycleTimer = setTimeout(() => {
+      // Each connected socket gets its own random NPC (skip players with active quest)
+      for (const [, s] of io.sockets.sockets) {
+        const pid = socketToPlayer.get(s.id);
+        if (pid && playerNpcQuest.get(pid)) continue;
+        s.emit("npc:visit", pickWeightedNpc());
       }
       cycleStartedAt = Date.now();
-      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: CYCLE_MS });
+      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
       scheduleCycle();
     }, remaining);
   }
@@ -166,6 +194,13 @@ app.prepare().then(() => {
     socket.on("player:join", (payload = {}) => {
       const player = compactPlayer(payload);
       if (!player.id) return;
+
+      // Track socket → player mapping
+      socketToPlayer.set(socket.id, player.id);
+      // Restore active quest state if client reports it
+      if (payload.hasNpcQuest !== undefined) {
+        playerNpcQuest.set(player.id, Boolean(payload.hasNpcQuest));
+      }
 
       // Remove player from old stage if they switched stage across socket reconnections
       const trackedStage = playerStages.get(player.id);
@@ -215,7 +250,51 @@ app.prepare().then(() => {
       socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
     });
 
+    // ─── NPC Quest state sync ────────────────────────────────────
+    socket.on("quest:active", (isActive) => {
+      const pid = socketToPlayer.get(socket.id);
+      if (pid) playerNpcQuest.set(pid, Boolean(isActive));
+    });
+    // ─────────────────────────────────────────────────────────────
+
+    // ─── Dev controls (only in development) ──────────────────────
+    socket.on("dev:trigger", (payload = {}) => {
+      if (process.env.NODE_ENV !== "development") return;
+      const specific = payload.npcId
+        ? NPC_POOL.find((e) => e.npc.id === payload.npcId)?.npc
+        : null;
+      socket.emit("npc:visit", specific || pickWeightedNpc());
+    });
+
+    socket.on("dev:skip", () => {
+      if (process.env.NODE_ENV !== "development") return;
+      for (const [, s] of io.sockets.sockets) {
+        const pid = socketToPlayer.get(s.id);
+        if (pid && playerNpcQuest.get(pid)) continue;
+        s.emit("npc:visit", pickWeightedNpc());
+      }
+      cycleStartedAt = Date.now();
+      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
+      scheduleCycle();
+    });
+
+    socket.on("dev:reset", () => {
+      if (process.env.NODE_ENV !== "development") return;
+      cycleStartedAt = Date.now();
+      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
+      scheduleCycle();
+    });
+
+    socket.on("dev:set-speed", (multiplier) => {
+      if (process.env.NODE_ENV !== "development") return;
+      cycleSpeedMultiplier = Math.max(1, Number(multiplier) || 1);
+      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
+      scheduleCycle();
+    });
+    // ─────────────────────────────────────────────────────────────
+
     socket.on("disconnect", () => {
+      socketToPlayer.delete(socket.id);
       detachPlayer();
     });
   });
