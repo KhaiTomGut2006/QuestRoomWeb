@@ -255,7 +255,7 @@ export async function requestChallenge(discordId) {
     completed: member.quest?.completed || [],
     cooldownUntil: member.quest?.cooldownUntil
   };
-  await member.save();
+  await member.save({ validateModifiedOnly: true });
 
   return { ok: true, pending: true, cost, member: normalizeMember(member) };
 }
