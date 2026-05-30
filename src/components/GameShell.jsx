@@ -9,13 +9,6 @@ import PlayerLayer from "@/components/PlayerLayer";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
-const seedPlayers = [
-  { id: "nsc-11", name: "NSC-11", x: 70, y: 58, avatar: "", online: false },
-  { id: "nsc-23", name: "NSC-23", x: 33, y: 70, avatar: "", online: false },
-  { id: "nsc-38", name: "NSC-38", x: 77, y: 70, avatar: "", online: false },
-  { id: "nsc-58", name: "NSC-58", x: 50, y: 63, avatar: "", online: false }
-];
-
 const demoMember = {
   discordId: "demo-local",
   name: "Demo Guest",
@@ -78,7 +71,7 @@ export default function GameShell() {
   const { data: session, status } = useSession();
   const [config, setConfig] = useState(null);
   const [member, setMember] = useState(null);
-  const [players, setPlayers] = useState(seedPlayers);
+  const [players, setPlayers] = useState([]);
   const [previewMode, setPreviewMode] = useState(false);
   const [demoRequested, setDemoRequested] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -170,8 +163,7 @@ export default function GameShell() {
 
     socket.on("room:state", (roomPlayers) => {
       setPlayers((prev) => {
-        const seeded = previewMode ? seedPlayers : [];
-        const merged = new Map([...prev, ...seeded, ...roomPlayers].map((p) => [p.id, p]));
+        const merged = new Map([...prev, ...roomPlayers].map((p) => [p.id, p]));
         return Array.from(merged.values());
       });
     });
@@ -269,7 +261,7 @@ export default function GameShell() {
   };
 
   const visiblePlayers = useMemo(() => {
-    if (!activeMember) return seedPlayers;
+    if (!activeMember) return [];
     return players.filter((player) => player.stage === activeMember.stage || !player.stage);
   }, [activeMember, players]);
 
