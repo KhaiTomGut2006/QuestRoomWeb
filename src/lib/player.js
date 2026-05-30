@@ -267,6 +267,7 @@ export async function requestChallenge(discordId) {
   }
 
   const requestedAt = new Date();
+  member.coin = String(currentCoins - cost);
   member.questChallengeRequestedAt = requestedAt;
   member.questChallenge = {
     status: "pending",
@@ -289,6 +290,7 @@ export async function requestChallenge(discordId) {
 
 export async function acknowledgeReward(discordId, rewardId) {
   await connectDb();
+  await ensureLevels();
   const member = await Member.findOne({ discord_id: String(discordId || "") });
   if (!member) return null;
 
