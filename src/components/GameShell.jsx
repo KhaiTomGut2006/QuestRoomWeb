@@ -354,7 +354,7 @@ export default function GameShell() {
   return (
     <main className="game-shell">
       <section className="top-left hud-cluster">
-        <h1>{stageLabel(activeMember?.stage)}</h1>
+        <h1>{activeMember?.stageLabel || stageLabel(activeMember?.stage)}</h1>
         <div className="action-row">
           <button className="ranking-button" type="button" aria-label="Ranking">
             <Trophy size={38} fill="currentColor" />

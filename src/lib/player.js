@@ -182,7 +182,8 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
   await connectDb();
   const members = await Member.find({
     stage: String(stage || DEFAULT_STAGE),
-    discord_id: { $exists: true, $ne: "" }
+    discord_id: { $exists: true, $ne: "" },
+    lastAuthentication: { $exists: true }
   });
 
   return members.map((member) => {
