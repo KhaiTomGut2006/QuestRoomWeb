@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Trophy, X, ChevronDown, Award } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 
-export default function RankingModal({ onClose }) {
+export default function RankingModal({ onClose, onOpenProfile }) {
   const [levels, setLevels] = useState([]);
   const [ranking, setRanking] = useState([]);
   const [selectedStageId, setSelectedStageId] = useState("");
@@ -103,7 +103,12 @@ export default function RankingModal({ onClose }) {
                   const imageSource = badgeIcon.startsWith("/") ? withBasePath(badgeIcon) : badgeIcon;
 
                   return (
-                    <div key={player.id} className={`ranking-item rank-${player.rank}`}>
+                    <div
+                      key={player.id}
+                      className={`ranking-item rank-${player.rank}`}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => onOpenProfile && onOpenProfile(player.id)}
+                    >
                       <div className="ranking-item-rank-num">
                         #{player.rank}
                       </div>

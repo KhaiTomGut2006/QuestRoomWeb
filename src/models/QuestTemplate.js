@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const QuestTemplateSchema = new mongoose.Schema({
-  difficulty: { type: String, enum: ["easy", "medium", "hard"], required: true },
+  difficulty: { type: String, enum: ["easy", "medium", "hard", "stupid"], required: true },
   title:       { type: String, required: true },
   description: { type: String, required: true },
   rewardMin:   { type: Number, default: 50 },

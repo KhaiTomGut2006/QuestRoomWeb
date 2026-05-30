@@ -257,9 +257,8 @@ app.prepare().then(() => {
     });
     // ─────────────────────────────────────────────────────────────
 
-    // ─── Dev controls (only in development) ──────────────────────
+    // ─── Dev controls ────────────────────────────────────────────
     socket.on("dev:trigger", (payload = {}) => {
-      if (process.env.NODE_ENV !== "development") return;
       const specific = payload.npcId
         ? NPC_POOL.find((e) => e.npc.id === payload.npcId)?.npc
         : null;
@@ -267,7 +266,6 @@ app.prepare().then(() => {
     });
 
     socket.on("dev:skip", () => {
-      if (process.env.NODE_ENV !== "development") return;
       for (const [, s] of io.sockets.sockets) {
         const pid = socketToPlayer.get(s.id);
         if (pid && playerNpcQuest.get(pid)) continue;
@@ -279,14 +277,12 @@ app.prepare().then(() => {
     });
 
     socket.on("dev:reset", () => {
-      if (process.env.NODE_ENV !== "development") return;
       cycleStartedAt = Date.now();
       io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
       scheduleCycle();
     });
 
     socket.on("dev:set-speed", (multiplier) => {
-      if (process.env.NODE_ENV !== "development") return;
       cycleSpeedMultiplier = Math.max(1, Number(multiplier) || 1);
       io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
       scheduleCycle();

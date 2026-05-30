@@ -80,7 +80,7 @@ export default function NpcVisitModal({ npc, questData, onAccept, onClose }) {
   const imgFile = NPC_IMAGE[npc.npcId] || NPC_IMAGE[npc.id] || "chest_open.png";
   const imgSrc  = withBasePath(`/assets/NPC/${imgFile}`);
   const meta    = TYPE_META[npc.type] || { label: npc.type, cls: "" };
-  const isQuestDialog = npc.type === "quest" && questData;
+  const isQuestDialog = (npc.type === "quest" || npc.type === "stupid-quest") && questData;
 
   return (
     <div

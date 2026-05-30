@@ -3,6 +3,7 @@ import Member from "@/models/Member";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
 import Level from "@/models/Level";
+import CourseConfig from "@/models/CourseConfig";
 
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 1080;
@@ -415,4 +416,61 @@ export async function dismissNpcQuest(discordId) {
     { new: true }
   );
   return member ? normalizeMember(member) : null;
+}
+
+export async function getActiveClasses() {
+  await connectDb();
+  const configs = await CourseConfig.find({ isActive: true }).sort({ courseName: 1 }).lean();
+  return configs.map(c => ({
+    sheetTitle: c.sheetTitle,
+    courseName: c.courseName
+  }));
+}
+
+export async function getClassFriends(classId) {
+  await connectDb();
+  
+  const members = await Member.find({
+    discord_id: { $exists: true, $ne: "" },
+    courses: classId
+  }).lean();
+
+  const gradeValues = {
+    master: 6,
+    diamond: 5,
+    platinum: 4,
+    gold: 3,
+    silver: 2,
+    bronze: 1
+  };
+
+  return members.map(m => {
+    const normalized = normalizeMember(m);
+    
+    // Find their best badge overall
+    let bestBadge = null;
+    let maxGrade = 0;
+    (m.profileAchievements || []).forEach(badge => {
+      const val = gradeValues[badge.kind] || 0;
+      if (val > maxGrade) {
+        maxGrade = val;
+        bestBadge = badge;
+      }
+    });
+
+    return {
+      id: normalized.discordId,
+      name: normalized.name,
+      username: normalized.username,
+      avatar: normalized.avatar,
+      rank: normalized.rank,
+      lastAuthentication: m.lastAuthentication ? m.lastAuthentication.toISOString() : null,
+      bestBadge: bestBadge ? {
+        id: bestBadge.id || "",
+        label: bestBadge.label || "",
+        kind: bestBadge.kind || "bronze",
+        icon: bestBadge.icon || ""
+      } : null
+    };
+  });
 }

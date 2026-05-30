@@ -11,6 +11,7 @@ import RewardModal from "@/components/RewardModal";
 import NpcVisitModal from "@/components/NpcVisitModal";
 import NoCoinsModal from "@/components/NoCoinsModal";
 import RankingModal from "@/components/RankingModal";
+import FriendsModal from "@/components/FriendsModal";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -203,7 +204,7 @@ export default function GameShell() {
   const [authError, setAuthError] = useState("");
   const [devMode, setDevMode] = useState(false);
   const [target, setTarget] = useState(null);
-  const [profilePlayerId, setProfilePlayerId] = useState(null);
+  const [profilePlayer, setProfilePlayer] = useState(null);
   const [reward, setReward] = useState(null);
   const [message, setMessage] = useState("Pedding...");
   const [cycleInfo, setCycleInfo] = useState(null);
@@ -212,6 +213,7 @@ export default function GameShell() {
   const [showNoCoins, setShowNoCoins] = useState(false);
   const [noCoinsCost, setNoCoinsCost] = useState(250);
   const [showRanking, setShowRanking] = useState(false);
+  const [showFriends, setShowFriends] = useState(false);
   const socketRef = useRef(null);
   const emitTimerRef = useRef(null);
   const autoLoginStartedRef = useRef(false);
@@ -220,10 +222,6 @@ export default function GameShell() {
   const isAuthed = status === "authenticated";
   const activeMember = member || (previewMode ? demoMember : null);
   const selfPlayer = useMemo(() => (activeMember ? playerFromMember(activeMember) : null), [activeMember]);
-  const profilePlayer = useMemo(
-    () => players.find((player) => player.id === profilePlayerId) || null,
-    [players, profilePlayerId]
-  );
   const isChallengePending = activeMember?.challenge?.status === "pending";
 
   const applyMember = useCallback((nextMember) => {
@@ -234,6 +232,35 @@ export default function GameShell() {
       setReward(nextReward);
     }
   }, []);
+
+  const handleOpenProfile = useCallback((playerId, preloadedPlayer = null) => {
+    if (!playerId) return;
+
+    // 1. Try to find in the current room players
+    const roomPlayer = players.find((p) => p.id === playerId);
+    if (roomPlayer) {
+      setProfilePlayer(roomPlayer);
+      return;
+    }
+
+    // 2. If preloadedPlayer has achievements and rank, we can use it directly
+    if (preloadedPlayer?.achievements && preloadedPlayer?.rank) {
+      setProfilePlayer(preloadedPlayer);
+      return;
+    }
+
+    // 3. Otherwise, fetch from the database
+    fetch(withBasePath(`/api/player/profile?id=${encodeURIComponent(playerId)}`))
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then(({ player }) => {
+        // Merge online status if they happen to be online
+        const isOnline = players.some((p) => p.id === playerId && p.online);
+        setProfilePlayer({ ...player, online: isOnline });
+      })
+      .catch((err) => {
+        console.error("Failed to load player profile", err);
+      });
+  }, [players]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -429,12 +456,17 @@ export default function GameShell() {
   };
   // Fetch quest template when a quest-type NPC visits
   useEffect(() => {
-    const questNpcIds = ["quest-easy", "quest-medium", "quest-hard"];
-    if (!npcVisit || !questNpcIds.includes(npcVisit.id)) {
+    const QUEST_DIFFICULTY_MAP = {
+      "quest-easy":   "easy",
+      "quest-medium": "medium",
+      "quest-hard":   "hard",
+      "stupid-quest": "stupid",
+    };
+    const difficulty = QUEST_DIFFICULTY_MAP[npcVisit?.id];
+    if (!npcVisit || !difficulty) {
       setNpcQuestData(null);
       return;
     }
-    const difficulty = npcVisit.id.replace("quest-", "");
     fetch(withBasePath(`/api/quest-templates?difficulty=${difficulty}`))
       .then((r) => r.json())
       .then((data) => {
@@ -579,8 +611,8 @@ export default function GameShell() {
             <button
               className="circle-button friends"
               type="button"
-              aria-label={activeMember ? "Sign out" : "Login with Discord"}
-              onClick={() => (activeMember && isAuthed ? signOut() : signIn("discord"))}
+              aria-label={activeMember && isAuthed ? "Friends list" : "Login with Discord"}
+              onClick={() => (activeMember && isAuthed ? setShowFriends(true) : signIn("discord"))}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={withBasePath("/assets/Friends.png")} alt="" />
@@ -597,11 +629,11 @@ export default function GameShell() {
         <PlayerLayer
           players={visiblePlayers}
           selfId={selfPlayer?.id}
-          onOpenProfile={(player) => setProfilePlayerId(player.id)}
+          onOpenProfile={(player) => handleOpenProfile(player.id, player)}
         />
         <RoomClock cycleInfo={cycleInfo} />
       </section>
-      {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayerId(null)} />}
+      {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayer(null)} />}
       {reward && <RewardModal reward={reward} onClose={handleRewardClose} />}
       {npcVisit && (
         <NpcVisitModal
@@ -619,7 +651,19 @@ export default function GameShell() {
           onClose={() => setShowNoCoins(false)}
         />
       )}
-      {showRanking && <RankingModal onClose={() => setShowRanking(false)} />}
+      {showRanking && (
+        <RankingModal
+          onClose={() => setShowRanking(false)}
+          onOpenProfile={(playerId) => handleOpenProfile(playerId)}
+        />
+      )}
+      {showFriends && (
+        <FriendsModal
+          onClose={() => setShowFriends(false)}
+          onOpenProfile={(playerId) => handleOpenProfile(playerId)}
+          roomPlayers={players}
+        />
+      )}
     </main>
   );
 }
