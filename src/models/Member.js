@@ -109,6 +109,7 @@ const MemberSchema = new mongoose.Schema(
     reports: [{ type: mongoose.Schema.Types.ObjectId, ref: "Report" }],
     ball: String,
     discordData: Object,
+    questChallengeRequestedAt: Date,
     stage: { type: String, default: "game-demo-1", index: true },
     quest: { type: QuestSchema, default: () => ({}) },
     roomPosition: { type: PositionSchema, default: () => ({}) }

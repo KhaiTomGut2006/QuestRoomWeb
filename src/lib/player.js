@@ -26,6 +26,14 @@ export function normalizeMember(member) {
       "Player",
     username: discord.username || member.username || "",
     avatar: discord.avatarUrl || "",
+    rank: member.rank || "Game Tester",
+    achievements: (member.profileAchievements || []).map((achievement) => ({
+      id: achievement.id || "",
+      label: achievement.label || "Badge",
+      sublabel: achievement.sublabel || "",
+      kind: achievement.kind || "",
+      icon: achievement.icon || ""
+    })),
     stage: member.stage || DEFAULT_STAGE,
     coins: Number.isFinite(coinNumber) ? coinNumber : DEFAULT_COINS,
     quest: member.quest || {},
@@ -122,7 +130,10 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
     return {
       id: normalized.discordId,
       name: normalized.name,
+      username: normalized.username,
       avatar: normalized.avatar,
+      rank: normalized.rank,
+      achievements: normalized.achievements,
       stage: normalized.stage,
       x: Number(normalized.position?.x || 50),
       y: Number(normalized.position?.y || 70),
@@ -162,11 +173,13 @@ export async function advanceChallenge(discordId) {
   const member = await Member.findOne({ discord_id: String(discordId || "") });
   if (!member) return null;
 
+  member.questChallengeRequestedAt = new Date();
   const currentCoins = Number.parseInt(member.coin || DEFAULT_COINS, 10);
   const stageNumber = Number.parseInt(String(member.stage || DEFAULT_STAGE).split("-").pop(), 10) || 1;
   const cost = Math.round(250 * Math.pow(1.35, stageNumber - 1));
 
   if (currentCoins < cost) {
+    await member.save();
     return { ok: false, reason: "not_enough_coins", cost, member: normalizeMember(member) };
   }
 

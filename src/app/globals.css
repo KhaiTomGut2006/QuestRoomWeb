@@ -286,6 +286,20 @@ button {
   align-content: start;
   transition: left 180ms linear, top 180ms linear;
   filter: drop-shadow(0 4px 2px rgba(0, 0, 0, 0.28));
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.player-token:hover,
+.player-token:focus-visible {
+  z-index: 8;
+}
+
+.player-token:focus-visible {
+  outline: 0;
 }
 
 .player-name {
@@ -315,6 +329,7 @@ button {
   color: #fff;
   font-size: clamp(16px, 1.2vw, 22px);
   font-weight: 950;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .player-avatar img {
@@ -341,12 +356,217 @@ button {
   box-shadow: 0 0 0 4px rgba(255, 217, 77, 0.58);
 }
 
+.player-token:hover .player-avatar,
+.player-token:focus-visible .player-avatar {
+  transform: scale(1.18);
+  border-color: #ffd94d;
+  box-shadow:
+    0 0 0 4px rgba(255, 255, 255, 0.94),
+    0 0 0 8px rgba(255, 217, 77, 0.82),
+    0 0 22px rgba(255, 176, 37, 0.72);
+}
+
 .player-shadow {
   width: clamp(45px, 3.4vw, 64px);
   height: 13px;
   margin-top: -9px;
   border-radius: 999px;
   background: rgba(38, 30, 22, 0.25);
+}
+
+.profile-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(37, 27, 17, 0.44);
+  backdrop-filter: blur(4px);
+}
+
+.profile-modal {
+  position: relative;
+  display: grid;
+  width: min(570px, 100%);
+  max-height: min(760px, calc(100dvh - 40px));
+  gap: 34px;
+  padding: clamp(28px, 4vw, 52px);
+  overflow: auto;
+  border: 3px solid #1f1d1c;
+  background: #fffdf8;
+  box-shadow: 0 14px 0 rgba(50, 36, 24, 0.18);
+}
+
+.profile-close-button {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 2px solid #1f1d1c;
+  border-radius: 999px;
+  background: #fff;
+  color: #1f1d1c;
+  cursor: pointer;
+}
+
+.profile-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding-right: 28px;
+}
+
+.profile-modal-avatar {
+  position: relative;
+  display: grid;
+  width: clamp(104px, 16vw, 132px);
+  height: clamp(104px, 16vw, 132px);
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: visible;
+  border: 3px solid #1f1d1c;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #24212a, #6c5d7b);
+  color: #fff;
+  font-size: 34px;
+  font-weight: 950;
+}
+
+.profile-modal-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.profile-modal-online {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  background: #28c840;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.profile-modal h2,
+.profile-modal h3,
+.profile-modal p {
+  margin: 0;
+}
+
+.profile-modal h2 {
+  font-size: clamp(24px, 4vw, 32px);
+  line-height: 1;
+  font-weight: 950;
+}
+
+.profile-username {
+  margin-top: 7px !important;
+  color: #887b6b;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.profile-rank {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px !important;
+  color: #5789ee;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.profile-badge-section {
+  display: grid;
+  gap: 18px;
+}
+
+.profile-badge-section h3 {
+  font-size: 28px;
+  font-weight: 950;
+}
+
+.profile-badge-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.profile-badge {
+  display: grid;
+  width: 112px;
+  justify-items: center;
+  gap: 5px;
+  text-align: center;
+}
+
+.profile-badge-medal {
+  display: grid;
+  width: 88px;
+  height: 88px;
+  place-items: center;
+  overflow: hidden;
+  border: 4px solid #d2dde6;
+  border-radius: 24px;
+  background: linear-gradient(145deg, #eff7fb, #cdd9e2);
+  color: #546878;
+  font-size: 22px;
+  font-weight: 950;
+  box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.52);
+}
+
+.profile-badge-medal.is-gold {
+  border-color: #ffbd16;
+  background: linear-gradient(145deg, #ffe45a, #ffb900);
+  color: #9b5d00;
+}
+
+.profile-badge-medal img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-badge strong {
+  color: #262221;
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.profile-badge small,
+.profile-empty-badges {
+  color: #9a8e80;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profile-modal-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.profile-modal-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 66px;
+  border: 3px solid #2b2825;
+  background: #ffdb52;
+  color: #1d1c1b;
+  font-size: 21px;
+  font-weight: 950;
+  box-shadow: inset 0 -8px 0 rgba(255, 124, 76, 0.34);
+  opacity: 0.66;
 }
 
 .nav-arrow {
@@ -501,6 +721,11 @@ button {
     top: 55%;
   }
 
+  .profile-modal {
+    gap: 24px;
+    padding: 32px 26px 26px;
+  }
+
   .nav-arrow {
     top: auto;
     bottom: 24px;
@@ -567,5 +792,18 @@ button {
   .game-stage {
     width: min(156vw, calc((100dvh - 300px) * 1.778));
     top: 55%;
+  }
+
+  .profile-modal-header {
+    gap: 18px;
+  }
+
+  .profile-modal-actions {
+    gap: 12px;
+  }
+
+  .profile-modal-actions button {
+    height: 58px;
+    font-size: 18px;
   }
 }

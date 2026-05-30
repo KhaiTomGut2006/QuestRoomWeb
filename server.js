@@ -67,10 +67,22 @@ function getRoom(stage) {
 
 function compactPlayer(player, online = Boolean(player?.online)) {
   const position = getWalkablePoint(player) || { x: 50, y: 70 };
+  const achievements = Array.isArray(player.achievements)
+    ? player.achievements.slice(0, 12).map((achievement) => ({
+        id: String(achievement?.id || "").slice(0, 64),
+        label: String(achievement?.label || "Badge").slice(0, 64),
+        sublabel: String(achievement?.sublabel || "").slice(0, 96),
+        kind: String(achievement?.kind || "").slice(0, 32),
+        icon: String(achievement?.icon || "").slice(0, 512)
+      }))
+    : [];
   return {
     id: String(player.id || ""),
     name: String(player.name || "Player").slice(0, 32),
+    username: String(player.username || "").slice(0, 32),
     avatar: String(player.avatar || ""),
+    rank: String(player.rank || "Game Tester").slice(0, 48),
+    achievements,
     stage: String(player.stage || "game-demo-1"),
     x: position.x,
     y: position.y,

@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Coins, Trophy, Zap } from "lucide-react";
 import { io } from "socket.io-client";
 import RoomCanvas from "@/components/RoomCanvas";
 import PlayerLayer from "@/components/PlayerLayer";
+import ProfileModal from "@/components/ProfileModal";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -34,7 +35,10 @@ function playerFromMember(member) {
   return {
     id: member.discordId || "demo-local",
     name: member.name || member.username || "Player",
+    username: member.username || "",
     avatar: member.avatar || "",
+    rank: member.rank || "Game Tester",
+    achievements: member.achievements || [],
     stage: member.stage || "game-demo-1",
     x: Number(member.position?.x || 56),
     y: Number(member.position?.y || 72),
@@ -76,6 +80,7 @@ export default function GameShell() {
   const [demoRequested, setDemoRequested] = useState(false);
   const [authError, setAuthError] = useState("");
   const [target, setTarget] = useState(null);
+  const [profilePlayerId, setProfilePlayerId] = useState(null);
   const [message, setMessage] = useState("Pedding...");
   const socketRef = useRef(null);
   const emitTimerRef = useRef(null);
@@ -84,6 +89,10 @@ export default function GameShell() {
   const isAuthed = status === "authenticated";
   const activeMember = member || (previewMode ? demoMember : null);
   const selfPlayer = useMemo(() => (activeMember ? playerFromMember(activeMember) : null), [activeMember]);
+  const profilePlayer = useMemo(
+    () => players.find((player) => player.id === profilePlayerId) || null,
+    [players, profilePlayerId]
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -323,8 +332,13 @@ export default function GameShell() {
 
       <section className="game-stage" onClick={handleStageClick}>
         <RoomCanvas target={target} onTargetHandled={() => setTarget(null)} />
-        <PlayerLayer players={visiblePlayers} selfId={selfPlayer?.id} />
+        <PlayerLayer
+          players={visiblePlayers}
+          selfId={selfPlayer?.id}
+          onOpenProfile={(player) => setProfilePlayerId(player.id)}
+        />
       </section>
+      {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayerId(null)} />}
     </main>
   );
 }
