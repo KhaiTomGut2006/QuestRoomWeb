@@ -40,6 +40,44 @@ const PositionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const BadgeSchema = new mongoose.Schema(
+  {
+    id: String,
+    label: String,
+    sublabel: String,
+    kind: String,
+    icon: String,
+    awardedAt: Date
+  },
+  { _id: false }
+);
+
+const ChallengeSchema = new mongoose.Schema(
+  {
+    status: String,
+    taskId: String,
+    taskName: String,
+    stage: String,
+    cost: Number,
+    requestedAt: Date,
+    approvedAt: Date,
+    badge: BadgeSchema
+  },
+  { _id: false }
+);
+
+const RewardSchema = new mongoose.Schema(
+  {
+    id: String,
+    taskId: String,
+    taskName: String,
+    badge: BadgeSchema,
+    awardedAt: Date,
+    seenAt: Date
+  },
+  { _id: false }
+);
+
 const MemberSchema = new mongoose.Schema(
   {
     id: String,
@@ -85,15 +123,7 @@ const MemberSchema = new mongoose.Schema(
         level: Number
       }
     ],
-    profileAchievements: [
-      {
-        id: String,
-        label: String,
-        sublabel: String,
-        kind: String,
-        icon: String
-      }
-    ],
+    profileAchievements: [BadgeSchema],
     journey: { type: [JourneyStageSchema], default: [] },
     profileUrl: String,
     webProfileUrl: String,
@@ -110,6 +140,8 @@ const MemberSchema = new mongoose.Schema(
     ball: String,
     discordData: Object,
     questChallengeRequestedAt: Date,
+    questChallenge: ChallengeSchema,
+    questReward: RewardSchema,
     stage: { type: String, default: "game-demo-1", index: true },
     quest: { type: QuestSchema, default: () => ({}) },
     roomPosition: { type: PositionSchema, default: () => ({}) }

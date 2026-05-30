@@ -7,6 +7,7 @@ import { io } from "socket.io-client";
 import RoomCanvas from "@/components/RoomCanvas";
 import PlayerLayer from "@/components/PlayerLayer";
 import ProfileModal from "@/components/ProfileModal";
+import RewardModal from "@/components/RewardModal";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -27,8 +28,9 @@ const demoMember = {
 };
 
 function stageLabel(stage) {
-  const stageNumber = String(stage || "game-demo-1").split("-").pop() || "1";
-  return `Game Demo - ${stageNumber}`;
+  const stageNumber = Number.parseInt(String(stage || "game-demo-1").split("-").pop(), 10) || 1;
+  const numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+  return `Game Demo - ${numerals[stageNumber - 1] || stageNumber}`;
 }
 
 function playerFromMember(member) {
@@ -81,10 +83,12 @@ export default function GameShell() {
   const [authError, setAuthError] = useState("");
   const [target, setTarget] = useState(null);
   const [profilePlayerId, setProfilePlayerId] = useState(null);
+  const [reward, setReward] = useState(null);
   const [message, setMessage] = useState("Pedding...");
   const socketRef = useRef(null);
   const emitTimerRef = useRef(null);
   const autoLoginStartedRef = useRef(false);
+  const shownRewardIdsRef = useRef(new Set());
 
   const isAuthed = status === "authenticated";
   const activeMember = member || (previewMode ? demoMember : null);
@@ -93,6 +97,16 @@ export default function GameShell() {
     () => players.find((player) => player.id === profilePlayerId) || null,
     [players, profilePlayerId]
   );
+  const isChallengePending = activeMember?.challenge?.status === "pending";
+
+  const applyMember = useCallback((nextMember) => {
+    setMember(nextMember);
+    const nextReward = nextMember?.reward;
+    if (nextReward?.id && !nextReward.seenAt && !shownRewardIdsRef.current.has(nextReward.id)) {
+      shownRewardIdsRef.current.add(nextReward.id);
+      setReward(nextReward);
+    }
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -129,9 +143,20 @@ export default function GameShell() {
     if (!isAuthed) return;
     fetch(withBasePath("/api/player/me"))
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => setMember(data.member))
+      .then((data) => applyMember(data.member))
       .catch(() => setMessage("DB setup needed"));
-  }, [isAuthed]);
+  }, [applyMember, isAuthed]);
+
+  useEffect(() => {
+    if (!isAuthed) return;
+    const interval = window.setInterval(() => {
+      fetch(withBasePath("/api/player/me"))
+        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+        .then((data) => applyMember(data.member))
+        .catch(() => {});
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [applyMember, isAuthed]);
 
   useEffect(() => {
     if (!isAuthed || !activeMember?.stage) return;
@@ -257,6 +282,7 @@ export default function GameShell() {
       return;
     }
 
+    if (isChallengePending) return;
     setMessage("Pedding...");
     const response = await fetch(withBasePath("/api/player/challenge"), { method: "POST" });
     const data = await response.json();
@@ -264,10 +290,23 @@ export default function GameShell() {
       setMessage(data.reason === "not_enough_coins" ? "Need more coins" : "Try again");
       return;
     }
-    socketRef.current?.emit("player:join", playerFromMember(data.member));
-    setMember(data.member);
-    setMessage("Next room ready");
+    applyMember(data.member);
+    setMessage("ให้น้องไปเรียกพี่ประจำห้องได้เลย");
   };
+
+  const handleRewardClose = useCallback(() => {
+    const rewardId = reward?.id;
+    setReward(null);
+    if (!rewardId || !isAuthed) return;
+    fetch(withBasePath("/api/player/reward"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rewardId })
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => applyMember(data.member))
+      .catch(() => {});
+  }, [applyMember, isAuthed, reward?.id]);
 
   const visiblePlayers = useMemo(() => {
     if (!activeMember) return [];
@@ -286,15 +325,23 @@ export default function GameShell() {
           <button className="ranking-button" type="button" aria-label="Ranking">
             <Trophy size={38} fill="currentColor" />
           </button>
-          <button className="challenge-button" type="button" onClick={handleChallenge}>
+          <button
+            className={`challenge-button ${isChallengePending ? "is-pending" : ""}`}
+            type="button"
+            onClick={handleChallenge}
+            disabled={isChallengePending}
+          >
             <Zap size={23} fill="currentColor" />
-            <span>Challenge</span>
+            <span>{isChallengePending ? "Pending..." : "Challenge"}</span>
           </button>
           <div className="cost-chip">
             <span>-250</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={withBasePath("/assets/Coin.png")} alt="coin" />
           </div>
+          {isChallengePending && (
+            <p className="challenge-pending-note">ให้น้องไปเรียกพี่ประจำห้องได้เลย</p>
+          )}
         </div>
       </section>
 
@@ -339,6 +386,7 @@ export default function GameShell() {
         />
       </section>
       {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayerId(null)} />}
+      {reward && <RewardModal reward={reward} onClose={handleRewardClose} />}
     </main>
   );
 }

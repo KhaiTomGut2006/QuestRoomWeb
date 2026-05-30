@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { requestChallenge } from "@/lib/player";
+import { acknowledgeReward } from "@/lib/player";
 
-export async function POST() {
+export async function POST(request) {
   const session = await getServerSession(authOptions);
   const discordId = session?.user?.discordId;
 
@@ -12,10 +12,10 @@ export async function POST() {
   }
 
   try {
-    const result = await requestChallenge(discordId);
-    if (!result) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
-    if (!result.ok) return NextResponse.json(result, { status: 409 });
-    return NextResponse.json(result);
+    const body = await request.json();
+    const member = await acknowledgeReward(discordId, body?.rewardId);
+    if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
+    return NextResponse.json({ member });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503 });
   }

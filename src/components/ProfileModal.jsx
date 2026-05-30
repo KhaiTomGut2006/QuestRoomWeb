@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { ArrowLeftRight, Gamepad2, MessageSquare, X } from "lucide-react";
+import { withBasePath } from "@/lib/basePath";
 
 function initials(name) {
   return String(name || "P")
@@ -16,13 +17,14 @@ function initials(name) {
 function Badge({ achievement }) {
   const icon = String(achievement.icon || "");
   const hasImage = /^(https?:\/\/|\/)/.test(icon);
+  const imageSource = icon.startsWith("/") ? withBasePath(icon) : icon;
 
   return (
     <div className="profile-badge">
       <div className={`profile-badge-medal ${achievement.kind ? `is-${achievement.kind}` : ""}`}>
         {hasImage ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={icon} alt="" />
+          <img src={imageSource} alt="" />
         ) : (
           <span>{icon || initials(achievement.label)}</span>
         )}

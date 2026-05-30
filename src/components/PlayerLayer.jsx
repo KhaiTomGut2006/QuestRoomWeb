@@ -19,6 +19,7 @@ function PlayerToken({ player, selfId, onOpenProfile }) {
   const longPressTimerRef = useRef(null);
   const pointerStartRef = useRef(null);
   const suppressClickRef = useRef(false);
+  const lastPointerTypeRef = useRef("");
 
   const clearLongPress = useCallback(() => {
     window.clearTimeout(longPressTimerRef.current);
@@ -27,6 +28,7 @@ function PlayerToken({ player, selfId, onOpenProfile }) {
   }, []);
 
   const handlePointerDown = (event) => {
+    lastPointerTypeRef.current = event.pointerType;
     if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
     event.stopPropagation();
     pointerStartRef.current = { x: event.clientX, y: event.clientY };
@@ -48,18 +50,15 @@ function PlayerToken({ player, selfId, onOpenProfile }) {
     }
   };
 
-  const handleContextMenu = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onOpenProfile(player);
-  };
-
   const handleClick = (event) => {
     event.stopPropagation();
     if (suppressClickRef.current) {
       event.preventDefault();
       suppressClickRef.current = false;
+      return;
     }
+    if (lastPointerTypeRef.current === "touch" || lastPointerTypeRef.current === "pen") return;
+    onOpenProfile(player);
   };
 
   const handleKeyDown = (event) => {
@@ -76,9 +75,9 @@ function PlayerToken({ player, selfId, onOpenProfile }) {
       aria-label={`${player.name} is ${player.online ? "online" : "offline"}`}
       role="button"
       tabIndex={0}
-      title="Right-click or press and hold to view profile"
+      title="Click or press and hold to view profile"
       onClick={handleClick}
-      onContextMenu={handleContextMenu}
+      onContextMenu={(event) => event.preventDefault()}
       onKeyDown={handleKeyDown}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

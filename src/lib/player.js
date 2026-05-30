@@ -5,6 +5,53 @@ import { getWalkablePoint } from "@/lib/walkableArea";
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 1080;
 
+function toRoman(number) {
+  const values = [
+    [1000, "M"],
+    [900, "CM"],
+    [500, "D"],
+    [400, "CD"],
+    [100, "C"],
+    [90, "XC"],
+    [50, "L"],
+    [40, "XL"],
+    [10, "X"],
+    [9, "IX"],
+    [5, "V"],
+    [4, "IV"],
+    [1, "I"]
+  ];
+  let remaining = Math.max(1, Number(number) || 1);
+  let result = "";
+  for (const [value, numeral] of values) {
+    while (remaining >= value) {
+      result += numeral;
+      remaining -= value;
+    }
+  }
+  return result;
+}
+
+function getStageNumber(stage = DEFAULT_STAGE) {
+  return Number.parseInt(String(stage).split("-").pop(), 10) || 1;
+}
+
+function getTaskName(stage = DEFAULT_STAGE) {
+  return `Game Demo - ${toRoman(getStageNumber(stage))}`;
+}
+
+function normalizeBadge(badge) {
+  if (!badge) return null;
+  return {
+    id: badge.id || "",
+    label: badge.label || "Badge",
+    sublabel: badge.sublabel || "",
+    kind: badge.kind || "",
+    icon: badge.icon || "",
+    awardedAt: badge.awardedAt || null
+  };
+}
+
 export function getDiscordAvatar(discordId, avatarHash) {
   if (!discordId || !avatarHash) return "";
   const ext = String(avatarHash).startsWith("a_") ? "gif" : "png";
@@ -27,16 +74,22 @@ export function normalizeMember(member) {
     username: discord.username || member.username || "",
     avatar: discord.avatarUrl || "",
     rank: member.rank || "Game Tester",
-    achievements: (member.profileAchievements || []).map((achievement) => ({
-      id: achievement.id || "",
-      label: achievement.label || "Badge",
-      sublabel: achievement.sublabel || "",
-      kind: achievement.kind || "",
-      icon: achievement.icon || ""
-    })),
+    achievements: (member.profileAchievements || []).map(normalizeBadge),
     stage: member.stage || DEFAULT_STAGE,
+    stageLabel: getTaskName(member.stage),
     coins: Number.isFinite(coinNumber) ? coinNumber : DEFAULT_COINS,
     quest: member.quest || {},
+    challenge: member.questChallenge || null,
+    reward: member.questReward
+      ? {
+          id: member.questReward.id || "",
+          taskId: member.questReward.taskId || "",
+          taskName: member.questReward.taskName || "",
+          badge: normalizeBadge(member.questReward.badge),
+          awardedAt: member.questReward.awardedAt || null,
+          seenAt: member.questReward.seenAt || null
+        }
+      : null,
     position: member.roomPosition || { x: 50, y: 70 }
   };
 }
@@ -168,30 +221,54 @@ export async function updateMemberPosition(discordId, position) {
   return member ? normalizeMember(member) : null;
 }
 
-export async function advanceChallenge(discordId) {
+export async function requestChallenge(discordId) {
   await connectDb();
   const member = await Member.findOne({ discord_id: String(discordId || "") });
   if (!member) return null;
 
-  member.questChallengeRequestedAt = new Date();
   const currentCoins = Number.parseInt(member.coin || DEFAULT_COINS, 10);
-  const stageNumber = Number.parseInt(String(member.stage || DEFAULT_STAGE).split("-").pop(), 10) || 1;
+  const stage = member.stage || DEFAULT_STAGE;
+  const stageNumber = getStageNumber(stage);
   const cost = Math.round(250 * Math.pow(1.35, stageNumber - 1));
 
   if (currentCoins < cost) {
-    await member.save();
     return { ok: false, reason: "not_enough_coins", cost, member: normalizeMember(member) };
   }
 
-  member.coin = String(currentCoins - cost);
-  member.stage = `game-demo-${stageNumber + 1}`;
+  if (member.questChallenge?.status === "pending" && member.questChallenge.stage === stage) {
+    return { ok: true, pending: true, cost, member: normalizeMember(member) };
+  }
+
+  const requestedAt = new Date();
+  member.questChallengeRequestedAt = requestedAt;
+  member.questChallenge = {
+    status: "pending",
+    taskId: stage,
+    taskName: getTaskName(stage),
+    stage,
+    cost,
+    requestedAt
+  };
   member.quest = {
-    current: `Clear cozy task ${stageNumber + 1}`,
-    status: "active",
-    completed: [...(member.quest?.completed || []), `game-demo-${stageNumber}`],
-    cooldownUntil: new Date(Date.now() + 40 * 60 * 1000)
+    current: member.quest?.current || getTaskName(stage),
+    status: "pending",
+    completed: member.quest?.completed || [],
+    cooldownUntil: member.quest?.cooldownUntil
   };
   await member.save();
 
-  return { ok: true, cost, member: normalizeMember(member) };
+  return { ok: true, pending: true, cost, member: normalizeMember(member) };
+}
+
+export async function acknowledgeReward(discordId, rewardId) {
+  await connectDb();
+  const member = await Member.findOne({ discord_id: String(discordId || "") });
+  if (!member) return null;
+
+  if (member.questReward?.id && member.questReward.id === String(rewardId || "")) {
+    member.questReward.seenAt = new Date();
+    await member.save();
+  }
+
+  return normalizeMember(member);
 }
