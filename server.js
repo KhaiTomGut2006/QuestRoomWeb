@@ -15,6 +15,7 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
 const rooms = new Map();
+const playerStages = new Map(); // playerId → current stage (cross-socket tracking)
 const walkableFloorPolygon = [
   { x: 23, y: 59 },
   { x: 50, y: 38 },
@@ -118,6 +119,7 @@ app.prepare().then(() => {
       current.socketIds.delete(socket.id);
       if (removeIfOffline && current.socketIds.size === 0) {
         room.delete(activePlayerId);
+        playerStages.delete(activePlayerId);
         socket.to(activeStage).emit("player:leave", activePlayerId);
         return;
       }
@@ -130,6 +132,17 @@ app.prepare().then(() => {
     socket.on("player:join", (payload = {}) => {
       const player = compactPlayer(payload);
       if (!player.id) return;
+
+      // Remove player from old stage if they switched stage across socket reconnections
+      const trackedStage = playerStages.get(player.id);
+      if (trackedStage && trackedStage !== player.stage) {
+        const oldRoom = getRoom(trackedStage);
+        if (oldRoom.has(player.id)) {
+          oldRoom.delete(player.id);
+          io.to(trackedStage).emit("player:leave", player.id);
+        }
+      }
+      playerStages.set(player.id, player.stage);
 
       if (activeStage && (activeStage !== player.stage || activePlayerId !== player.id)) {
         detachPlayer({ removeIfOffline: true });
