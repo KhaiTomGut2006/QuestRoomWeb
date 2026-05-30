@@ -42,20 +42,23 @@ export async function upsertMemberFromDiscord(profile) {
   const avatarUrl = profile.image_url || getDiscordAvatar(discordId, profile.avatar);
   const username = String(profile.username || "").trim();
   const globalName = String(profile.global_name || profile.globalName || "").trim();
+  const initialPosition = {
+    x: 48 + Math.round(Math.random() * 10),
+    y: 68 + Math.round(Math.random() * 12),
+    updatedAt: new Date()
+  };
 
-  const member = await Member.findOneAndUpdate(
+  await Member.findOneAndUpdate(
     { discord_id: discordId },
     {
       $set: {
         email: profile.email || undefined,
         lastAuthentication: new Date(),
-        discordData: {
-          id: discordId,
-          username,
-          globalName,
-          avatar: profile.avatar || "",
-          avatarUrl
-        }
+        "discordData.id": discordId,
+        "discordData.username": username,
+        "discordData.globalName": globalName,
+        "discordData.avatar": profile.avatar || "",
+        "discordData.avatarUrl": avatarUrl
       },
       $setOnInsert: {
         discord_id: discordId,
@@ -68,16 +71,36 @@ export async function upsertMemberFromDiscord(profile) {
           status: "active",
           completed: []
         },
-        roomPosition: {
-          x: 48 + Math.round(Math.random() * 10),
-          y: 68 + Math.round(Math.random() * 12),
-          updatedAt: new Date()
-        }
+        roomPosition: initialPosition
       }
     },
     { new: true, upsert: true }
   );
 
+  await Promise.all([
+    Member.updateOne(
+      { discord_id: discordId, stage: { $exists: false } },
+      { $set: { stage: DEFAULT_STAGE } }
+    ),
+    Member.updateOne(
+      { discord_id: discordId, quest: { $exists: false } },
+      {
+        $set: {
+          quest: {
+            current: "Find the quiet corner",
+            status: "active",
+            completed: []
+          }
+        }
+      }
+    ),
+    Member.updateOne(
+      { discord_id: discordId, roomPosition: { $exists: false } },
+      { $set: { roomPosition: initialPosition } }
+    )
+  ]);
+
+  const member = await Member.findOne({ discord_id: discordId });
   return normalizeMember(member);
 }
 
