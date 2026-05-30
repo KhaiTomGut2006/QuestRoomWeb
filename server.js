@@ -65,7 +65,7 @@ function getRoom(stage) {
   return rooms.get(key);
 }
 
-function compactPlayer(player) {
+function compactPlayer(player, online = Boolean(player?.online)) {
   const position = getWalkablePoint(player) || { x: 50, y: 70 };
   return {
     id: String(player.id || ""),
@@ -75,8 +75,13 @@ function compactPlayer(player) {
     x: position.x,
     y: position.y,
     action: String(player.action || "idle").slice(0, 24),
+    online,
     updatedAt: Date.now()
   };
+}
+
+function publicPlayer(player) {
+  return compactPlayer(player, Boolean(player.socketIds?.size));
 }
 
 app.prepare().then(() => {
@@ -92,20 +97,44 @@ app.prepare().then(() => {
     let activeStage = null;
     let activePlayerId = null;
 
+    function detachPlayer({ removeIfOffline = false } = {}) {
+      if (!activeStage || !activePlayerId) return;
+      const room = getRoom(activeStage);
+      const current = room.get(activePlayerId);
+      if (!current) return;
+
+      current.socketIds.delete(socket.id);
+      if (removeIfOffline && current.socketIds.size === 0) {
+        room.delete(activePlayerId);
+        socket.to(activeStage).emit("player:leave", activePlayerId);
+        return;
+      }
+
+      const player = publicPlayer(current);
+      room.set(activePlayerId, current);
+      socket.to(activeStage).emit("player:upsert", player);
+    }
+
     socket.on("player:join", (payload = {}) => {
       const player = compactPlayer(payload);
       if (!player.id) return;
 
-      if (activeStage) socket.leave(activeStage);
+      if (activeStage && (activeStage !== player.stage || activePlayerId !== player.id)) {
+        detachPlayer({ removeIfOffline: true });
+        socket.leave(activeStage);
+      }
       activeStage = player.stage;
       activePlayerId = player.id;
 
       const room = getRoom(activeStage);
-      room.set(activePlayerId, { ...player, socketId: socket.id });
+      const current = room.get(activePlayerId);
+      const socketIds = current?.socketIds || new Set();
+      socketIds.add(socket.id);
+      room.set(activePlayerId, { ...current, ...player, socketIds });
       socket.join(activeStage);
 
-      socket.emit("room:state", Array.from(room.values()).map(compactPlayer));
-      socket.to(activeStage).emit("player:upsert", compactPlayer(player));
+      socket.emit("room:state", Array.from(room.values()).map(publicPlayer));
+      socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
     });
 
     socket.on("player:move", (payload = {}) => {
@@ -123,16 +152,12 @@ app.prepare().then(() => {
         action: payload.action || "move"
       });
 
-      room.set(activePlayerId, { ...nextPlayer, socketId: socket.id });
-      socket.to(activeStage).emit("player:upsert", nextPlayer);
+      room.set(activePlayerId, { ...current, ...nextPlayer });
+      socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
     });
 
     socket.on("disconnect", () => {
-      if (!activeStage || !activePlayerId) return;
-      const room = getRoom(activeStage);
-      room.delete(activePlayerId);
-      socket.to(activeStage).emit("player:leave", activePlayerId);
-      if (room.size === 0) rooms.delete(activeStage);
+      detachPlayer();
     });
   });
 

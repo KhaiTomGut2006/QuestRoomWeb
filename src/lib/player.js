@@ -110,6 +110,28 @@ export async function getMemberByDiscordId(discordId) {
   return member ? normalizeMember(member) : null;
 }
 
+export async function getRoomPlayers(stage = DEFAULT_STAGE) {
+  await connectDb();
+  const members = await Member.find({
+    stage: String(stage || DEFAULT_STAGE),
+    discord_id: { $exists: true, $ne: "" }
+  });
+
+  return members.map((member) => {
+    const normalized = normalizeMember(member);
+    return {
+      id: normalized.discordId,
+      name: normalized.name,
+      avatar: normalized.avatar,
+      stage: normalized.stage,
+      x: Number(normalized.position?.x || 50),
+      y: Number(normalized.position?.y || 70),
+      action: "idle",
+      online: false
+    };
+  });
+}
+
 export async function updateMemberPosition(discordId, position) {
   await connectDb();
   const nextPosition = getWalkablePoint(position);

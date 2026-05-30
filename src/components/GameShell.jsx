@@ -10,10 +10,10 @@ import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
 const seedPlayers = [
-  { id: "nsc-11", name: "NSC-11", x: 70, y: 58, avatar: "" },
-  { id: "nsc-23", name: "NSC-23", x: 33, y: 70, avatar: "" },
-  { id: "nsc-38", name: "NSC-38", x: 77, y: 70, avatar: "" },
-  { id: "nsc-58", name: "NSC-58", x: 50, y: 63, avatar: "" }
+  { id: "nsc-11", name: "NSC-11", x: 70, y: 58, avatar: "", online: false },
+  { id: "nsc-23", name: "NSC-23", x: 33, y: 70, avatar: "", online: false },
+  { id: "nsc-38", name: "NSC-38", x: 77, y: 70, avatar: "", online: false },
+  { id: "nsc-58", name: "NSC-58", x: 50, y: 63, avatar: "", online: false }
 ];
 
 const demoMember = {
@@ -45,7 +45,8 @@ function playerFromMember(member) {
     stage: member.stage || "game-demo-1",
     x: Number(member.position?.x || 56),
     y: Number(member.position?.y || 72),
-    action: "idle"
+    action: "idle",
+    online: true
   };
 }
 
@@ -131,6 +132,33 @@ export default function GameShell() {
   }, [isAuthed]);
 
   useEffect(() => {
+    if (!isAuthed || !activeMember?.stage) return;
+    const controller = new AbortController();
+    const stage = activeMember.stage;
+
+    fetch(withBasePath(`/api/player/room?stage=${encodeURIComponent(stage)}`), {
+      signal: controller.signal
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then(({ players: roomPlayers }) => {
+        setPlayers((prev) => {
+          const merged = new Map(prev.map((player) => [player.id, player]));
+          for (const player of roomPlayers) {
+            const current = merged.get(player.id);
+            merged.set(player.id, {
+              ...player,
+              online: Boolean(current?.online || player.online)
+            });
+          }
+          return Array.from(merged.values());
+        });
+      })
+      .catch(() => {});
+
+    return () => controller.abort();
+  }, [activeMember?.stage, isAuthed]);
+
+  useEffect(() => {
     if (!selfPlayer) return;
     const socket = io({
       path: withBasePath("/socket.io"),
@@ -143,7 +171,7 @@ export default function GameShell() {
     socket.on("room:state", (roomPlayers) => {
       setPlayers((prev) => {
         const seeded = previewMode ? seedPlayers : [];
-        const merged = new Map([...seeded, ...roomPlayers].map((p) => [p.id, p]));
+        const merged = new Map([...prev, ...seeded, ...roomPlayers].map((p) => [p.id, p]));
         return Array.from(merged.values());
       });
     });
@@ -235,6 +263,7 @@ export default function GameShell() {
       setMessage(data.reason === "not_enough_coins" ? "Need more coins" : "Try again");
       return;
     }
+    socketRef.current?.emit("player:join", playerFromMember(data.member));
     setMember(data.member);
     setMessage("Next room ready");
   };

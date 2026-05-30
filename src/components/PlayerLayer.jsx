@@ -18,6 +18,7 @@ export default function PlayerLayer({ players, selfId }) {
           key={player.id}
           className={`player-token ${player.id === selfId ? "is-self" : ""}`}
           style={{ left: `${player.x}%`, top: `${player.y}%` }}
+          aria-label={`${player.name} is ${player.online ? "online" : "offline"}`}
         >
           <div className="player-name">{player.name}</div>
           <div className="player-avatar">
@@ -27,6 +28,7 @@ export default function PlayerLayer({ players, selfId }) {
             ) : (
               <span>{initials(player.name)}</span>
             )}
+            {player.online && <span className="player-online-dot" aria-hidden="true" />}
           </div>
           <div className="player-shadow" />
         </div>
