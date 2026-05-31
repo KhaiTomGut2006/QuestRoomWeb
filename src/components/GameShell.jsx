@@ -855,22 +855,23 @@ export default function GameShell() {
           {isChallengePending && (
             <p className="challenge-pending-note">ให้น้องไปเรียกพี่ประจำห้องได้เลย</p>
           )}
-          {activeMember?.npcQuest && (
-            <div className="npc-active-quest-hud">
-              <span className="npc-active-quest-label">📜 เควสที่รับไว้</span>
-              <span className="npc-active-quest-title">{activeMember.npcQuest.title}</span>
-              <span className="npc-active-quest-reward">🪙 ×{activeMember.npcQuest.reward}</span>
-              <button
-                className="npc-active-quest-done"
-                type="button"
-                onClick={handleNpcInteract}
-              >
-                คุยกับ NPC
-              </button>
-            </div>
-          )}
         </div>
       </section>
+
+      {activeMember?.npcQuest && (
+        <div className="npc-quest-sidebar">
+          <span className="npc-active-quest-label">📜 เควสที่รับไว้</span>
+          <span className="npc-active-quest-title">{activeMember.npcQuest.title}</span>
+          <span className="npc-active-quest-reward">🪙 ×{activeMember.npcQuest.reward}</span>
+          <button
+            className="npc-active-quest-done"
+            type="button"
+            onClick={handleNpcInteract}
+          >
+            คุยกับ NPC
+          </button>
+        </div>
+      )}
 
       <section className="top-right hud-cluster">
         <p className="version">Ver.Demo</p>
