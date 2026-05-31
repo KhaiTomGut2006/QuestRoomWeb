@@ -140,7 +140,7 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
                   const imageSource = badgeIcon.startsWith("/") ? withBasePath(badgeIcon) : badgeIcon;
 
                   // Check if currently online in sockets (or active in room)
-                  const isOnline = roomPlayers.some((p) => p.id === friend.id && p.online);
+                  const isOnline = roomPlayers.some((p) => p.id === friend.id && p.online) || friend.isOnline;
                   const statusText = isOnline ? "Online now" : getRelativeTimeString(friend.lastAuthentication);
 
                   return (

@@ -203,7 +203,17 @@ export async function upsertMemberFromDiscord(profile) {
 export async function getMemberByDiscordId(discordId) {
   await connectDb();
   await ensureLevels();
-  const member = await Member.findOne({ discord_id: String(discordId || "") });
+
+  let member = null;
+  // If it's a 24-character hex string, search by _id first
+  if (/^[0-9a-fA-F]{24}$/.test(discordId)) {
+    member = await Member.findById(discordId);
+  }
+
+  if (!member) {
+    member = await Member.findOne({ discord_id: String(discordId || "") });
+  }
+
   return member ? normalizeMember(member) : null;
 }
 
@@ -430,11 +440,28 @@ export async function getActiveClasses() {
 export async function getClassFriends(classId) {
   await connectDb();
   
-  const members = await Member.find({
-    discord_id: { $exists: true, $ne: "" },
-    courses: classId
-  }).lean();
+  const botUrl = process.env.BOT_SERVER_URL || "http://localhost:5000";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000);
 
+  let sheetStudents = [];
+  try {
+    const res = await fetch(`${botUrl}/api/attendance?course=${encodeURIComponent(classId)}`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.students)) {
+        sheetStudents = data.students;
+      }
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.warn("Failed to fetch students from bot server, falling back to local DB:", err.message);
+  }
+
+  let members = [];
   const gradeValues = {
     master: 6,
     diamond: 5,
@@ -444,33 +471,99 @@ export async function getClassFriends(classId) {
     bronze: 1
   };
 
-  return members.map(m => {
-    const normalized = normalizeMember(m);
-    
-    // Find their best badge overall
-    let bestBadge = null;
-    let maxGrade = 0;
-    (m.profileAchievements || []).forEach(badge => {
-      const val = gradeValues[badge.kind] || 0;
-      if (val > maxGrade) {
-        maxGrade = val;
-        bestBadge = badge;
+  if (sheetStudents.length > 0) {
+    const discordIds = sheetStudents.map(s => s.discordId).filter(Boolean);
+    if (discordIds.length > 0) {
+      members = await Member.find({
+        discord_id: { $in: discordIds }
+      }).lean();
+    }
+
+    const memberMap = new Map(members.map(m => [m.discord_id, m]));
+    return sheetStudents.map(student => {
+      const m = memberMap.get(student.discordId);
+      if (m) {
+        const normalized = normalizeMember(m);
+        let bestBadge = null;
+        let maxGrade = 0;
+        (m.profileAchievements || []).forEach(badge => {
+          const val = gradeValues[badge.kind] || 0;
+          if (val > maxGrade) {
+            maxGrade = val;
+            bestBadge = badge;
+          }
+        });
+        return {
+          id: normalized.discordId,
+          name: normalized.name,
+          username: normalized.username,
+          avatar: normalized.avatar,
+          rank: normalized.rank,
+          lastAuthentication: m.lastAuthentication ? m.lastAuthentication.toISOString() : null,
+          isOnline: student.isOnline || false,
+          bestBadge: bestBadge ? {
+            id: bestBadge.id || "",
+            label: bestBadge.label || "",
+            kind: bestBadge.kind || "bronze",
+            icon: bestBadge.icon || ""
+          } : null
+        };
+      } else {
+        return {
+          id: student.discordId || `sheet-${student.sheetRowIndex}`,
+          name: student.name || "Player",
+          username: student.discordUsername || "",
+          avatar: student.avatarUrl || "",
+          rank: "Game Tester",
+          lastAuthentication: null,
+          isOnline: student.isOnline || false,
+          bestBadge: null
+        };
       }
     });
-
-    return {
-      id: normalized.discordId,
-      name: normalized.name,
-      username: normalized.username,
-      avatar: normalized.avatar,
-      rank: normalized.rank,
-      lastAuthentication: m.lastAuthentication ? m.lastAuthentication.toISOString() : null,
-      bestBadge: bestBadge ? {
-        id: bestBadge.id || "",
-        label: bestBadge.label || "",
-        kind: bestBadge.kind || "bronze",
-        icon: bestBadge.icon || ""
-      } : null
+  } else {
+    // Local MongoDB Heuristic Fallback
+    const lowercaseClassId = String(classId).toLowerCase();
+    let query = {
+      discord_id: { $exists: true, $ne: "" }
     };
-  });
+    if (lowercaseClassId.includes("nsc")) {
+      query.courses = { $in: [classId, "C0008", "C0009"] };
+    } else if (lowercaseClassId.includes("starways")) {
+      query.courses = { $in: [classId, "C0001", "C0002", "C0005", "C0038", "C0061", "C0072", "C0076", "C0077", "C0078", "C0080", "C0081", "C0082", "C0092"] };
+    } else if (lowercaseClassId.includes("hero")) {
+      query.courses = { $in: [classId, "C0001", "C0002", "C0008", "C0009"] };
+    } else {
+      query.courses = classId;
+    }
+    
+    members = await Member.find(query).lean();
+    return members.map(m => {
+      const normalized = normalizeMember(m);
+      let bestBadge = null;
+      let maxGrade = 0;
+      (m.profileAchievements || []).forEach(badge => {
+        const val = gradeValues[badge.kind] || 0;
+        if (val > maxGrade) {
+          maxGrade = val;
+          bestBadge = badge;
+        }
+      });
+      return {
+        id: normalized.discordId,
+        name: normalized.name,
+        username: normalized.username,
+        avatar: normalized.avatar,
+        rank: normalized.rank,
+        lastAuthentication: m.lastAuthentication ? m.lastAuthentication.toISOString() : null,
+        isOnline: false,
+        bestBadge: bestBadge ? {
+          id: bestBadge.id || "",
+          label: bestBadge.label || "",
+          kind: bestBadge.kind || "bronze",
+          icon: bestBadge.icon || ""
+        } : null
+      };
+    });
+  }
 }
