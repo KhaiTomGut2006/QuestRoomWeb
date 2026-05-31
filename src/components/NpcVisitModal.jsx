@@ -33,6 +33,86 @@ const SMOKE_PUFFS = [
   { left: "6%",  top: "60%", delay: "170ms", size: 28 },
 ];
 
+// ── Shared NPC dialog layout (portrait left, speech bubble right) ────────────
+function InteractDialog({ npcId, npcName, intro, children }) {
+  const imgFile = NPC_IMAGE[npcId] || "Witch.png";
+  const imgSrc  = withBasePath(`/assets/NPC/${imgFile}`);
+  return (
+    <div className="npc-quest-layout">
+      <div className="npc-quest-npc-side">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="npc-quest-npc-img" src={imgSrc} alt={npcName} />
+        <p className="npc-quest-npc-name">{npcName}</p>
+      </div>
+      <div className="npc-quest-dialog-side">
+        <p className="npc-quest-text"><strong>{npcName} :</strong> {intro}</p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── Gambling dialog (Begger) ─────────────────────────────────────────────────
+function GamblingDialog({ npc, result, onGamble, onClose }) {
+  const betAmount = npc.betAmount || 500;
+  return (
+    <InteractDialog npcId="begger" npcName="Begger" intro="ขอเสนอวิธีการเงินง่ายๆ กับผม">
+      {result ? (
+        <>
+          <div className={`npc-interact-result${result.won ? " npc-interact-result--win" : " npc-interact-result--lose"}`}>
+            {result.won
+              ? `🎉 ยินดีด้วย! คุณได้รับ +${betAmount.toLocaleString()} Coins!`
+              : `💸 เสียใจด้วย... คุณเสีย -${betAmount.toLocaleString()} Coins`}
+          </div>
+          <button className="npc-quest-decline-btn" type="button" onClick={onClose}>ตกลง</button>
+        </>
+      ) : (
+        <>
+          <div className="npc-interact-betamount">
+            เดิมพัน{" "}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+            <span>×{betAmount.toLocaleString()}</span>
+          </div>
+          <button className="npc-interact-choice-btn" type="button" onClick={() => onGamble(betAmount)}>
+            ร่วมลงทุน {betAmount.toLocaleString()} Coins
+          </button>
+          <button className="npc-quest-decline-btn" type="button" onClick={onClose}>อย่ามาแตะตัวกู!</button>
+        </>
+      )}
+    </InteractDialog>
+  );
+}
+
+// ── Hints dialog (Smith) ─────────────────────────────────────────────────────
+function HintsDialog({ hintsData, hintResult, onHintBuy, onClose }) {
+  return (
+    <InteractDialog npcId="smith" npcName="Smith" intro="มีปัญหาอะไรให้ฉันช่วยมัย คุณผู้ชาย">
+      {hintResult ? (
+        <>
+          <p className="npc-quest-text" style={{ marginTop: 8 }}>{hintResult.content}</p>
+          <button className="npc-quest-decline-btn" type="button" onClick={onClose}>ขอบคุณ Smith!</button>
+        </>
+      ) : (
+        <>
+          {(hintsData || []).map((hint, i) => (
+            <button key={hint._id} className="npc-interact-choice-btn" type="button"
+              onClick={() => onHintBuy(hint._id)}>
+              {i + 1} : {hint.title} ({(hint.cost || 500).toLocaleString()} coins)
+            </button>
+          ))}
+          {(!hintsData || hintsData.length === 0) && (
+            <p className="npc-quest-text" style={{ opacity: 0.6, marginTop: 8 }}>
+              ตอนนี้ฉันยังไม่มีคำแนะนำพิเศษ
+            </p>
+          )}
+          <button className="npc-quest-decline-btn" type="button" onClick={onClose}>ฉันไม่ต้องการ!</button>
+        </>
+      )}
+    </InteractDialog>
+  );
+}
+
 // ── Quest dialog (when npc.type === "quest" and questData is loaded) ──────────
 function QuestDialog({ npc, questData, onAccept, onClose }) {
   const charKey = questData.npcCharacter || npc.npcId || npc.id;
@@ -74,13 +154,21 @@ function QuestDialog({ npc, questData, onAccept, onClose }) {
   );
 }
 
-export default function NpcVisitModal({ npc, questData, onAccept, onClose }) {
+export default function NpcVisitModal({
+  npc, questData, onAccept,
+  hintsData, hintResult, onHintBuy,
+  gamblingResult, onGamble,
+  onClose,
+}) {
   if (!npc) return null;
 
   const imgFile = NPC_IMAGE[npc.npcId] || NPC_IMAGE[npc.id] || "chest_open.png";
   const imgSrc  = withBasePath(`/assets/NPC/${imgFile}`);
   const meta    = TYPE_META[npc.type] || { label: npc.type, cls: "" };
-  const isQuestDialog = (npc.type === "quest" || npc.type === "stupid-quest") && questData;
+  const isQuestDialog    = (npc.type === "quest" || npc.type === "stupid-quest") && questData;
+  const isGamblingDialog = npc.type === "gambling";
+  const isHintsDialog    = npc.type === "hints";
+  const isWideDialog     = isQuestDialog || isGamblingDialog || isHintsDialog;
 
   return (
     <div
@@ -102,10 +190,10 @@ export default function NpcVisitModal({ npc, questData, onAccept, onClose }) {
       </div>
 
       {/* NPC card — slides in from the left */}
-      <div className={`npc-visit-card${isQuestDialog ? " npc-visit-card--quest" : ""}`}>
+      <div className={`npc-visit-card${isWideDialog ? " npc-visit-card--quest" : ""}`}>
         <button className="npc-visit-close" type="button" onClick={onClose} aria-label="Close">✕</button>
 
-        {!isQuestDialog && (
+        {!isQuestDialog && !isGamblingDialog && !isHintsDialog && (
           <>
             <span className={`npc-visit-type-badge ${meta.cls}`}>{meta.label}</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -129,6 +217,24 @@ export default function NpcVisitModal({ npc, questData, onAccept, onClose }) {
             npc={npc}
             questData={questData}
             onAccept={onAccept}
+            onClose={onClose}
+          />
+        )}
+
+        {isGamblingDialog && (
+          <GamblingDialog
+            npc={npc}
+            result={gamblingResult}
+            onGamble={onGamble}
+            onClose={onClose}
+          />
+        )}
+
+        {isHintsDialog && (
+          <HintsDialog
+            hintsData={hintsData}
+            hintResult={hintResult}
+            onHintBuy={onHintBuy}
             onClose={onClose}
           />
         )}

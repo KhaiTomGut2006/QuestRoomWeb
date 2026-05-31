@@ -210,6 +210,9 @@ export default function GameShell() {
   const [cycleInfo, setCycleInfo] = useState(null);
   const [npcVisit, setNpcVisit] = useState(null);
   const [npcQuestData, setNpcQuestData] = useState(null);
+  const [gamblingResult, setGamblingResult] = useState(null);
+  const [hintsData, setHintsData] = useState(null);
+  const [hintResult, setHintResult] = useState(null);
   const [showNoCoins, setShowNoCoins] = useState(false);
   const [noCoinsCost, setNoCoinsCost] = useState(250);
   const [showRanking, setShowRanking] = useState(false);
@@ -465,20 +468,36 @@ export default function GameShell() {
     const difficulty = QUEST_DIFFICULTY_MAP[npcVisit?.id];
     if (!npcVisit || !difficulty) {
       setNpcQuestData(null);
-      return;
+    } else {
+      fetch(withBasePath(`/api/quest-templates?difficulty=${difficulty}`))
+        .then((r) => r.json())
+        .then((data) => {
+          const pool = Array.isArray(data.quests) ? data.quests : [];
+          if (pool.length === 0) { setNpcQuestData(null); return; }
+          const picked = pool[Math.floor(Math.random() * pool.length)];
+          const reward = Math.round(
+            picked.rewardMin + Math.random() * (picked.rewardMax - picked.rewardMin)
+          );
+          setNpcQuestData({ ...picked, reward });
+        })
+        .catch(() => setNpcQuestData(null));
     }
-    fetch(withBasePath(`/api/quest-templates?difficulty=${difficulty}`))
-      .then((r) => r.json())
-      .then((data) => {
-        const pool = Array.isArray(data.quests) ? data.quests : [];
-        if (pool.length === 0) { setNpcQuestData(null); return; }
-        const picked = pool[Math.floor(Math.random() * pool.length)];
-        const reward = Math.round(
-          picked.rewardMin + Math.random() * (picked.rewardMax - picked.rewardMin)
-        );
-        setNpcQuestData({ ...picked, reward });
-      })
-      .catch(() => setNpcQuestData(null));
+
+    // Fetch hints when Smith appears
+    if (npcVisit?.type === "hints") {
+      fetch(withBasePath("/api/hint-templates"))
+        .then((r) => r.json())
+        .then((data) => setHintsData(Array.isArray(data.hints) ? data.hints : []))
+        .catch(() => setHintsData([]));
+    } else {
+      setHintsData(null);
+      setHintResult(null);
+    }
+
+    // Reset gambling state when a new NPC arrives
+    if (npcVisit?.type !== "gambling") {
+      setGamblingResult(null);
+    }
   }, [npcVisit]);
 
   const handleNpcQuestAccept = useCallback(async () => {
@@ -519,9 +538,44 @@ export default function GameShell() {
     } catch {}
   }, [applyMember, isAuthed]);
 
+  const handleGamble = useCallback(async (betAmount) => {
+    if (!isAuthed) return;
+    try {
+      const res = await fetch(withBasePath("/api/player/gamble"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ betAmount }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        applyMember(data.member);
+        setGamblingResult({ won: data.won, delta: data.delta });
+      }
+    } catch {}
+  }, [applyMember, isAuthed]);
+
+  const handleHintBuy = useCallback(async (hintId) => {
+    if (!isAuthed) return;
+    try {
+      const res = await fetch(withBasePath("/api/player/hint"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hintId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        applyMember(data.member);
+        setHintResult({ title: data.hintTitle, content: data.hintContent });
+      }
+    } catch {}
+  }, [applyMember, isAuthed]);
+
   const handleNpcQuestClose = useCallback(() => {
     setNpcVisit(null);
     setNpcQuestData(null);
+    setGamblingResult(null);
+    setHintsData(null);
+    setHintResult(null);
   }, []);
 
   const handleRewardClose = useCallback(() => {
@@ -640,6 +694,11 @@ export default function GameShell() {
           npc={npcVisit}
           questData={npcQuestData}
           onAccept={handleNpcQuestAccept}
+          hintsData={hintsData}
+          hintResult={hintResult}
+          onHintBuy={handleHintBuy}
+          gamblingResult={gamblingResult}
+          onGamble={handleGamble}
           onClose={handleNpcQuestClose}
         />
       )}

@@ -44,6 +44,14 @@ function pickWeightedNpc() {
   return NPC_POOL[NPC_POOL.length - 1].npc;
 }
 
+// Attach dynamic data to certain NPC types before emitting
+function enrichNpc(npc) {
+  if (npc.type === "gambling") {
+    return { ...npc, betAmount: Math.floor(Math.random() * 9901) + 100 };
+  }
+  return npc;
+}
+
 let cycleStartedAt = Date.now();
 let cycleSpeedMultiplier = 1;   // dev: 1=normal, 10=10× faster, etc.
 let cycleTimer = null;
@@ -155,7 +163,7 @@ app.prepare().then(() => {
       for (const [, s] of io.sockets.sockets) {
         const pid = socketToPlayer.get(s.id);
         if (pid && playerNpcQuest.get(pid)) continue;
-        s.emit("npc:visit", pickWeightedNpc());
+        s.emit("npc:visit", enrichNpc(pickWeightedNpc()));
       }
       cycleStartedAt = Date.now();
       io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
@@ -262,14 +270,14 @@ app.prepare().then(() => {
       const specific = payload.npcId
         ? NPC_POOL.find((e) => e.npc.id === payload.npcId)?.npc
         : null;
-      socket.emit("npc:visit", specific || pickWeightedNpc());
+      socket.emit("npc:visit", enrichNpc(specific || pickWeightedNpc()));
     });
 
     socket.on("dev:skip", () => {
       for (const [, s] of io.sockets.sockets) {
         const pid = socketToPlayer.get(s.id);
         if (pid && playerNpcQuest.get(pid)) continue;
-        s.emit("npc:visit", pickWeightedNpc());
+        s.emit("npc:visit", enrichNpc(pickWeightedNpc()));
       }
       cycleStartedAt = Date.now();
       io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });

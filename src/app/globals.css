@@ -2006,6 +2006,67 @@ button {
 }
 .npc-active-quest-done:hover { background: #d97706; }
 
+/* ─── NPC Interact Dialogs (Gambling / Hints) ─── */
+.npc-interact-choice-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 14px;
+  background: #f59e0b;
+  color: #78350f;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.npc-interact-choice-btn:hover {
+  background: #d97706;
+  transform: translateY(-1px);
+}
+
+.npc-interact-betamount {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  margin-bottom: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.npc-interact-betamount img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+.npc-interact-betamount span {
+  color: #b45309;
+}
+
+.npc-interact-result {
+  margin-top: 12px;
+  margin-bottom: 4px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+}
+.npc-interact-result--win {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #065f46;
+}
+.npc-interact-result--lose {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #991b1b;
+}
+
 /* ─── Friends Modal Styles ───────────────── */
 .friends-backdrop {
   position: fixed;
