@@ -326,6 +326,7 @@ export default function GameShell() {
   const [cycleInfo, setCycleInfo] = useState(null);
   const [doorNpc, setDoorNpc] = useState(null);
   const [doorNpcPhase, setDoorNpcPhase] = useState("idle");
+  const [npcKey, setNpcKey] = useState(0);
   const [npcVisit, setNpcVisit] = useState(null);
   const [npcQuestData, setNpcQuestData] = useState(null);
   const [gamblingResult, setGamblingResult] = useState(null);
@@ -455,6 +456,7 @@ export default function GameShell() {
       doorNpcRef.current = npc;
       setDoorNpc(npc);
       setDoorNpcPhase("entering");
+      setNpcKey((k) => k + 1);
       return;
     }
 
@@ -463,6 +465,7 @@ export default function GameShell() {
       doorNpcRef.current = npc;
       setDoorNpc(npc);
       setDoorNpcPhase("entering");
+      setNpcKey((k) => k + 1);
     }, NPC_EXIT_MS);
   }, []);
 
@@ -1055,7 +1058,7 @@ export default function GameShell() {
           selfId={selfPlayer?.id}
           onOpenProfile={(player) => handleOpenProfile(player.id, player)}
         />
-        <NpcDoorVisitor npc={doorNpc} phase={doorNpcPhase} onInteract={handleNpcInteract} />
+        <NpcDoorVisitor key={npcKey} npc={doorNpc} phase={doorNpcPhase} onInteract={handleNpcInteract} />
         <RoomClock cycleInfo={cycleInfo} />
       </section>
       {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayer(null)} />}

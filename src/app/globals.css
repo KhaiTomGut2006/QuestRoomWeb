@@ -1111,6 +1111,10 @@ button {
   animation: none;
 }
 
+.npc-door-visitor--entering img {
+  animation: none;
+}
+
 .npc-door-visitor--chest img {
   height: clamp(58px, 6vw, 108px);
 }
