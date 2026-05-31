@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { ChevronLeft, ChevronRight, Coins, Trophy, Zap, Volume2, VolumeX, LogOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, Coins, Trophy, Zap, Volume2, VolumeX, LogOut, Settings } from "lucide-react";
 import { io } from "socket.io-client";
 import RoomCanvas from "@/components/RoomCanvas";
 import PlayerLayer from "@/components/PlayerLayer";
@@ -247,9 +247,11 @@ export default function GameShell() {
   const [noCoinsCost, setNoCoinsCost] = useState(250);
   const [showRanking, setShowRanking] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.5);
   const audioRef = useRef(null);
+  const settingsPanelRef = useRef(null);
 
   useEffect(() => {
     const audio = new Audio(withBasePath("/assets/bgmusic.mp3"));
@@ -277,6 +279,18 @@ export default function GameShell() {
       document.removeEventListener("touchstart", startPlay);
     };
   }, []);
+
+  // Close settings panel on outside click
+  useEffect(() => {
+    if (!showSettings) return;
+    function handleOutside(e) {
+      if (settingsPanelRef.current && !settingsPanelRef.current.contains(e.target)) {
+        setShowSettings(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showSettings]);
 
   const toggleMute = useCallback(() => {
     if (!audioRef.current) return;
@@ -871,42 +885,53 @@ export default function GameShell() {
             </button>
             <span>Friends</span>
           </div>
-          <div className="profile-action volume-control-wrapper">
-            <div className="volume-slider-container">
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={volume}
-                onChange={handleVolumeChange}
-                className="volume-slider"
-                aria-label="Volume"
-              />
-            </div>
+          <div className="profile-action settings-wrapper" ref={settingsPanelRef}>
             <button
-              className="circle-button volume"
+              className={`circle-button settings-btn${showSettings ? " active" : ""}`}
               type="button"
-              aria-label={isMuted ? "Unmute music" : "Mute music"}
-              onClick={toggleMute}
+              aria-label="Settings"
+              onClick={() => setShowSettings((s) => !s)}
             >
-              {isMuted ? <VolumeX size={24} strokeWidth={2.5} /> : <Volume2 size={24} strokeWidth={2.5} />}
+              <Settings size={30} strokeWidth={2.5} />
             </button>
-            <span>{isMuted ? "Muted" : `Vol: ${Math.round(volume * 100)}%`}</span>
+            <span>ตั้งค่า</span>
+            {showSettings && (
+              <div className="settings-panel">
+                <p className="settings-panel-title">⚙️ ตั้งค่า</p>
+                <div className="settings-row">
+                  <button
+                    className="settings-mute-btn"
+                    type="button"
+                    aria-label={isMuted ? "Unmute" : "Mute"}
+                    onClick={toggleMute}
+                  >
+                    {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                  </button>
+                  <input
+                    type="range"
+                    min="0" max="1" step="0.05"
+                    value={volume}
+                    onChange={handleVolumeChange}
+                    className="settings-volume-slider"
+                    aria-label="Volume"
+                  />
+                  <span className="settings-vol-pct">
+                    {isMuted ? "Muted" : `${Math.round(volume * 100)}%`}
+                  </span>
+                </div>
+                {isAuthed && (
+                  <button
+                    className="settings-logout-btn"
+                    type="button"
+                    onClick={() => signOut()}
+                  >
+                    <LogOut size={16} />
+                    ออกจากระบบ
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-          {isAuthed && (
-            <div className="profile-action">
-              <button
-                className="circle-button logout"
-                type="button"
-                aria-label="Logout"
-                onClick={() => signOut()}
-              >
-                <LogOut size={24} strokeWidth={2.5} />
-              </button>
-              <span>Logout</span>
-            </div>
-          )}
         </div>
       </section>
 

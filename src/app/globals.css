@@ -2962,3 +2962,119 @@ button {
 .circle-button.logout:hover {
   background: #e04b4b;
 }
+
+/* ─── Settings Panel ───────────────────────────────── */
+.settings-wrapper {
+  position: relative;
+}
+
+.circle-button.settings-btn {
+  background: #ffd24d;
+  color: #2b2622;
+  transition: background 0.15s, transform 0.15s;
+}
+.circle-button.settings-btn:hover,
+.circle-button.settings-btn.active {
+  background: #f0b800;
+  transform: rotate(45deg);
+}
+
+.settings-panel {
+  position: absolute;
+  top: calc(100% + 14px);
+  right: 0;
+  width: clamp(200px, 14vw, 240px);
+  background: #fcfaf2;
+  border: 3px solid #2b2622;
+  border-radius: 18px;
+  padding: 16px 18px;
+  box-shadow: 0 8px 28px rgba(43, 38, 34, 0.25);
+  z-index: 200;
+  animation: modal-pop 180ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.settings-panel-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #2b2622;
+  margin: 0 0 14px;
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  background: #f0ede5;
+  border: 2px solid #d6cfc4;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.settings-mute-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: #2b2622;
+  cursor: pointer;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+.settings-mute-btn:hover { background: rgba(43,38,34,0.1); }
+
+.settings-volume-slider {
+  flex: 1;
+  height: 8px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e2dcd0;
+  border-radius: 99px;
+  outline: none;
+  cursor: pointer;
+  border: 2px solid #2b2622;
+}
+.settings-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #f15c3c;
+  border: 2px solid #2b2622;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.settings-volume-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+.settings-vol-pct {
+  font-size: 11px;
+  font-weight: 800;
+  color: #b45309;
+  min-width: 38px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.settings-logout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 14px;
+  background: #ff5c5c;
+  color: #fff;
+  border: 2px solid #2b2622;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.settings-logout-btn:hover { background: #e04b4b; }
