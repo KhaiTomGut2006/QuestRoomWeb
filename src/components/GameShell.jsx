@@ -884,6 +884,8 @@ export default function GameShell() {
     // The shop NPC (Milt) stays until its current cooldown expires.
     applyMember(updatedMember);
     activeNpcQuestRef.current = null;
+    // Notify server so timer freezes at 1 sec when it expires
+    socketRef.current?.emit("quest:active", true);
     // Close the modal but keep the door NPC visible
     setNpcVisit(null);
     setNpcQuestData(null);
@@ -898,7 +900,7 @@ export default function GameShell() {
         const data = await res.json();
         applyMember(data.member);
         activeNpcQuestRef.current = null;
-        if (visitorQuest) socketRef.current?.emit("quest:active", false);
+        socketRef.current?.emit("quest:active", false);
         setNpcVisit(null);
         setNpcQuestData(null);
         if (visitorQuest) dismissDoorNpc();
@@ -920,7 +922,7 @@ export default function GameShell() {
 
     applyMember(data.member);
     activeNpcQuestRef.current = null;
-    if (visitorQuest) socketRef.current?.emit("quest:active", false);
+    socketRef.current?.emit("quest:active", false);
     setNpcVisit(null);
     setNpcQuestData(null);
     if (visitorQuest) dismissDoorNpc();
@@ -989,13 +991,12 @@ export default function GameShell() {
   const handleQuestSidebarOpen = useCallback(() => {
     if (!activeMember?.npcQuest) return;
     setNpcQuestData(activeMember.npcQuest);
-    setNpcVisit({
-      id: "quest-sidebar",
-      type: "quest",
-      name: "Quest details",
-      activeQuest: true,
-      standaloneQuest: true,
-    });
+    const isShopQuest = activeMember.npcQuest.source === "shop";
+    setNpcVisit(
+      isShopQuest
+        ? { id: "shop", type: "quest", name: "Shop", npcId: "milt", activeQuest: true }
+        : { id: "quest-sidebar", type: "quest", name: "Quest details", activeQuest: true, standaloneQuest: true }
+    );
   }, [activeMember?.npcQuest]);
 
   const handleCooldownReduction = useCallback((milliseconds) => {
