@@ -20,17 +20,22 @@ const socketToPlayer = new Map(); // socketId → playerId
 const socketPlayerCoins = new Map(); // socketId → last client-synced balance for NPC offer sizing
 const playerNpcQuest = new Map(); // playerId → bool (has active NPC quest)
 
-// ─── NPC Cycle Timer ────────────────────────────────────────────────
-const CYCLE_MS = 40 * 60 * 1000;
+// ─── NPC Cycle Timer (per-socket personal timers) ───────────────────
+const CYCLE_MS = 30 * 60 * 1000;
+
+// socketId → { timerId, startedAt, durationMs }
+const socketPersonalTimer = new Map();
+// socketId → remainingMs when frozen
+const socketFrozenMs = new Map();
 
 // Weighted NPC pool — weights sum to 100
 const NPC_POOL = [
   { weight: 20, npc: { id: "chest",        type: "chest",       name: "Treasure Chest", npcId: null,    description: "สมบัติจากอีกโลก\nx20-200 Coins" } },
   { weight: 20, npc: { id: "shop",         type: "shop",        name: "Shop",           npcId: "milt",  description: "ขายสินค้า สุ่มราคา (ถูก-แพง) 3 ชิ้น" } },
-  { weight: 20, npc: { id: "quest-easy",   type: "quest",       name: "Quest (Easy)",   npcId: "witch", description: "ภารกิจที่เกี่ยวข้องกับ Checkpoint ระดับง่าย\nx50-100 Coins" } },
-  { weight: 15, npc: { id: "quest-medium", type: "quest",       name: "Quest (Medium)", npcId: "witch", description: "ภารกิจที่เกี่ยวข้องกับ Checkpoint ระดับกลาง\nx100-300 Coins" } },
+  { weight: 20, npc: { id: "quest-easy",   type: "quest",       name: "Quest (Easy)",   npcId: "near",  description: "ภารกิจที่เกี่ยวข้องกับ Checkpoint ระดับง่าย\nx50-100 Coins" } },
+  { weight: 15, npc: { id: "quest-medium", type: "quest",       name: "Quest (Medium)", npcId: "fact",  description: "ภารกิจที่เกี่ยวข้องกับ Checkpoint ระดับกลาง\nx100-300 Coins" } },
   { weight: 10, npc: { id: "hints",        type: "hints",       name: "Hints",          npcId: "smith", description: "เสนอเมื่อต้องการความช่วยเหลือ" } },
-  { weight: 5,  npc: { id: "quest-hard",   type: "quest",       name: "Quest (Hard)",   npcId: "witch", description: "ภารกิจที่เกี่ยวข้องกับ Checkpoint ระดับยาก\nx500-1,000 Coins" } },
+  { weight: 5,  npc: { id: "quest-hard",   type: "quest",       name: "Quest (Hard)",   npcId: "nite",  description: "ภารกิจที่เกี่ยวข้องกับ Checkpoint ระดับยาก\nx500-1,000 Coins" } },
   { weight: 5,  npc: { id: "stupid-quest", type: "stupid-quest",name: "Stupid Quest",   npcId: "dog",   description: "เควสที่โคตรน่าอาย\nx100-500 Coins" } },
   { weight: 5,  npc: { id: "gambling",     type: "gambling",    name: "Gambling",       npcId: "begger",description: "ลงทุน (หัว-ก้อย) ชนะได้ Coins\nx0-1,000 Coins" } },
 ];
@@ -52,14 +57,24 @@ function enrichNpc(npc, availableCoins = 0) {
     return { ...npc, betAmount: maxBet > 0 ? Math.floor(Math.random() * maxBet) + 1 : 0 };
   }
   if (npc.type === "shop") {
-    const catalog = ["quest-scroll", "asset-ticket", "cooldown-minute", "limit-break"];
-    const offers = [...catalog].sort(() => Math.random() - 0.5).slice(0, 3);
+    const catalog = ["quest-scroll-normal", "quest-scroll-rare", "quest-scroll-epic", "chest-small", "chest-medium", "chest-large", "cooldown-minute", "cooldown-minute-lv2", "limit-break"];
+    const offers = [...catalog].sort(() => Math.random() - 0.5).slice(0, 4);
     return { ...npc, offers };
   }
   return npc;
 }
 
-let cycleStartedAt = Date.now();
+// ─── Per-socket personal timer helpers ──────────────────────────────
+// Called inside app.prepare() so `io` is in scope there; helpers are defined
+// at module level but use socketPersonalTimer / socketFrozenMs which are.
+
+function clearPersonalTimer(socketId) {
+  const state = socketPersonalTimer.get(socketId);
+  if (state?.timerId) clearTimeout(state.timerId);
+  socketPersonalTimer.delete(socketId);
+}
+
+let cycleStartedAt = Date.now(); // kept for legacy compat, not used for per-socket logic
 let cycleSpeedMultiplier = 1;   // dev: 1=normal, 10=10× faster, etc.
 let cycleTimer = null;
 // ────────────────────────────────────────────────────────────────────
@@ -154,40 +169,43 @@ app.prepare().then(() => {
     transports: ["websocket", "polling"]
   });
 
-  // ─── NPC Cycle Scheduler ────────────────────────────────────────
-  function effectiveDuration() {
-    return Math.max(1000, Math.floor(CYCLE_MS / cycleSpeedMultiplier));
+  // ─── Per-socket personal NPC cycle ────────────────────────────
+  function schedulePersonalCycle(socket, remainingMs) {
+    const dur = Math.max(1000, Math.floor((remainingMs !== undefined ? remainingMs : CYCLE_MS) / cycleSpeedMultiplier));
+    clearPersonalTimer(socket.id);
+    const startedAt = Date.now() - (Math.floor(CYCLE_MS / cycleSpeedMultiplier) - dur);
+    const timerId = setTimeout(() => {
+      socketPersonalTimer.delete(socket.id);
+      const pid = socketToPlayer.get(socket.id);
+      if (!pid || !playerNpcQuest.get(pid)) {
+        socket.emit("npc:visit", enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id)));
+      }
+      schedulePersonalCycle(socket, CYCLE_MS);
+    }, dur);
+    socketPersonalTimer.set(socket.id, { timerId, startedAt, durationMs: Math.floor(CYCLE_MS / cycleSpeedMultiplier) });
+    socket.emit("timer:sync", { cycleStartedAt: startedAt, cycleDurationMs: Math.floor(CYCLE_MS / cycleSpeedMultiplier), frozen: false });
   }
 
-  function scheduleCycle() {
-    if (cycleTimer) clearTimeout(cycleTimer);
-    const dur = effectiveDuration();
-    const elapsed = Date.now() - cycleStartedAt;
-    const remaining = Math.max(500, dur - elapsed);
-
-    cycleTimer = setTimeout(() => {
-      triggerNpcVisits();
-    }, remaining);
+  function freezePersonalCycle(socket) {
+    const state = socketPersonalTimer.get(socket.id);
+    if (!state) return;
+    clearTimeout(state.timerId);
+    socketPersonalTimer.delete(socket.id);
+    const remainingMs = Math.max(0, state.durationMs - (Date.now() - state.startedAt));
+    socketFrozenMs.set(socket.id, remainingMs);
+    socket.emit("timer:sync", { cycleStartedAt: state.startedAt, cycleDurationMs: state.durationMs, frozen: true, frozenRemainingMs: remainingMs });
   }
 
-  function triggerNpcVisits() {
-    // Each connected socket gets its own random NPC (skip players with active quest)
-    for (const [, s] of io.sockets.sockets) {
-      const pid = socketToPlayer.get(s.id);
-      if (pid && playerNpcQuest.get(pid)) continue;
-      s.emit("npc:visit", enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(s.id)));
-    }
-    cycleStartedAt = Date.now();
-    io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
-    scheduleCycle();
+  function resumePersonalCycle(socket) {
+    const remaining = socketFrozenMs.get(socket.id);
+    socketFrozenMs.delete(socket.id);
+    schedulePersonalCycle(socket, remaining !== undefined ? remaining : CYCLE_MS);
   }
-
-  scheduleCycle();
   // ────────────────────────────────────────────────────────────────
 
   io.on("connection", (socket) => {
-    // Send current cycle state immediately on connect
-    socket.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
+    // Start personal 30-min cycle for this socket
+    schedulePersonalCycle(socket, CYCLE_MS);
 
     let activeStage = null;
     let activePlayerId = null;
@@ -221,6 +239,9 @@ app.prepare().then(() => {
       // Restore active quest state if client reports it
       if (payload.hasNpcQuest !== undefined) {
         playerNpcQuest.set(player.id, Boolean(payload.hasNpcQuest));
+        if (payload.hasNpcQuest) {
+          freezePersonalCycle(socket);
+        }
       }
 
       // Remove player from old stage if they switched stage across socket reconnections
@@ -275,6 +296,11 @@ app.prepare().then(() => {
     socket.on("quest:active", (isActive) => {
       const pid = socketToPlayer.get(socket.id);
       if (pid) playerNpcQuest.set(pid, Boolean(isActive));
+      if (isActive) {
+        freezePersonalCycle(socket);
+      } else {
+        resumePersonalCycle(socket);
+      }
     });
 
     socket.on("player:balance", (payload = {}) => {
@@ -303,31 +329,60 @@ app.prepare().then(() => {
     });
 
     socket.on("dev:skip", () => {
-      triggerNpcVisits();
+      const pid = socketToPlayer.get(socket.id);
+      if (!pid || !playerNpcQuest.get(pid)) {
+        socket.emit("npc:visit", enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id)));
+      }
+      schedulePersonalCycle(socket, CYCLE_MS);
     });
 
     socket.on("dev:reset", () => {
-      cycleStartedAt = Date.now();
-      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
-      scheduleCycle();
+      schedulePersonalCycle(socket, CYCLE_MS);
     });
 
     socket.on("dev:set-speed", (multiplier) => {
       cycleSpeedMultiplier = Math.max(1, Number(multiplier) || 1);
-      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
-      scheduleCycle();
+      // Restart personal cycle with new speed for this socket
+      const frozen = socketFrozenMs.get(socket.id);
+      if (frozen !== undefined) {
+        // Update frozen remaining to use new speed (just re-emit frozen state)
+        socket.emit("timer:sync", { 
+          cycleStartedAt: Date.now() - (Math.floor(CYCLE_MS / cycleSpeedMultiplier) - frozen),
+          cycleDurationMs: Math.floor(CYCLE_MS / cycleSpeedMultiplier),
+          frozen: true, frozenRemainingMs: frozen
+        });
+      } else {
+        const state = socketPersonalTimer.get(socket.id);
+        const remaining = state ? Math.max(0, state.durationMs - (Date.now() - state.startedAt)) : CYCLE_MS;
+        schedulePersonalCycle(socket, remaining);
+      }
     });
 
     socket.on("shop:reduce-cooldown", (payload = {}) => {
       const milliseconds = Math.min(5 * 60 * 1000, Math.max(0, Number(payload.milliseconds) || 0));
       if (!milliseconds) return;
-      cycleStartedAt -= milliseconds;
-      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
-      scheduleCycle();
+      // Reduce personal timer
+      if (socketFrozenMs.has(socket.id)) {
+        socketFrozenMs.set(socket.id, Math.max(0, socketFrozenMs.get(socket.id) - milliseconds));
+        const remaining = socketFrozenMs.get(socket.id);
+        socket.emit("timer:sync", {
+          cycleStartedAt: Date.now() - (Math.floor(CYCLE_MS / cycleSpeedMultiplier) - remaining),
+          cycleDurationMs: Math.floor(CYCLE_MS / cycleSpeedMultiplier),
+          frozen: true, frozenRemainingMs: remaining
+        });
+      } else {
+        const state = socketPersonalTimer.get(socket.id);
+        if (state) {
+          const remaining = Math.max(0, state.durationMs - (Date.now() - state.startedAt) - milliseconds);
+          schedulePersonalCycle(socket, remaining);
+        }
+      }
     });
     // ─────────────────────────────────────────────────────────────
 
     socket.on("disconnect", () => {
+      clearPersonalTimer(socket.id);
+      socketFrozenMs.delete(socket.id);
       socketToPlayer.delete(socket.id);
       socketPlayerCoins.delete(socket.id);
       detachPlayer();

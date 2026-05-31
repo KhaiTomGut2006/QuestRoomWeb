@@ -12,6 +12,8 @@ const NPC_IMAGE = {
   dog:    "Dog.png",
   begger: "Begger.png",
   near:   "Near.png",
+  fact:   "Fact.png",
+  nite:   "Nite.png",
   chest:  "chest_open.png",
 };
 
@@ -26,33 +28,73 @@ const TYPE_META = {
 };
 
 const SHOP_ITEMS = {
-  "quest-scroll": {
+  "quest-scroll-normal": {
     name: "Quest (Normal)",
-    description: "เก็บตั๋วเควสปกติไว้ใช้ภายหลัง",
+    description: "รับเควสระดับ Easy ทันที",
     cost: 50,
-    image: "quest.png",
+    image: "quest_normal.png",
+    rarity: "normal",
   },
-  "asset-ticket": {
-    name: "Asset Ticket",
-    description: "ตั๋วไอเทมสำหรับกิจกรรมพิเศษ",
-    cost: 120,
-    image: "AssetTicket.png",
+  "quest-scroll-rare": {
+    name: "Quest (Rare)",
+    description: "รับเควสระดับ Normal ทันที",
+    cost: 100,
+    image: "quest_rare.png",
+    rarity: "rare",
+  },
+  "quest-scroll-epic": {
+    name: "Quest (Epic)",
+    description: "รับเควสระดับ Hard ทันที",
+    cost: 400,
+    image: "quest_epic.png",
+    rarity: "epic",
+  },
+  "chest-small": {
+    name: "Chests (x10-100 Coins)",
+    description: "เปิดหีบสุ่มรับ 10-100 Coins",
+    cost: 50,
+    image: "chest_small.png",
+    rarity: "normal",
+  },
+  "chest-medium": {
+    name: "Chests (x50-200 Coins)",
+    description: "เปิดหีบสุ่มรับ 50-200 Coins",
+    cost: 100,
+    image: "chest_medium.png",
+    rarity: "rare",
+  },
+  "chest-large": {
+    name: "Chests (x200-500 Coins)",
+    description: "เปิดหีบสุ่มรับ 200-500 Coins",
+    cost: 350,
+    image: "chest_large.png",
+    rarity: "epic",
   },
   "cooldown-minute": {
-    name: "Cooldown -1 min",
-    description: "ลดเวลารอ NPC รอบถัดไป 1 นาที",
+    name: "Max Cooldown -1 min",
+    description: "ลดเวลารอ NPC รอบถัดไป 1 นาที (สูงสุด 10 ครั้ง)",
     cost: 200,
+    image: "Cooldown.png",
+  },
+  "cooldown-minute-lv2": {
+    name: "Max Cooldown Lv2 -1 min",
+    description: "ลดเวลารอ NPC รอบถัดไป 1 นาที Tier 2 (สูงสุด 10 ครั้ง)",
+    cost: 400,
     image: "Cooldown.png",
   },
   "limit-break": {
     name: "Limit Break",
-    description: "ไอเทมหายากสำหรับปลดขีดจำกัด",
-    cost: 500,
+    description: "ปลดล็อก Cooldown Tier 2",
+    cost: 2000,
     image: "limitbreak.png",
   },
 };
 
-const DEFAULT_SHOP_OFFERS = ["quest-scroll", "asset-ticket", "cooldown-minute"];
+const DEFAULT_SHOP_OFFERS = [
+  "quest-scroll-normal", "quest-scroll-rare", "quest-scroll-epic",
+  "chest-small", "chest-medium", "chest-large",
+  "cooldown-minute", "cooldown-minute-lv2", "limit-break",
+];
 const MAX_QUEST_EVIDENCE_BYTES = 100 * 1024 * 1024;
 
 // 6 smoke puff positions (top-left origin, %)
@@ -123,15 +165,25 @@ function GamblingDialog({ npc, result, onGamble, onClose }) {
 }
 
 // ── Hints dialog (Smith) ─────────────────────────────────────────────────────
-function HintsDialog({ hintsData, hintResult, onHintBuy, onClose }) {
+function HintsDialog({ hintsData, hintResult, hintBought, onHintBuy, onClose }) {
   return (
     <InteractDialog npcId="smith" npcName="Smith" intro="มีปัญหาอะไรให้ฉันช่วยมัย คุณผู้ชาย">
       {hintResult ? (
+        // Just bought — show hint content
         <>
           <p className="npc-quest-text" style={{ marginTop: 8 }}>{hintResult.content}</p>
           <button className="npc-quest-decline-btn" type="button" onClick={onClose}>ขอบคุณ Smith!</button>
         </>
+      ) : hintBought ? (
+        // Already bought this visit — show post-purchase dialogue
+        <>
+          <p className="npc-quest-text" style={{ marginTop: 8 }}>
+            ฉันบอกทุกอย่างที่รู้แล้วนะ! ไปลองดูเองเถอะ
+          </p>
+          <button className="npc-quest-decline-btn" type="button" onClick={onClose}>เข้าใจแล้ว!</button>
+        </>
       ) : (
+        // Not bought yet — show hint list
         <>
           {(hintsData || []).map((hint, i) => (
             <button key={hint._id} className="npc-interact-choice-btn" type="button"
@@ -174,35 +226,74 @@ function ChestDialog({ result, loading, onClaim, onClose }) {
   );
 }
 
-function ShopDialog({ npc, purchases, loadingItem, onBuy, onClose }) {
+function getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, hasActiveQuest) {
+  if (purchases[itemId]) return "bought";
+  if (itemId.startsWith("quest-scroll-") && hasActiveQuest) return "quest_active";
+  if (itemId === "cooldown-minute" && t1Count >= 10) return "maxed";
+  if (itemId === "cooldown-minute-lv2") {
+    if (!hasLimitBreak) return "locked";
+    if (t2Count >= 10) return "maxed";
+  }
+  if (itemId === "limit-break" && hasLimitBreak) return "owned";
+  return "available";
+}
+
+const STOCK_LABEL = {
+  bought:       "Out of Stock",
+  maxed:        "ซื้อครบแล้ว",
+  owned:        "มีแล้ว",
+  locked:       "🔒 ต้องการ Limit Break",
+  quest_active: "มีเควสอยู่แล้ว",
+};
+
+function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose }) {
   const offers = Array.isArray(npc.offers) && npc.offers.length > 0
     ? npc.offers
     : DEFAULT_SHOP_OFFERS;
 
+  const t1Count       = memberShop?.cooldownT1 ?? 0;
+  const t2Count       = memberShop?.cooldownT2 ?? 0;
+  const hasLimitBreak = memberShop?.limitBreak ?? false;
+  const hasActiveQuest = memberShop?.hasActiveQuest ?? false;
+
   return (
-    <InteractDialog npcId="milt" npcName="Milt" intro="มีของน่าสนใจมาให้เลือก 3 ชิ้น">
+    <InteractDialog npcId="milt" npcName="Milt" intro="มีของน่าสนใจมาให้เลือก">
       <div className="npc-shop-list">
         {offers.map((itemId) => {
           const item = SHOP_ITEMS[itemId];
           if (!item) return null;
+          const status      = getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, hasActiveQuest);
+          const unavailable = status !== "available";
           return (
             <button
               key={itemId}
-              className="npc-shop-item"
+              className={`npc-shop-item${unavailable ? " npc-shop-item--unavailable" : ""}${item.rarity ? ` npc-shop-item--${item.rarity}` : ""}`}
               type="button"
               onClick={() => onBuy(itemId)}
-              disabled={Boolean(loadingItem)}
+              disabled={Boolean(loadingItem) || unavailable}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={withBasePath(`/assets/Item/${item.image}`)} alt="" />
               <span className="npc-shop-item-copy">
                 <strong>{item.name}</strong>
-                <small>{purchases[itemId] || item.description}</small>
+                <small>{STOCK_LABEL[status] ?? item.description}</small>
+                {itemId === "cooldown-minute" && !purchases[itemId] && (
+                  <small className="npc-shop-item-counter">{t1Count} / 10</small>
+                )}
+                {itemId === "cooldown-minute-lv2" && hasLimitBreak && !purchases[itemId] && (
+                  <small className="npc-shop-item-counter">{t2Count} / 10</small>
+                )}
               </span>
               <span className="npc-shop-price">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={withBasePath("/assets/Coin.png")} alt="coin" />
-                {loadingItem === itemId ? "..." : item.cost}
+                {unavailable ? (
+                  <span className="npc-shop-out-of-stock">✕</span>
+                ) : (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+                    {loadingItem === itemId ? "..." : item.cost}
+                  </>
+                )}
               </span>
             </button>
           );
@@ -366,9 +457,10 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
 
 export default function NpcVisitModal({
   npc, questData, activeQuest, onAccept, onQuestCancel, onQuestSubmit,
-  hintsData, hintResult, onHintBuy,
+  hintsData, hintResult, hintBought, onHintBuy,
   gamblingResult, onGamble,
-  onMemberUpdate, onCooldownReduction, onNeedCoins, onChestClaim,
+  memberShop,
+  onMemberUpdate, onCooldownReduction, onNeedCoins, onChestClaim, onQuestScrollBought,
   onClose,
 }) {
   const [chestResult, setChestResult] = useState(null);
@@ -395,7 +487,7 @@ export default function NpcVisitModal({
       const data = await response.json();
       if (!response.ok) return;
       onMemberUpdate?.(data.member);
-      onChestClaim?.(data.coins ?? 0);
+      onChestClaim?.(data.coins ?? 0, { dismissNpc: true });
       onClose?.();
     } finally {
       setClaimingChest(false);
@@ -417,6 +509,15 @@ export default function NpcVisitModal({
       }
       onMemberUpdate?.(data.member);
       onCooldownReduction?.(data.cooldownReductionMs);
+      if (data.assignedQuest) {
+        onQuestScrollBought?.(data.assignedQuest, data.member);
+        return;
+      }
+      if (data.chestCoins > 0) {
+        onChestClaim?.(data.chestCoins, { dismissNpc: false });
+        onClose?.();
+        return;
+      }
       setShopPurchases((current) => ({ ...current, [itemId]: "ซื้อสำเร็จ" }));
     } finally {
       setLoadingShopItem("");
@@ -490,6 +591,7 @@ export default function NpcVisitModal({
           <HintsDialog
             hintsData={hintsData}
             hintResult={hintResult}
+            hintBought={hintBought}
             onHintBuy={onHintBuy}
             onClose={onClose}
           />
@@ -499,6 +601,7 @@ export default function NpcVisitModal({
           <ShopDialog
             npc={npc}
             purchases={shopPurchases}
+            memberShop={memberShop}
             loadingItem={loadingShopItem}
             onBuy={handleShopBuy}
             onClose={onClose}

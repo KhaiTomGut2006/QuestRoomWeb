@@ -115,7 +115,7 @@ const demoMember = {
     current: "Find the quiet corner",
     status: "active",
     completed: [],
-    cooldownUntil: new Date(Date.now() + 40 * 60 * 1000).toISOString()
+    cooldownUntil: new Date(Date.now() + 30 * 60 * 1000).toISOString()
   },
   npcQuest: null,
   position: { x: 56, y: 72 }
@@ -128,17 +128,22 @@ const demoNpcQuest = {
   reward: 90,
   cancelPenalty: 23,
   npcType: "quest-easy",
-  npcName: "witch",
-  npcCharacter: "witch",
+  npcName: "near",
+  npcCharacter: "near",
   acceptedAt: "demo-quest-preview",
 };
 
-// ─── Room Clock (synchronized 40-min countdown) ─────────────────
+// ─── Room Clock (personal 30-min countdown, freezes during active quest) ────
 function RoomClock({ cycleInfo }) {
   const [timeLeft, setTimeLeft] = useState(null);
 
   useEffect(() => {
     if (!cycleInfo) return;
+    // Frozen: show static remaining time
+    if (cycleInfo.frozen) {
+      setTimeLeft(cycleInfo.frozenRemainingMs ?? 0);
+      return;
+    }
     const tick = () => {
       const elapsed = Date.now() - cycleInfo.cycleStartedAt;
       const remaining = Math.max(0, cycleInfo.cycleDurationMs - elapsed);
@@ -155,8 +160,9 @@ function RoomClock({ cycleInfo }) {
   const urgent = timeLeft < 60000;
 
   return (
-    <div className={`room-clock${urgent ? " room-clock--urgent" : ""}`} aria-label="Event countdown">
+    <div className={`room-clock${urgent ? " room-clock--urgent" : ""}${cycleInfo?.frozen ? " room-clock--frozen" : ""}`} aria-label="Event countdown">
       <span className="room-clock-time">{mins}:{secs}</span>
+      {cycleInfo?.frozen && <span className="room-clock-frozen-label">❄</span>}
     </div>
   );
 }
@@ -214,10 +220,10 @@ function LoginScreen({ authConfigured, authError }) {
 const NPC_IDS = [
   { id: "chest",        label: "Chest (20%)" },
   { id: "shop",         label: "Shop/Milt (20%)" },
-  { id: "quest-easy",   label: "Quest Easy/Witch (20%)" },
-  { id: "quest-medium", label: "Quest Medium/Witch (15%)" },
+  { id: "quest-easy",   label: "Quest Easy/Near (20%)" },
+  { id: "quest-medium", label: "Quest Medium/Fact (15%)" },
   { id: "hints",        label: "Hints/Smith (10%)" },
-  { id: "quest-hard",   label: "Quest Hard/Witch (5%)" },
+  { id: "quest-hard",   label: "Quest Hard/Nite (5%)" },
   { id: "stupid-quest", label: "Stupid Quest/Dog (5%)" },
   { id: "gambling",     label: "Gambling/Begger (5%)" },
 ];
@@ -332,6 +338,7 @@ export default function GameShell() {
   const [gamblingResult, setGamblingResult] = useState(null);
   const [hintsData, setHintsData] = useState(null);
   const [hintResult, setHintResult] = useState(null);
+  const [hintBought, setHintBought] = useState(false);
   const [showNoCoins, setShowNoCoins] = useState(false);
   const [noCoinsCost, setNoCoinsCost] = useState(250);
   const [questSuccess, setQuestSuccess] = useState(null); // { title, reward }
@@ -755,12 +762,14 @@ export default function GameShell() {
         .catch(() => setNpcQuestData(null));
     }
 
-    // Fetch hints when Smith appears
+    // Fetch hints when Smith appears (only if not yet loaded for this visit)
     if (npcVisit?.type === "hints") {
-      fetch(withBasePath("/api/hint-templates"))
-        .then((r) => r.json())
-        .then((data) => setHintsData(Array.isArray(data.hints) ? data.hints : []))
-        .catch(() => setHintsData([]));
+      if (!hintsData) {
+        fetch(withBasePath("/api/hint-templates"))
+          .then((r) => r.json())
+          .then((data) => setHintsData(Array.isArray(data.hints) ? data.hints : []))
+          .catch(() => setHintsData([]));
+      }
     } else {
       setHintsData(null);
       setHintResult(null);
@@ -770,7 +779,14 @@ export default function GameShell() {
     if (npcVisit?.type !== "gambling") {
       setGamblingResult(null);
     }
-  }, [activeMember?.npcQuest, npcVisit]);
+  }, [activeMember?.npcQuest, hintsData, npcVisit]);
+
+  // Reset hint state when a new NPC spawns (npcKey increments on each new arrival)
+  useEffect(() => {
+    setHintBought(false);
+    setHintResult(null);
+    setHintsData(null);
+  }, [npcKey]);
 
   const handleNpcQuestAccept = useCallback(async () => {
     if (!isAuthed || !npcQuestData || !npcVisit) return;
@@ -802,6 +818,18 @@ export default function GameShell() {
     setNpcVisit(null);
     setNpcQuestData(null);
   }, [applyMember, isAuthed, npcQuestData, npcVisit]);
+
+  const handleQuestScrollBought = useCallback((assignedQuest, updatedMember) => {
+    applyMember(updatedMember);
+    activeNpcQuestRef.current = assignedQuest;
+    const questNpc = npcFromActiveQuest(assignedQuest);
+    doorNpcRef.current = questNpc;
+    setDoorNpc(questNpc);
+    setDoorNpcPhase("idle");
+    socketRef.current?.emit("quest:active", true);
+    setNpcVisit(null);
+    setNpcQuestData(null);
+  }, [applyMember]);
 
   const handleNpcQuestCancel = useCallback(async () => {
     if (!isAuthed) return;
@@ -839,8 +867,8 @@ export default function GameShell() {
     setQuestSuccess({ title: data.submission?.title || "NPC Quest", reward: data.reward ?? 0 });
   }, [activeMember?.discordId, activeMember?.id, applyMember, dismissDoorNpc, isAuthed]);
 
-  const handleChestClaim = useCallback((coins) => {
-    dismissDoorNpc();
+  const handleChestClaim = useCallback((coins, { dismissNpc = true } = {}) => {
+    if (dismissNpc) dismissDoorNpc();
     setQuestSuccess({ title: "หีบสมบัติ", reward: coins, isChest: true });
   }, [dismissDoorNpc]);
 
@@ -879,6 +907,7 @@ export default function GameShell() {
       if (res.ok) {
         applyMember(data.member);
         setHintResult({ title: data.hintTitle, content: data.hintContent });
+        setHintBought(true);
       } else if (data.error === "not_enough_coins") {
         handleNpcCoinsNeeded(data.cost);
       }
@@ -889,8 +918,7 @@ export default function GameShell() {
     setNpcVisit(null);
     setNpcQuestData(null);
     setGamblingResult(null);
-    setHintsData(null);
-    setHintResult(null);
+    setHintResult(null); // clear hint content on close; hintBought stays for the visit
   }, []);
 
   const handleNpcInteract = useCallback(() => {
@@ -1073,13 +1101,21 @@ export default function GameShell() {
           onQuestSubmit={handleNpcQuestSubmit}
           hintsData={hintsData}
           hintResult={hintResult}
+          hintBought={hintBought}
           onHintBuy={handleHintBuy}
           gamblingResult={gamblingResult}
           onGamble={handleGamble}
+          memberShop={activeMember ? {
+            cooldownT1: activeMember.shopCooldownT1 || 0,
+            cooldownT2: activeMember.shopCooldownT2 || 0,
+            limitBreak: activeMember.shopLimitBreak || false,
+            hasActiveQuest: Boolean(activeMember.npcQuest),
+          } : null}
           onMemberUpdate={applyMember}
           onCooldownReduction={handleCooldownReduction}
           onNeedCoins={handleNpcCoinsNeeded}
           onChestClaim={handleChestClaim}
+          onQuestScrollBought={handleQuestScrollBought}
           onClose={handleNpcQuestClose}
         />
       )}

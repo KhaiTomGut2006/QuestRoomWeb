@@ -189,7 +189,10 @@ const MemberSchema = new mongoose.Schema(
     quest: { type: QuestSchema, default: () => ({}) },
     npcQuest: { type: NpcQuestSchema, default: null },
     npcQuestSubmissions: { type: [NpcQuestSubmissionSchema], default: [] },
-    roomPosition: { type: PositionSchema, default: () => ({}) }
+    roomPosition: { type: PositionSchema, default: () => ({}) },
+    shopCooldownT1: { type: Number, default: 0 },
+    shopCooldownT2: { type: Number, default: 0 },
+    shopLimitBreak: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );

@@ -195,7 +195,10 @@ export function normalizeMember(member) {
       : null,
     position: member.roomPosition || { x: 50, y: 70 },
     currentChallengeCost,
-    costMultiplier
+    costMultiplier,
+    shopCooldownT1: member.shopCooldownT1 || 0,
+    shopCooldownT2: member.shopCooldownT2 || 0,
+    shopLimitBreak: Boolean(member.shopLimitBreak),
   };
 }
 

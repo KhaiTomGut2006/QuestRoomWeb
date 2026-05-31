@@ -9,6 +9,8 @@ const NPC_IMAGE = {
   dog: "Dog.png",
   begger: "Begger.png",
   near: "Near.png",
+  fact: "Fact.png",
+  nite: "Nite.png",
   chest: "chest_close.png",
 };
 
