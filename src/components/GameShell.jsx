@@ -1166,16 +1166,16 @@ export default function GameShell() {
       >
         <ChevronRight size={96} strokeWidth={3} />
       </button>
-      {isViewingOtherRoom && (
-        <div className="room-view-indicator">
-          <span>Viewing room: {viewedRoomLabel}</span>
-          <button type="button" onClick={() => setViewedStage(actualStage)}>
-            Back to my room
-          </button>
-        </div>
-      )}
       <section className="game-stage" onClick={handleStageClick}>
         <RoomCanvas target={isViewingOtherRoom ? null : target} onTargetHandled={() => setTarget(null)} />
+        {isViewingOtherRoom && (
+          <div className="room-view-indicator">
+            <span>Viewing room: {viewedRoomLabel}</span>
+            <button type="button" onClick={() => setViewedStage(actualStage)}>
+              Back to my room
+            </button>
+          </div>
+        )}
         <PlayerLayer
           players={visiblePlayers}
           selfId={isViewingOtherRoom ? undefined : selfPlayer?.id}

@@ -779,7 +779,7 @@ button {
 
 .room-view-indicator {
   position: absolute;
-  top: 236px;
+  top: calc(100% + 16px);
   left: 50%;
   z-index: 36;
   display: flex;
