@@ -359,7 +359,8 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
           const unavailable = status !== "available";
           const isQuestScroll = itemId.startsWith("quest-scroll-");
           const imgFolder   = item.imageFolder || "Item";
-          const imgSrc      = withBasePath(`/assets/${imgFolder}/${item.image}`);
+          const imgVersion  = imgFolder === "Accessories" ? "?v=3" : "";
+          const imgSrc      = withBasePath(`/assets/${imgFolder}/${item.image}${imgVersion}`);
           const descLabel   = isBought
             ? (purchases[itemId] || "ซื้อแล้ว")
             : (STOCK_LABEL[status] ?? item.description);

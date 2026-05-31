@@ -32,7 +32,7 @@ export function getAccessory(accessoryId) {
 }
 
 // Bump this number whenever you replace an accessory image file
-const ACCESSORY_ASSET_VERSION = "2";
+const ACCESSORY_ASSET_VERSION = "3";
 
 export function getAccessoryImagePath(accessoryId) {
   const accessory = getAccessory(accessoryId);
