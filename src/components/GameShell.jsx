@@ -260,7 +260,7 @@ export default function GameShell() {
   useEffect(() => {
     const audio = new Audio(withBasePath("/assets/bgmusic.mp3"));
     audio.loop = true;
-    audio.volume = 0.5;
+    audio.volume = 0.25; // 0.5 (default volume state) * 0.5 scale
     audioRef.current = audio;
 
     const startPlay = () => {
@@ -307,7 +307,7 @@ export default function GameShell() {
     if (!audioRef.current) return;
     const nextVol = parseFloat(e.target.value);
     setVolume(nextVol);
-    audioRef.current.volume = nextVol;
+    audioRef.current.volume = nextVol * 0.5; // Scale actual played volume by 50%
     if (nextVol > 0) {
       setIsMuted(false);
       audioRef.current.muted = false;
@@ -855,22 +855,23 @@ export default function GameShell() {
           {isChallengePending && (
             <p className="challenge-pending-note">ให้น้องไปเรียกพี่ประจำห้องได้เลย</p>
           )}
-          {activeMember?.npcQuest && (
-            <div className="npc-active-quest-hud">
-              <span className="npc-active-quest-label">📜 เควสที่รับไว้</span>
-              <span className="npc-active-quest-title">{activeMember.npcQuest.title}</span>
-              <span className="npc-active-quest-reward">🪙 ×{activeMember.npcQuest.reward}</span>
-              <button
-                className="npc-active-quest-done"
-                type="button"
-                onClick={handleNpcInteract}
-              >
-                คุยกับ NPC
-              </button>
-            </div>
-          )}
         </div>
       </section>
+
+      {activeMember?.npcQuest && (
+        <div className="npc-quest-sidebar">
+          <span className="npc-active-quest-label">📜 เควสที่รับไว้</span>
+          <span className="npc-active-quest-title">{activeMember.npcQuest.title}</span>
+          <span className="npc-active-quest-reward">🪙 ×{activeMember.npcQuest.reward}</span>
+          <button
+            className="npc-active-quest-done"
+            type="button"
+            onClick={handleNpcInteract}
+          >
+            คุยกับ NPC
+          </button>
+        </div>
+      )}
 
       <section className="top-right hud-cluster">
         <p className="version">Ver.Demo</p>
