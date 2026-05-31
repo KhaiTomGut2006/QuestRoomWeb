@@ -17,11 +17,11 @@ export const ACCESSORIES = {
     cost: 15000,
     image: "mrXwithGlasses.png"
   },
-  "accessory-pukkerr": {
-    id: "accessory-pukkerr",
-    name: "Pukkerr",
+  "accessory-ppuk": {
+    id: "accessory-ppuk",
+    name: "P'Puk",
     cost: 8000,
-    image: "pukkerr.png"
+    image: "ppuk.png"
   }
 };
 

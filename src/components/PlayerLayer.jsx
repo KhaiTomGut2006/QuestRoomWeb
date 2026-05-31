@@ -87,7 +87,6 @@ function PlayerToken({ player, selfId, onOpenProfile }) {
       onPointerUp={clearLongPress}
       onPointerCancel={clearLongPress}
     >
-      <div className="player-name">{player.name}</div>
       <div className="player-avatar">
         {accessoryImagePath && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -101,6 +100,7 @@ function PlayerToken({ player, selfId, onOpenProfile }) {
         )}
         {player.online && <span className="player-online-dot" aria-hidden="true" />}
       </div>
+      <div className="player-name">{player.name}</div>
       <div className="player-shadow" />
     </div>
   );

@@ -32,7 +32,7 @@ const socketPersonalTimer = new Map();
 const socketFrozenMs = new Map();
 // socketId → permanent reduction in ms (from cooldown purchases)
 const socketPermanentReductionMs = new Map();
-const ACCESSORY_IDS = new Set(["accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-pukkerr"]);
+const ACCESSORY_IDS = new Set(["accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-ppuk"]);
 
 // Weighted NPC pool — weights sum to 100
 const NPC_POOL = [
@@ -63,7 +63,7 @@ function enrichNpc(npc, availableCoins = 0) {
     return { ...npc, betAmount: maxBet > 0 ? Math.floor(Math.random() * maxBet) + 1 : 0 };
   }
   if (npc.type === "shop") {
-    const catalog = ["asset-ticket", "quest-scroll-normal", "quest-scroll-rare", "quest-scroll-epic", "chest-small", "chest-medium", "chest-large", "cooldown-minute", "cooldown-minute-lv2", "limit-break", "accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-pukkerr"];
+    const catalog = ["asset-ticket", "quest-scroll-normal", "quest-scroll-rare", "quest-scroll-epic", "chest-small", "chest-medium", "chest-large", "cooldown-minute", "cooldown-minute-lv2", "limit-break", "accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-ppuk"];
     const offers = [...catalog].sort(() => Math.random() - 0.5).slice(0, 4);
     return { ...npc, offers };
   }
