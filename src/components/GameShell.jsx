@@ -14,6 +14,7 @@ import NpcDoorVisitor from "@/components/NpcDoorVisitor";
 import NoCoinsModal from "@/components/NoCoinsModal";
 import RankingModal from "@/components/RankingModal";
 import FriendsModal from "@/components/FriendsModal";
+import GlobalQuestModal from "@/components/GlobalQuestModal";
 import ChallengeModal from "@/components/ChallengeModal";
 import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
 import { withBasePath } from "@/lib/basePath";
@@ -350,6 +351,7 @@ export default function GameShell() {
   const [questSuccess, setQuestSuccess] = useState(null); // { title, reward }
   const [showRanking, setShowRanking] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
+  const [showGlobalQuest, setShowGlobalQuest] = useState(false);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [challengeAnnouncement, setChallengeAnnouncement] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -908,14 +910,14 @@ export default function GameShell() {
     } catch {}
   }, [activeMember?.npcQuest?.source, applyMember, dismissDoorNpc, isAuthed]);
 
-  const handleNpcQuestSubmit = useCallback(async (file, onUploadProgress) => {
+  const handleNpcQuestSubmit = useCallback(async (file, onUploadProgress, postText = "") => {
     if (!isAuthed) throw new Error("กรุณาเข้าสู่ระบบก่อนส่งเควส");
     const visitorQuest = activeMember?.npcQuest?.source !== "shop";
     const evidence = await uploadNpcQuestEvidence(file, activeMember?.discordId || activeMember?.id, onUploadProgress);
     const res = await fetch(withBasePath("/api/player/npc-quest"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ evidence })
+      body: JSON.stringify({ evidence, postText })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "quest_submit_failed");
@@ -1093,7 +1095,12 @@ export default function GameShell() {
             <img src={withBasePath("/assets/Coin.png")} alt="coin" />
           </div>
           <div className="profile-action">
-            <button className="circle-button global" type="button" aria-label="Social">
+            <button
+              className="circle-button global"
+              type="button"
+              aria-label={activeMember && isAuthed ? "Global Quest" : "Login with Discord"}
+              onClick={() => (activeMember && isAuthed ? setShowGlobalQuest(true) : signIn("discord"))}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={withBasePath("/assets/Global.png")} alt="" />
             </button>
@@ -1286,6 +1293,7 @@ export default function GameShell() {
           roomPlayers={players}
         />
       )}
+      {showGlobalQuest && <GlobalQuestModal onClose={() => setShowGlobalQuest(false)} />}
     </main>
   );
 }

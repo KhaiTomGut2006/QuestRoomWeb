@@ -55,7 +55,7 @@ export async function PATCH(request) {
 
   try {
     const body = await request.json();
-    const result = await submitNpcQuest(discordId, body?.evidence);
+    const result = await submitNpcQuest(discordId, body?.evidence, body?.postText);
     if (!result) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (error) {

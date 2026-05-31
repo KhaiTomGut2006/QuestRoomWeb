@@ -343,6 +343,8 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
   const [confirmAction, setConfirmAction] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [evidenceFile, setEvidenceFile] = useState(null);
+  const [postText, setPostText] = useState("");
+  const [showPostText, setShowPostText] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [submitError, setSubmitError] = useState("");
   const standaloneQuest = Boolean(npc.standaloneQuest);
@@ -365,7 +367,7 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
     setSubmitError("");
     try {
       if (confirmAction === "cancel") await onCancel?.();
-      if (confirmAction === "submit") await onSubmit?.(evidenceFile, setUploadProgress);
+      if (confirmAction === "submit") await onSubmit?.(evidenceFile, setUploadProgress, postText);
     } catch (error) {
       setSubmitError(error.message || "อัปโหลดหลักฐานไม่สำเร็จ กรุณาลองใหม่");
     } finally {
@@ -425,11 +427,27 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
               <small>{evidenceFile ? `${evidenceFile.name} (${(evidenceFile.size / 1024 / 1024).toFixed(1)} MB)` : "ไฟล์ภาพหรือวิดีโอ ขนาดไม่เกิน 100 MB"}</small>
             </label>
             {submitError && <p className="npc-quest-upload-error">{submitError}</p>}
+            {showPostText && (
+              <textarea
+                className="npc-quest-post-text"
+                value={postText}
+                onChange={(event) => setPostText(event.target.value.slice(0, 500))}
+                placeholder="Write something about your quest..."
+                maxLength={500}
+                rows={3}
+              />
+            )}
             <div className="npc-active-quest-submit-row">
               <button className="npc-quest-submit-btn" type="button" onClick={() => setConfirmAction("submit")} disabled={!evidenceFile}>
                 ส่งเควส
               </button>
-              <button className="npc-quest-message-btn" type="button" aria-label="ข้อความ เร็ว ๆ นี้" disabled>
+              <button
+                className={`npc-quest-message-btn${showPostText ? " is-active" : ""}`}
+                type="button"
+                aria-label="Add post message"
+                aria-pressed={showPostText}
+                onClick={() => setShowPostText((current) => !current)}
+              >
                 <MessageSquare size={28} strokeWidth={2.2} />
               </button>
             </div>

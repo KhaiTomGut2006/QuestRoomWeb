@@ -117,6 +117,9 @@ const NpcQuestSubmissionSchema = new mongoose.Schema(
     npcName:      String,
     npcCharacter: String,
     evidence:     NpcQuestEvidenceSchema,
+    postText:     { type: String, default: "" },
+    likes:        { type: [String], default: [] },
+    dislikes:     { type: [String], default: [] },
     submittedAt:  Date
   },
   { _id: false }

@@ -2246,6 +2246,19 @@ button {
   color: #24683b;
 }
 
+.npc-quest-post-text {
+  width: 100%;
+  resize: vertical;
+  min-height: 76px;
+  padding: 11px 13px;
+  border: 3px solid #3565b4;
+  background: #fff;
+  color: #1f1f21;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
 .npc-active-quest-submit-row,
 .npc-active-quest-footer,
 .npc-quest-confirm-actions {
@@ -2287,6 +2300,11 @@ button {
 .npc-quest-message-btn:disabled {
   cursor: not-allowed;
   opacity: 0.8;
+}
+
+.npc-quest-message-btn.is-active {
+  background: #ffd84d;
+  box-shadow: inset 0 -7px 0 #c77a16;
 }
 
 .npc-active-quest-footer .npc-quest-decline-btn {
@@ -3122,6 +3140,196 @@ button {
   font-weight: 700;
 }
 
+/* Global Quest feed */
+.global-quest-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(34, 23, 12, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.global-quest-card {
+  position: relative;
+  width: min(580px, 100%);
+  max-height: min(880px, calc(100dvh - 36px));
+  padding: 30px 26px 24px;
+  overflow: hidden;
+  border: 3px solid #201f1d;
+  background:
+    linear-gradient(rgba(90, 90, 90, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(90, 90, 90, 0.07) 1px, transparent 1px),
+    #fff;
+  background-size: 24px 24px;
+  box-shadow: 0 16px 34px rgba(34, 23, 12, 0.35);
+}
+
+.global-quest-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #554a41;
+  cursor: pointer;
+}
+
+.global-quest-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-right: 30px;
+  margin-bottom: 20px;
+}
+
+.global-quest-header > img {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.global-quest-header h2 {
+  margin: 0 0 4px;
+  color: #1f1f21;
+  font-size: 23px;
+  font-weight: 950;
+}
+
+.global-quest-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.global-quest-select-wrap select {
+  appearance: none;
+  min-width: 150px;
+  padding: 4px 28px 4px 8px;
+  border: 0;
+  background: transparent;
+  color: #4a87e8;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.global-quest-select-wrap svg {
+  position: absolute;
+  right: 6px;
+  color: #4a87e8;
+  pointer-events: none;
+}
+
+.global-quest-feed {
+  display: grid;
+  gap: 30px;
+  max-height: calc(min(880px, calc(100dvh - 36px)) - 120px);
+  padding: 4px 6px 18px;
+  overflow-y: auto;
+}
+
+.global-post {
+  display: grid;
+  gap: 10px;
+}
+
+.global-post-author {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #1f1f21;
+  font-size: 14px;
+}
+
+.global-post-author span:last-child {
+  color: #6d665b;
+  font-weight: 700;
+}
+
+.global-post-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 2px solid #201f1d;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.global-post-avatar--fallback {
+  background: #ffd84d;
+  color: #201f1d;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.global-post-media {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  border: 1px solid rgba(32, 31, 29, 0.15);
+  background: #171717;
+  object-fit: contain;
+}
+
+.global-post-actions {
+  display: flex;
+  gap: 13px;
+}
+
+.global-post-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #201f1d;
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.global-post-actions button.is-active:first-child {
+  color: #248857;
+}
+
+.global-post-actions button.is-active:last-child {
+  color: #d74747;
+}
+
+.global-post-title,
+.global-post-text {
+  color: #201f1d;
+  font-size: 13px;
+}
+
+.global-post-text {
+  margin: -4px 0 0;
+  color: #62584f;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.global-quest-status {
+  margin: 32px 0;
+  color: #6d665b;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.global-quest-status--error {
+  color: #d60000;
+}
+
 /* ─── HUD Volume expanding slider & Logout styles ─── */
 .volume-control-wrapper {
   position: relative;
@@ -3803,6 +4011,24 @@ button {
   line-height: 1.4;
 }
 
+.aqp-post-text {
+  width: 100%;
+  min-height: 58px;
+  resize: vertical;
+  padding: 7px;
+  border: 1px solid rgba(160,120,64,0.7);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.1);
+  color: #f5ead8;
+  font: inherit;
+  font-size: 10px;
+}
+
+.aqp-submit-row {
+  display: flex;
+  gap: 6px;
+}
+
 .aqp-submit-btn {
   width: 100%;
   padding: 8px 0;
@@ -3817,6 +4043,22 @@ button {
 }
 .aqp-submit-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
 .aqp-submit-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.aqp-message-btn {
+  display: grid;
+  width: 34px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid rgba(160,120,64,0.7);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.08);
+  color: #f5ead8;
+  cursor: pointer;
+}
+
+.aqp-message-btn.is-active {
+  background: #a07840;
+}
 
 .aqp-cancel-btn {
   width: 100%;

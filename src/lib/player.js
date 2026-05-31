@@ -68,6 +68,8 @@ function normalizeBadge(badge) {
 }
 
 function normalizeNpcQuestSubmission(submission) {
+  const likes = Array.isArray(submission.likes) ? submission.likes.map(String) : [];
+  const dislikes = Array.isArray(submission.dislikes) ? submission.dislikes.map(String) : [];
   return {
     id: submission.id || "",
     title: submission.title || "NPC Quest",
@@ -77,6 +79,9 @@ function normalizeNpcQuestSubmission(submission) {
     npcType: submission.npcType || "",
     npcName: submission.npcName || "",
     npcCharacter: submission.npcCharacter || "",
+    postText: submission.postText || "",
+    likeCount: likes.length,
+    dislikeCount: dislikes.length,
     evidence: submission.evidence
       ? {
           url: submission.evidence.url || "",
@@ -525,7 +530,7 @@ export async function cancelNpcQuest(discordId) {
   return { member: normalizeMember(member), penalty };
 }
 
-export async function submitNpcQuest(discordId, evidence) {
+export async function submitNpcQuest(discordId, evidence, postText = "") {
   await connectDb();
   await ensureLevels();
   const member = await Member.findOne({ discord_id: String(discordId || "") });
@@ -548,6 +553,9 @@ export async function submitNpcQuest(discordId, evidence) {
     npcName: member.npcQuest.npcName || "",
     npcCharacter: member.npcQuest.npcCharacter || "",
     evidence: normalizedEvidence,
+    postText: String(postText || "").trim().slice(0, 500),
+    likes: [],
+    dislikes: [],
     submittedAt
   });
   member.coin = String(currentCoins + reward);
@@ -563,6 +571,73 @@ export async function getActiveClasses() {
     sheetTitle: c.sheetTitle,
     courseName: c.courseName
   }));
+}
+
+export async function getGlobalQuestPosts(classId, viewerDiscordId) {
+  await connectDb();
+  const friends = await getClassFriends(classId);
+  const discordIds = friends.map((friend) => friend.id).filter(Boolean);
+  if (discordIds.length === 0) return [];
+
+  const members = await Member.find({
+    discord_id: { $in: discordIds },
+    "npcQuestSubmissions.0": { $exists: true }
+  }).lean();
+
+  return members
+    .flatMap((member) => {
+      const author = normalizeMember(member);
+      return (member.npcQuestSubmissions || []).map((submission) => {
+        const normalized = normalizeNpcQuestSubmission(submission);
+        const likes = Array.isArray(submission.likes) ? submission.likes.map(String) : [];
+        const dislikes = Array.isArray(submission.dislikes) ? submission.dislikes.map(String) : [];
+        return {
+          ...normalized,
+          author: {
+            id: author.discordId,
+            name: author.name,
+            username: author.username,
+            avatar: author.avatar
+          },
+          viewerReaction: likes.includes(String(viewerDiscordId || ""))
+            ? "like"
+            : dislikes.includes(String(viewerDiscordId || ""))
+              ? "dislike"
+              : ""
+        };
+      });
+    })
+    .filter((submission) => submission.evidence?.url)
+    .sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
+}
+
+export async function reactToGlobalQuestPost(discordId, postId, reaction) {
+  await connectDb();
+  const normalizedReaction = String(reaction || "");
+  if (!["", "like", "dislike"].includes(normalizedReaction)) {
+    throw new Error("invalid_reaction");
+  }
+
+  const member = await Member.findOne({ "npcQuestSubmissions.id": String(postId || "") });
+  if (!member) return null;
+
+  const submission = member.npcQuestSubmissions.find((item) => item.id === String(postId || ""));
+  if (!submission) return null;
+
+  const viewerId = String(discordId || "");
+  submission.likes = (submission.likes || []).map(String).filter((id) => id !== viewerId);
+  submission.dislikes = (submission.dislikes || []).map(String).filter((id) => id !== viewerId);
+  if (normalizedReaction === "like") submission.likes.push(viewerId);
+  if (normalizedReaction === "dislike") submission.dislikes.push(viewerId);
+
+  member.markModified("npcQuestSubmissions");
+  await member.save({ validateModifiedOnly: true });
+  return {
+    postId: submission.id,
+    viewerReaction: normalizedReaction,
+    likeCount: submission.likes.length,
+    dislikeCount: submission.dislikes.length
+  };
 }
 
 export async function getClassFriends(classId) {

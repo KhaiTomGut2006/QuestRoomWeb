@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { MessageSquare } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 
 const MAX_EVIDENCE_BYTES = 100 * 1024 * 1024;
@@ -8,6 +9,8 @@ const MAX_EVIDENCE_BYTES = 100 * 1024 * 1024;
 export default function ActiveQuestPanel({ quest, onSubmit, onCancel }) {
   const [collapsed, setCollapsed] = useState(false);
   const [evidenceFile, setEvidenceFile] = useState(null);
+  const [postText, setPostText] = useState("");
+  const [showPostText, setShowPostText] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -49,7 +52,7 @@ export default function ActiveQuestPanel({ quest, onSubmit, onCancel }) {
       if (confirmAction === "cancel") {
         await onCancel?.();
       } else if (confirmAction === "submit") {
-        await onSubmit?.(evidenceFile, setUploadProgress);
+        await onSubmit?.(evidenceFile, setUploadProgress, postText);
       }
     } catch (err) {
       setSubmitError(err.message || "เกิดข้อผิดพลาด กรุณาลองใหม่");
@@ -107,14 +110,36 @@ export default function ActiveQuestPanel({ quest, onSubmit, onCancel }) {
 
           {submitError && <p className="aqp-error">{submitError}</p>}
 
-          <button
-            className="aqp-submit-btn"
-            type="button"
-            disabled={!evidenceFile || submitting}
-            onClick={() => setConfirmAction("submit")}
-          >
-            {submitting && confirmAction === "submit" ? "กำลังส่ง..." : "ส่งเควส"}
-          </button>
+          {showPostText && (
+            <textarea
+              className="aqp-post-text"
+              value={postText}
+              onChange={(event) => setPostText(event.target.value.slice(0, 500))}
+              placeholder="Write something about your quest..."
+              maxLength={500}
+              rows={3}
+            />
+          )}
+
+          <div className="aqp-submit-row">
+            <button
+              className="aqp-submit-btn"
+              type="button"
+              disabled={!evidenceFile || submitting}
+              onClick={() => setConfirmAction("submit")}
+            >
+              {submitting && confirmAction === "submit" ? "กำลังส่ง..." : "ส่งเควส"}
+            </button>
+            <button
+              className={`aqp-message-btn${showPostText ? " is-active" : ""}`}
+              type="button"
+              aria-label="Add post message"
+              aria-pressed={showPostText}
+              onClick={() => setShowPostText((current) => !current)}
+            >
+              <MessageSquare size={17} />
+            </button>
+          </div>
 
           <button
             className="aqp-cancel-btn"
