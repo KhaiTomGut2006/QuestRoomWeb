@@ -186,10 +186,15 @@ app.prepare().then(() => {
     const timerId = setTimeout(() => {
       socketPersonalTimer.delete(socket.id);
       const pid = socketToPlayer.get(socket.id);
-      if (!pid || !playerNpcQuest.get(pid)) {
+      if (pid && playerNpcQuest.get(pid)) {
+        // Quest is active — freeze at the last 1 second until quest ends
+        const frozenStartedAt = Date.now() - (fullCycle - 1000);
+        socketFrozenMs.set(socket.id, 1000);
+        socket.emit("timer:sync", { cycleStartedAt: frozenStartedAt, cycleDurationMs: fullCycle, frozen: true, frozenRemainingMs: 1000 });
+      } else {
         socket.emit("npc:visit", enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id)));
+        schedulePersonalCycle(socket, effectiveCycleMs(socket.id));
       }
-      schedulePersonalCycle(socket, effectiveCycleMs(socket.id));
     }, dur);
     socketPersonalTimer.set(socket.id, { timerId, startedAt, durationMs: fullCycle });
     socket.emit("timer:sync", { cycleStartedAt: startedAt, cycleDurationMs: fullCycle, frozen: false });
@@ -318,9 +323,9 @@ app.prepare().then(() => {
     socket.on("quest:active", (isActive) => {
       const pid = socketToPlayer.get(socket.id);
       if (pid) playerNpcQuest.set(pid, Boolean(isActive));
-      if (isActive) {
-        freezePersonalCycle(socket);
-      } else {
+      // Timer is not frozen on quest accept — it keeps counting.
+      // Only resume if the timer was frozen at the last 1 second.
+      if (!isActive && socketFrozenMs.has(socket.id)) {
         resumePersonalCycle(socket);
       }
     });

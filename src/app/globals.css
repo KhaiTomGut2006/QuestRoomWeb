@@ -3673,7 +3673,7 @@ button {
 .npc-quest-sidebar {
   position: absolute;
   left: clamp(14px, 2.4vw, 48px);
-  top: 50%;
+  top: 40%;
   transform: translateY(-50%);
   z-index: 20;
   display: flex;
