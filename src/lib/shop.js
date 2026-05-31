@@ -1,4 +1,5 @@
 import QuestTemplate from "@/models/QuestTemplate";
+import { ACCESSORY_LIST } from "@/lib/accessories";
 
 export const ASSET_TICKET_ITEM_ID = "asset-ticket";
 
@@ -60,7 +61,17 @@ export const SHOP_ITEMS = {
     cost: 2000,
     limitBreak: true,
     name: "Limit Break"
-  }
+  },
+  ...Object.fromEntries(
+    ACCESSORY_LIST.map((accessory) => [
+      accessory.id,
+      {
+        cost: accessory.cost,
+        accessoryId: accessory.id,
+        name: accessory.name
+      }
+    ])
+  )
 };
 
 const CHEST_COIN_WEIGHT = 120;
@@ -110,6 +121,11 @@ export async function grantShopItem(member, itemId) {
   let assignedQuest = null;
   if (item.assetTicket) {
     member.shopAssetTickets = (member.shopAssetTickets || 0) + 1;
+  }
+  if (item.accessoryId) {
+    const ownedAccessories = new Set((member.ownedAccessories || []).map(String));
+    ownedAccessories.add(item.accessoryId);
+    member.ownedAccessories = Array.from(ownedAccessories);
   }
   if (item.questDifficulty) {
     const quest = await pickQuest(item.questDifficulty);

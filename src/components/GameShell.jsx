@@ -113,6 +113,8 @@ const demoMember = {
   stage: "game-demo-1",
   coins: 1080,
   shopAssetTickets: 0,
+  ownedAccessories: [],
+  equippedAccessory: "",
   quest: {
     current: "Find the quiet corner",
     status: "active",
@@ -193,6 +195,7 @@ function playerFromMember(member) {
     avatar: member.avatar || "",
     rank: member.rank || "Game Tester",
     achievements: member.achievements || [],
+    equippedAccessory: member.equippedAccessory || "",
     stage: member.stage || "game-demo-1",
     x: Number(member.position?.x || 56),
     y: Number(member.position?.y || 72),
@@ -351,6 +354,8 @@ export default function GameShell() {
   const [npcVisit, setNpcVisit] = useState(null);
   const [npcQuestData, setNpcQuestData] = useState(null);
   const [gamblingResult, setGamblingResult] = useState(null);
+  const [hasGambledThisVisit, setHasGambledThisVisit] = useState(false);
+  const [gamblingReplayBet, setGamblingReplayBet] = useState(0);
   const [hintsData, setHintsData] = useState(null);
   const [hintResult, setHintResult] = useState(null);
   const [hintBought, setHintBought] = useState(false);
@@ -528,6 +533,16 @@ export default function GameShell() {
   const handleOpenProfile = useCallback((playerId, preloadedPlayer = null) => {
     if (!playerId) return;
 
+    if (playerId === selfPlayer?.id && activeMember) {
+      setProfilePlayer({
+        ...selfPlayer,
+        ...activeMember,
+        id: selfPlayer.id,
+        online: true
+      });
+      return;
+    }
+
     // 1. Try to find in the current room players
     const roomPlayer = players.find((p) => p.id === playerId);
     if (roomPlayer) {
@@ -552,7 +567,22 @@ export default function GameShell() {
       .catch((err) => {
         console.error("Failed to load player profile", err);
       });
-  }, [players]);
+  }, [activeMember, players, selfPlayer]);
+
+  const handleEquipAccessory = useCallback(async (accessoryId) => {
+    const response = await fetch(withBasePath("/api/player/accessory"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessoryId })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "accessory_equip_failed");
+
+    applyMember(data.member);
+    setProfilePlayer((current) => current ? { ...current, ...data.member, id: data.member.discordId } : current);
+    socketRef.current?.emit("player:accessory", { accessoryId: data.member.equippedAccessory || "" });
+    return data.member;
+  }, [applyMember]);
 
   const handleTradeCoins = useCallback(async (recipientId, amount) => {
     const response = await fetch(withBasePath("/api/player/trade"), {
@@ -879,6 +909,8 @@ export default function GameShell() {
     setHintResult(null);
     setHintsData(null);
     setShopPurchases({});
+    setHasGambledThisVisit(false);
+    setGamblingReplayBet(0);
   }, [npcKey]);
 
   const handleNpcQuestAccept = useCallback(async () => {
@@ -984,6 +1016,10 @@ export default function GameShell() {
       if (res.ok) {
         applyMember(data.member);
         setGamblingResult({ won: data.won, delta: data.delta });
+        setHasGambledThisVisit(true);
+        const updatedCoins = data.member?.coins || 0;
+        const maxBet = Math.min(10000, Math.max(0, Math.floor(updatedCoins)));
+        setGamblingReplayBet(maxBet > 0 ? Math.floor(Math.random() * maxBet) + 1 : 0);
       } else if (data.error === "not_enough_coins") {
         handleNpcCoinsNeeded(betAmount);
       }
@@ -1015,6 +1051,14 @@ export default function GameShell() {
     setGamblingResult(null);
     setHintResult(null); // clear hint content on close; hintBought stays for the visit
   }, []);
+
+  const handleGamblingKickOut = useCallback(() => {
+    setNpcVisit(null);
+    setNpcQuestData(null);
+    setGamblingResult(null);
+    setHintResult(null);
+    dismissDoorNpc();
+  }, [dismissDoorNpc]);
 
   const handleNpcInteract = useCallback(() => {
     if (!doorNpc || doorNpcPhase === "exiting") return;
@@ -1252,6 +1296,7 @@ export default function GameShell() {
           selfId={selfPlayer?.id}
           onClose={() => setProfilePlayer(null)}
           onTrade={handleTradeCoins}
+          onEquipAccessory={handleEquipAccessory}
         />
       )}
       {reward && <RewardModal reward={reward} onClose={handleRewardClose} />}
@@ -1268,12 +1313,16 @@ export default function GameShell() {
           hintBought={hintBought}
           onHintBuy={handleHintBuy}
           gamblingResult={gamblingResult}
+          hasGambledThisVisit={hasGambledThisVisit}
+          gamblingReplayBet={gamblingReplayBet}
           onGamble={handleGamble}
+          onGamblingKickOut={handleGamblingKickOut}
           memberShop={activeMember ? {
             cooldownT1: activeMember.shopCooldownT1 || 0,
             cooldownT2: activeMember.shopCooldownT2 || 0,
             limitBreak: activeMember.shopLimitBreak || false,
             assetTickets: activeMember.shopAssetTickets || 0,
+            ownedAccessories: activeMember.ownedAccessories || [],
             hasActiveQuest: Boolean(activeMember.npcQuest),
           } : null}
           shopPurchases={shopPurchases}

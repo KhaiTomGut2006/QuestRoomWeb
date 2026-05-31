@@ -46,6 +46,9 @@ export async function POST(request) {
     if (item.limitBreak && member.shopLimitBreak) {
       return NextResponse.json({ error: "already_owned" }, { status: 400 });
     }
+    if (item.accessoryId && (member.ownedAccessories || []).map(String).includes(item.accessoryId)) {
+      return NextResponse.json({ error: "already_owned" }, { status: 400 });
+    }
 
     const currentCoins = Number.parseInt(member.coin || "0", 10);
     if (currentCoins < item.cost) {

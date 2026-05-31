@@ -208,6 +208,8 @@ export function normalizeMember(member) {
     shopCooldownT2: member.shopCooldownT2 || 0,
     shopLimitBreak: Boolean(member.shopLimitBreak),
     shopAssetTickets: member.shopAssetTickets || 0,
+    ownedAccessories: Array.isArray(member.ownedAccessories) ? member.ownedAccessories.map(String) : [],
+    equippedAccessory: String(member.equippedAccessory || ""),
   };
 }
 
@@ -306,7 +308,8 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
   const members = await Member.find({
     stage: String(stage || DEFAULT_STAGE),
     discord_id: { $exists: true, $ne: "" },
-    lastAuthentication: { $exists: true, $ne: null }
+    lastAuthentication: { $exists: true, $ne: null },
+    npcCycle: { $exists: true, $ne: null }
   });
 
   return members.map((member) => {
@@ -318,6 +321,7 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
       avatar: normalized.avatar,
       rank: normalized.rank,
       achievements: normalized.achievements,
+      equippedAccessory: normalized.equippedAccessory,
       stage: normalized.stage,
       x: Number(normalized.position?.x || 50),
       y: Number(normalized.position?.y || 70),

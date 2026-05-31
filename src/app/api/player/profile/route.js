@@ -29,6 +29,8 @@ export async function GET(request) {
       avatar: member.avatar,
       rank: member.rank,
       achievements: member.achievements,
+      ownedAccessories: member.discordId === session.user.discordId ? member.ownedAccessories : [],
+      equippedAccessory: member.equippedAccessory,
       stage: member.stage,
       online: false // Default to offline unless they are online in sockets
     };

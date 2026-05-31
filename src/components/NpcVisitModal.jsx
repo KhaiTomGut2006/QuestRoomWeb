@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
+import { ACCESSORY_LIST } from "@/lib/accessories";
 
 // npcId → image filename
 const NPC_IMAGE = {
@@ -97,6 +98,19 @@ const SHOP_ITEMS = {
     cost: 2000,
     image: "limitbreak.png",
   },
+  ...Object.fromEntries(
+    ACCESSORY_LIST.map((accessory) => [
+      accessory.id,
+      {
+        name: accessory.name,
+        description: "Accessory doll for your player profile",
+        cost: accessory.cost,
+        image: accessory.image,
+        imageFolder: "Accessories",
+        category: "Accessories",
+      },
+    ])
+  ),
 };
 
 const DEFAULT_SHOP_OFFERS = [
@@ -104,6 +118,7 @@ const DEFAULT_SHOP_OFFERS = [
   "quest-scroll-normal", "quest-scroll-rare", "quest-scroll-epic",
   "chest-small", "chest-medium", "chest-large",
   "cooldown-minute", "cooldown-minute-lv2", "limit-break",
+  ...ACCESSORY_LIST.map((accessory) => accessory.id),
 ];
 const MAX_QUEST_EVIDENCE_BYTES = 100 * 1024 * 1024;
 
@@ -137,17 +152,59 @@ function InteractDialog({ npcId, npcName, intro, children }) {
 }
 
 // ── Gambling dialog (Begger) ─────────────────────────────────────────────────
-function GamblingDialog({ npc, result, onGamble, onClose }) {
+const KICK_INSULTS = [
+  "ออกไปจากบ้านฉัน! ขอทานสิ้นดี!",
+  "หมาขี้เกียจยังดีกว่าแก ไสหัวไปเลย!",
+  "แกหน้าหนาจริงๆ นะ ไปไม่มองหน้ากันดีกว่า!",
+  "ออกไป! อย่ากลับมาให้เห็นอีกเลยนะ!",
+  "ไล่ออก! ฉันไม่ต้องการพวกขอทานในบ้าน!",
+  "ชีวิตฉันไม่ต้องการแกแม้แต่วินาทีเดียว ไสหัวไป!",
+];
+
+function GamblingDialog({ npc, result, hasGambledThisVisit, replayBetAmount, onGamble, onClose, onKickOut }) {
   const betAmount = Number(npc.betAmount) || 0;
   const canGamble = betAmount > 0;
+  const [kickInsult] = useState(() => KICK_INSULTS[Math.floor(Math.random() * KICK_INSULTS.length)]);
+
+  // Already gambled this visit and no active result → "play again or kick out" screen
+  if (hasGambledThisVisit && !result) {
+    const replayBet = Number(replayBetAmount) || 0;
+    const canReplay = replayBet > 0;
+    return (
+      <InteractDialog npcId="begger" npcName="Begger" intro="ฮ่าๆ ยังอยู่อีกเหรอ? โชคดีของนายยังรออยู่นะ...">
+        {canReplay ? (
+          <div className="npc-interact-betamount">
+            เดิมพันใหม่{" "}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+            <span>×{replayBet.toLocaleString()}</span>
+          </div>
+        ) : (
+          <div className="npc-interact-betamount">ดูเหมือนนายจะหมดตัวแล้ว...</div>
+        )}
+        <button
+          className="npc-interact-choice-btn"
+          type="button"
+          onClick={() => onGamble(replayBet)}
+          disabled={!canReplay}
+        >
+          {canReplay ? `ลองดวงอีกครั้ง ${replayBet.toLocaleString()} Coins` : "Coins ไม่พอสำหรับลงทุน"}
+        </button>
+        <button className="npc-quest-decline-btn" type="button" onClick={onKickOut}>
+          {kickInsult}
+        </button>
+      </InteractDialog>
+    );
+  }
+
   return (
     <InteractDialog npcId="begger" npcName="Begger" intro="ขอเสนอวิธีการเงินง่ายๆ กับผม">
       {result ? (
         <>
           <div className={`npc-interact-result${result.won ? " npc-interact-result--win" : " npc-interact-result--lose"}`}>
             {result.won
-              ? `🎉 ยินดีด้วย! คุณได้รับ +${betAmount.toLocaleString()} Coins!`
-              : `💸 เสียใจด้วย... คุณเสีย -${betAmount.toLocaleString()} Coins`}
+              ? `🎉 ยินดีด้วย! คุณได้รับ +${Math.abs(result.delta).toLocaleString()} Coins!`
+              : `💸 เสียใจด้วย... คุณเสีย -${Math.abs(result.delta).toLocaleString()} Coins`}
           </div>
           <button className="npc-quest-decline-btn" type="button" onClick={onClose}>ตกลง</button>
         </>
@@ -243,8 +300,9 @@ function ChestDialog({ result, loading, onClaim, onClose }) {
   );
 }
 
-function getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, hasActiveQuest) {
+function getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, hasActiveQuest, ownedAccessories) {
   if (purchases[itemId]) return "bought";
+  if (itemId.startsWith("accessory-") && ownedAccessories.has(itemId)) return "owned";
   if (itemId.startsWith("quest-scroll-") && hasActiveQuest) return "quest_active";
   if (itemId === "cooldown-minute" && t1Count >= 10) return "maxed";
   if (itemId === "cooldown-minute-lv2") {
@@ -276,6 +334,7 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
   const hasLimitBreak  = memberShop?.limitBreak ?? false;
   const hasActiveQuest = memberShop?.hasActiveQuest ?? false;
   const assetTickets   = memberShop?.assetTickets ?? 0;
+  const ownedAccessories = new Set(memberShop?.ownedAccessories || []);
 
   // Hide limit-break and cooldown-lv2 entirely until prerequisites are met
   const visibleOffers = offers.filter((itemId) => {
@@ -295,7 +354,7 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
         {visibleOffers.map((itemId) => {
           const item = SHOP_ITEMS[itemId];
           if (!item) return null;
-          const status      = getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, hasActiveQuest);
+          const status      = getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, hasActiveQuest, ownedAccessories);
           const isBought    = status === "bought";
           const unavailable = status !== "available";
           const isQuestScroll = itemId.startsWith("quest-scroll-");
@@ -323,6 +382,7 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
               )}
               <span className="npc-shop-item-copy">
                 <strong>{item.name}</strong>
+                {item.category && <small className="npc-shop-item-category">{item.category}</small>}
                 <small>{descLabel}</small>
                 {itemId === "cooldown-minute" && !isBought && (
                   <small className="npc-shop-item-counter">{t1Count} / 10</small>
@@ -531,7 +591,7 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
 export default function NpcVisitModal({
   npc, questData, activeQuest, onAccept, onQuestCancel, onQuestSubmit,
   hintsData, hintResult, hintBought, onHintBuy,
-  gamblingResult, onGamble,
+  gamblingResult, hasGambledThisVisit, gamblingReplayBet, onGamble, onGamblingKickOut,
   memberShop,
   shopPurchases, onShopPurchase,
   onMemberUpdate, onCooldownReduction, onNeedCoins, onChestClaim, onQuestScrollBought,
@@ -661,8 +721,11 @@ export default function NpcVisitModal({
           <GamblingDialog
             npc={npc}
             result={gamblingResult}
+            hasGambledThisVisit={hasGambledThisVisit}
+            replayBetAmount={gamblingReplayBet}
             onGamble={onGamble}
             onClose={onClose}
+            onKickOut={onGamblingKickOut}
           />
         )}
 

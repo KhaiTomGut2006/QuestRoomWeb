@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import { withBasePath } from "@/lib/basePath";
+import { getAccessoryImagePath } from "@/lib/accessories";
 
 const LONG_PRESS_MS = 600;
 const MOVE_THRESHOLD = 10;
@@ -20,6 +22,7 @@ function PlayerToken({ player, selfId, onOpenProfile }) {
   const pointerStartRef = useRef(null);
   const suppressClickRef = useRef(false);
   const lastPointerTypeRef = useRef("");
+  const accessoryImagePath = getAccessoryImagePath(player.equippedAccessory);
 
   const clearLongPress = useCallback(() => {
     window.clearTimeout(longPressTimerRef.current);
@@ -86,6 +89,10 @@ function PlayerToken({ player, selfId, onOpenProfile }) {
     >
       <div className="player-name">{player.name}</div>
       <div className="player-avatar">
+        {accessoryImagePath && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className="player-accessory" src={withBasePath(accessoryImagePath)} alt="" />
+        )}
         {player.avatar ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={player.avatar} alt="" />

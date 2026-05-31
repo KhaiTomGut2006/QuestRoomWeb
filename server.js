@@ -32,6 +32,7 @@ const socketPersonalTimer = new Map();
 const socketFrozenMs = new Map();
 // socketId → permanent reduction in ms (from cooldown purchases)
 const socketPermanentReductionMs = new Map();
+const ACCESSORY_IDS = new Set(["accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-pukkerr"]);
 
 // Weighted NPC pool — weights sum to 100
 const NPC_POOL = [
@@ -62,7 +63,7 @@ function enrichNpc(npc, availableCoins = 0) {
     return { ...npc, betAmount: maxBet > 0 ? Math.floor(Math.random() * maxBet) + 1 : 0 };
   }
   if (npc.type === "shop") {
-    const catalog = ["asset-ticket", "quest-scroll-normal", "quest-scroll-rare", "quest-scroll-epic", "chest-small", "chest-medium", "chest-large", "cooldown-minute", "cooldown-minute-lv2", "limit-break"];
+    const catalog = ["asset-ticket", "quest-scroll-normal", "quest-scroll-rare", "quest-scroll-epic", "chest-small", "chest-medium", "chest-large", "cooldown-minute", "cooldown-minute-lv2", "limit-break", "accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-pukkerr"];
     const offers = [...catalog].sort(() => Math.random() - 0.5).slice(0, 4);
     return { ...npc, offers };
   }
@@ -171,6 +172,44 @@ function getRoom(stage) {
   return rooms.get(key);
 }
 
+// Returns a non-overlapping spawn position for a joining player.
+// Checks only against players who currently have an active socket (online).
+function resolveSpawnPosition(proposed, room, excludeId) {
+  const MIN_DIST = 4; // minimum distance between players (% units)
+
+  function overlaps(pos) {
+    for (const [id, p] of room) {
+      if (id === excludeId) continue;
+      if (!p.socketIds?.size) continue; // only avoid online players
+      const dx = (p.x || 50) - pos.x;
+      const dy = (p.y || 70) - pos.y;
+      if (Math.sqrt(dx * dx + dy * dy) < MIN_DIST) return true;
+    }
+    return false;
+  }
+
+  if (!overlaps(proposed)) return proposed;
+
+  // Try random offsets radiating outward from the proposed position
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * 2 * Math.PI;
+    const dist = MIN_DIST + Math.random() * 12;
+    const candidate = {
+      x: proposed.x + Math.cos(angle) * dist,
+      y: proposed.y + Math.sin(angle) * dist
+    };
+    if (isPointInPolygon(candidate) && !overlaps(candidate)) return candidate;
+  }
+
+  // Fallback: random walkable position anywhere on the floor
+  for (let i = 0; i < 30; i++) {
+    const candidate = { x: 26 + Math.random() * 48, y: 44 + Math.random() * 44 };
+    if (isPointInPolygon(candidate) && !overlaps(candidate)) return candidate;
+  }
+
+  return proposed; // give up — keep original position
+}
+
 function compactPlayer(player, online = Boolean(player?.online)) {
   const position = getWalkablePoint(player) || { x: 50, y: 70 };
   const achievements = Array.isArray(player.achievements)
@@ -189,6 +228,7 @@ function compactPlayer(player, online = Boolean(player?.online)) {
     avatar: String(player.avatar || ""),
     rank: String(player.rank || "Game Tester").slice(0, 48),
     achievements,
+    equippedAccessory: ACCESSORY_IDS.has(String(player.equippedAccessory || "")) ? String(player.equippedAccessory) : "",
     stage: String(player.stage || "game-demo-1"),
     x: position.x,
     y: position.y,
@@ -468,7 +508,16 @@ app.prepare().then(() => {
       const current = room.get(activePlayerId);
       const socketIds = current?.socketIds || new Set();
       socketIds.add(socket.id);
-      room.set(activePlayerId, { ...current, ...player, socketIds });
+
+      // Jitter spawn position to avoid stacking on top of other online players
+      const spawnPos = resolveSpawnPosition(
+        { x: player.x, y: player.y },
+        room,
+        activePlayerId
+      );
+      const spawnedPlayer = { ...player, x: spawnPos.x, y: spawnPos.y };
+
+      room.set(activePlayerId, { ...current, ...spawnedPlayer, socketIds });
       socket.join(activeStage);
 
       socket.emit("room:state", Array.from(room.values()).map(publicPlayer));
@@ -508,6 +557,18 @@ app.prepare().then(() => {
 
       room.set(activePlayerId, { ...current, ...nextPlayer });
       socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
+    });
+
+    socket.on("player:accessory", (payload = {}) => {
+      if (!activeStage || !activePlayerId) return;
+      const room = getRoom(activeStage);
+      const current = room.get(activePlayerId);
+      if (!current) return;
+      const accessoryId = String(payload.accessoryId || "");
+      if (accessoryId && !ACCESSORY_IDS.has(accessoryId)) return;
+
+      room.set(activePlayerId, { ...current, equippedAccessory: accessoryId });
+      io.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
     });
 
     // ─── NPC Quest state sync ────────────────────────────────────

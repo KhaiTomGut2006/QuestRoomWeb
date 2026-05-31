@@ -166,13 +166,13 @@ button {
   gap: 4px;
   margin-left: calc(clamp(16px, 2vw, 34px) * -0.72);
   color: #8a4b12;
-  font-size: clamp(17px, 1.05vw, 21px);
+  font-size: clamp(22px, 1.35vw, 27px);
   font-weight: 950;
 }
 
 .ticket-pill img {
-  width: clamp(36px, 2.5vw, 48px);
-  height: clamp(36px, 2.5vw, 48px);
+  width: clamp(44px, 3.1vw, 58px);
+  height: clamp(44px, 3.1vw, 58px);
   object-fit: contain;
   filter: drop-shadow(0 2px 0 rgba(157, 91, 18, 0.35));
 }
@@ -372,6 +372,20 @@ button {
   object-fit: cover;
 }
 
+.player-avatar .player-accessory {
+  position: absolute;
+  z-index: 4;
+  bottom: 72%;
+  left: 50%;
+  width: clamp(40px, 3.1vw, 58px);
+  height: clamp(40px, 3.1vw, 58px);
+  border-radius: 0;
+  object-fit: contain;
+  pointer-events: none;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 3px 2px rgba(38, 30, 22, 0.3));
+}
+
 .player-online-dot {
   position: absolute;
   bottom: -2px;
@@ -476,6 +490,20 @@ button {
   object-fit: cover;
 }
 
+.profile-modal-avatar .profile-equipped-accessory {
+  position: absolute;
+  z-index: 3;
+  bottom: 72%;
+  left: 50%;
+  width: 92px;
+  height: 92px;
+  border-radius: 0;
+  object-fit: contain;
+  pointer-events: none;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 4px 3px rgba(38, 30, 22, 0.28));
+}
+
 .profile-modal-online {
   position: absolute;
   bottom: 6px;
@@ -520,6 +548,101 @@ button {
 .profile-badge-section {
   display: grid;
   gap: 18px;
+}
+
+.profile-accessory-section {
+  display: grid;
+  gap: 12px;
+}
+
+.profile-accessory-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-accessory-heading h3 {
+  font-size: 28px;
+  font-weight: 950;
+}
+
+.profile-accessory-heading span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #887b6b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.profile-accessory-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.profile-accessory-item {
+  display: grid;
+  min-height: 116px;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  padding: 8px 5px;
+  border: 2px solid #d7caba;
+  border-radius: 12px;
+  background: #fffaf1;
+  color: #262221;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.profile-accessory-item:hover:not(:disabled) {
+  border-color: #f59e0b;
+  transform: translateY(-2px);
+}
+
+.profile-accessory-item.is-equipped {
+  border-color: #7e35ff;
+  background: #f3edff;
+  box-shadow: 0 0 0 3px rgba(126, 53, 255, 0.14);
+}
+
+.profile-accessory-item:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.profile-accessory-preview {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 2px rgba(38, 30, 22, 0.22));
+}
+
+.profile-accessory-item strong {
+  font-size: 12px;
+  line-height: 1.05;
+}
+
+.profile-accessory-item small,
+.profile-accessory-empty {
+  color: #887b6b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.profile-accessory-none {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border: 2px dashed #c9b9a6;
+  border-radius: 999px;
+  color: #887b6b;
+  font-size: 12px;
+  font-weight: 950;
 }
 
 .profile-badge-section h3 {
@@ -1017,12 +1140,12 @@ button {
   .ticket-pill {
     gap: 2px;
     margin-left: -4px;
-    font-size: 15px;
+    font-size: 18px;
   }
 
   .ticket-pill img {
-    width: 32px;
-    height: 32px;
+    width: 38px;
+    height: 38px;
   }
 
   .circle-button {
@@ -2693,6 +2816,18 @@ button {
   font-weight: 700;
 }
 
+.npc-shop-item-category {
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #ede9fe;
+  color: #6d28d9 !important;
+  font-size: 9px !important;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .npc-shop-out-of-stock {
   color: #dc2626;
   font-size: 20px;
@@ -2764,7 +2899,7 @@ button {
 }
 
 .npc-shop-item-copy strong {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -2772,7 +2907,7 @@ button {
 .npc-shop-item-copy small {
   overflow: hidden;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2788,8 +2923,8 @@ button {
 }
 
 .npc-shop-price img {
-  width: 24px;
-  height: 24px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
 }
 
