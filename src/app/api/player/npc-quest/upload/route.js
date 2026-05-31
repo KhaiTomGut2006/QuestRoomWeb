@@ -73,7 +73,10 @@ async function saveGridFsUpload(request, discordId) {
 
   const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
   const basePath = rawBasePath ? `/${rawBasePath.replace(/^\/+|\/+$/g, "")}` : "";
-  const url = `${request.nextUrl.origin}${basePath}/api/player/npc-quest/upload?file=${fileId}`;
+  const publicOrigin = process.env.NEXTAUTH_URL
+    ? new URL(process.env.NEXTAUTH_URL).origin
+    : request.nextUrl.origin;
+  const url = `${publicOrigin}${basePath}/api/player/npc-quest/upload?file=${fileId}`;
 
   return NextResponse.json({
     blob: {
