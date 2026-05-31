@@ -14,9 +14,13 @@ export async function GET(request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const classes = await getActiveClasses();
-    const classId = searchParams.get("class") || classes[0]?.sheetTitle || "";
-    const posts = classId ? await getGlobalQuestPosts(classId, discordId) : [];
+    const activeClasses = await getActiveClasses();
+    const classes = [
+      { sheetTitle: "all", courseName: "All Courses" },
+      ...activeClasses
+    ];
+    const classId = searchParams.get("class") || "all";
+    const posts = await getGlobalQuestPosts(classId, discordId);
     return NextResponse.json({ classes, posts, defaultClassId: classId });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503 });

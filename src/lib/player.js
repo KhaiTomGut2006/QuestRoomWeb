@@ -575,14 +575,23 @@ export async function getActiveClasses() {
 
 export async function getGlobalQuestPosts(classId, viewerDiscordId) {
   await connectDb();
-  const friends = await getClassFriends(classId);
-  const discordIds = friends.map((friend) => friend.id).filter(Boolean);
-  if (discordIds.length === 0) return [];
-
-  const members = await Member.find({
-    discord_id: { $in: discordIds },
+  const isAllCourses = String(classId || "") === "all";
+  let memberQuery = {
+    discord_id: { $exists: true, $ne: "" },
     "npcQuestSubmissions.0": { $exists: true }
-  }).lean();
+  };
+
+  if (!isAllCourses) {
+    const friends = await getClassFriends(classId);
+    const discordIds = friends.map((friend) => friend.id).filter(Boolean);
+    if (discordIds.length === 0) return [];
+    memberQuery = {
+      discord_id: { $in: discordIds },
+      "npcQuestSubmissions.0": { $exists: true }
+    };
+  }
+
+  const members = await Member.find(memberQuery).lean();
 
   return members
     .flatMap((member) => {
