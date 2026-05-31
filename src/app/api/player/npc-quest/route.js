@@ -48,13 +48,14 @@ export async function DELETE() {
 }
 
 // PATCH /api/player/npc-quest  — submit the active NPC quest and receive its reward
-export async function PATCH() {
+export async function PATCH(request) {
   const session = await getServerSession(authOptions);
   const discordId = session?.user?.discordId;
   if (!discordId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {
-    const result = await submitNpcQuest(discordId);
+    const body = await request.json();
+    const result = await submitNpcQuest(discordId, body?.evidence);
     if (!result) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (error) {

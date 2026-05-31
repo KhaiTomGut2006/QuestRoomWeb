@@ -66,6 +66,58 @@ function normalizeBadge(badge) {
   };
 }
 
+function normalizeNpcQuestSubmission(submission) {
+  return {
+    id: submission.id || "",
+    title: submission.title || "NPC Quest",
+    description: submission.description || "",
+    difficulty: submission.difficulty || "",
+    reward: submission.reward || 0,
+    npcType: submission.npcType || "",
+    npcName: submission.npcName || "",
+    npcCharacter: submission.npcCharacter || "",
+    evidence: submission.evidence
+      ? {
+          url: submission.evidence.url || "",
+          pathname: submission.evidence.pathname || "",
+          contentType: submission.evidence.contentType || "",
+          size: submission.evidence.size || 0,
+          originalName: submission.evidence.originalName || ""
+        }
+      : null,
+    submittedAt: submission.submittedAt || null
+  };
+}
+
+function normalizeNpcQuestEvidence(discordId, evidence) {
+  const url = String(evidence?.url || "").trim();
+  const pathname = String(evidence?.pathname || "").trim();
+  const contentType = String(evidence?.contentType || "").toLowerCase();
+  const size = Math.max(0, Number(evidence?.size) || 0);
+  const originalName = String(evidence?.originalName || "").slice(0, 180);
+  const localUploadPrefix = `/uploads/npc-quests/${String(discordId || "")}/`;
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    throw new Error("invalid_quest_evidence_url");
+  }
+
+  const isBlobUrl = parsedUrl.protocol === "https:"
+    && parsedUrl.hostname.endsWith(".blob.vercel-storage.com");
+  const isLocalUpload = process.env.NODE_ENV !== "production"
+    && ["localhost", "127.0.0.1"].includes(parsedUrl.hostname)
+    && parsedUrl.pathname.includes(localUploadPrefix);
+  const isAllowedType = contentType.startsWith("image/") || contentType.startsWith("video/");
+
+  if (!isBlobUrl && !isLocalUpload) throw new Error("invalid_quest_evidence_url");
+  if (!isAllowedType) throw new Error("invalid_quest_evidence_type");
+  if (!size || size > 100 * 1024 * 1024) throw new Error("invalid_quest_evidence_size");
+
+  return { url, pathname, contentType, size, originalName };
+}
+
 export function getDiscordAvatar(discordId, avatarHash) {
   if (!discordId || !avatarHash) return "";
   const ext = String(avatarHash).startsWith("a_") ? "gif" : "png";
@@ -112,6 +164,7 @@ export function normalizeMember(member) {
           acceptedAt:   member.npcQuest.acceptedAt || null,
         }
       : null,
+    npcQuestSubmissions: (member.npcQuestSubmissions || []).map(normalizeNpcQuestSubmission),
     challenge: member.questChallenge || null,
     reward: member.questReward
       ? {
@@ -448,20 +501,34 @@ export async function cancelNpcQuest(discordId) {
   return { member: normalizeMember(member), penalty };
 }
 
-export async function submitNpcQuest(discordId) {
+export async function submitNpcQuest(discordId, evidence) {
   await connectDb();
   await ensureLevels();
   const member = await Member.findOne({ discord_id: String(discordId || "") });
   if (!member) return null;
+  if (!member.npcQuest) throw new Error("active_quest_not_found");
+
+  const normalizedEvidence = normalizeNpcQuestEvidence(discordId, evidence);
 
   const currentCoins = Math.max(0, Number.parseInt(member.coin || "0", 10) || 0);
-  const reward = member.npcQuest
-    ? Math.max(0, Number(member.npcQuest.reward) || 0)
-    : 0;
+  const reward = Math.max(0, Number(member.npcQuest.reward) || 0);
+  const submittedAt = new Date();
+  member.npcQuestSubmissions.push({
+    id: `${String(discordId || "")}-${submittedAt.getTime()}`,
+    title: member.npcQuest.title || "NPC Quest",
+    description: member.npcQuest.description || "",
+    difficulty: member.npcQuest.difficulty || "",
+    reward,
+    npcType: member.npcQuest.npcType || "",
+    npcName: member.npcQuest.npcName || "",
+    npcCharacter: member.npcQuest.npcCharacter || "",
+    evidence: normalizedEvidence,
+    submittedAt
+  });
   member.coin = String(currentCoins + reward);
   member.npcQuest = null;
   await member.save();
-  return { member: normalizeMember(member), reward };
+  return { member: normalizeMember(member), reward, submission: normalizeNpcQuestSubmission(member.npcQuestSubmissions.at(-1)) };
 }
 
 export async function getActiveClasses() {

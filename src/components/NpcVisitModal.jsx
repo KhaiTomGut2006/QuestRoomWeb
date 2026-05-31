@@ -53,6 +53,7 @@ const SHOP_ITEMS = {
 };
 
 const DEFAULT_SHOP_OFFERS = ["quest-scroll", "asset-ticket", "cooldown-minute"];
+const MAX_QUEST_EVIDENCE_BYTES = 100 * 1024 * 1024;
 
 // 6 smoke puff positions (top-left origin, %)
 const SMOKE_PUFFS = [
@@ -216,6 +217,9 @@ function ShopDialog({ npc, purchases, loadingItem, onBuy, onClose }) {
 function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit, onClose }) {
   const [confirmAction, setConfirmAction] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [evidenceFile, setEvidenceFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [submitError, setSubmitError] = useState("");
   const charKey = questData.npcCharacter || npc.npcId || npc.id;
   const imgFile = NPC_IMAGE[charKey] || "Witch.png";
   const imgSrc  = withBasePath(`/assets/NPC/${imgFile}`);
@@ -227,13 +231,41 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
 
   const handleConfirm = async () => {
     if (!confirmAction || submitting) return;
+    if (confirmAction === "submit" && !evidenceFile) {
+      setSubmitError("กรุณาเลือกรูปภาพหรือวิดีโอก่อนส่งเควส");
+      return;
+    }
     setSubmitting(true);
+    setSubmitError("");
     try {
       if (confirmAction === "cancel") await onCancel?.();
-      if (confirmAction === "submit") await onSubmit?.();
+      if (confirmAction === "submit") await onSubmit?.(evidenceFile, setUploadProgress);
+    } catch (error) {
+      setSubmitError(error.message || "อัปโหลดหลักฐานไม่สำเร็จ กรุณาลองใหม่");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleEvidenceChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    setSubmitError("");
+    setUploadProgress(0);
+    if (!file) {
+      setEvidenceFile(null);
+      return;
+    }
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+      setEvidenceFile(null);
+      setSubmitError("รองรับเฉพาะไฟล์รูปภาพหรือวิดีโอ");
+      return;
+    }
+    if (file.size > MAX_QUEST_EVIDENCE_BYTES) {
+      setEvidenceFile(null);
+      setSubmitError("ไฟล์ต้องมีขนาดไม่เกิน 100 MB");
+      return;
+    }
+    setEvidenceFile(file);
   };
 
   return (
@@ -259,8 +291,14 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
         </div>
         {activeQuest ? (
           <div className="npc-active-quest-actions">
+            <label className="npc-quest-upload">
+              <input type="file" accept="image/*,video/*" onChange={handleEvidenceChange} />
+              <strong>{evidenceFile ? "เปลี่ยนไฟล์หลักฐาน" : "อัปโหลดรูปภาพหรือวิดีโอ"}</strong>
+              <small>{evidenceFile ? `${evidenceFile.name} (${(evidenceFile.size / 1024 / 1024).toFixed(1)} MB)` : "ไฟล์ภาพหรือวิดีโอ ขนาดไม่เกิน 100 MB"}</small>
+            </label>
+            {submitError && <p className="npc-quest-upload-error">{submitError}</p>}
             <div className="npc-active-quest-submit-row">
-              <button className="npc-quest-submit-btn" type="button" onClick={() => setConfirmAction("submit")}>
+              <button className="npc-quest-submit-btn" type="button" onClick={() => setConfirmAction("submit")} disabled={!evidenceFile}>
                 ส่งเควส
               </button>
               <button className="npc-quest-message-btn" type="button" aria-label="ข้อความ เร็ว ๆ นี้" disabled>
@@ -298,8 +336,12 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
             <p>
               {confirmAction === "cancel"
                 ? `หากยกเลิกเควสจะเสีย ${cancelPenalty.toLocaleString()} Coins`
-                : `ยืนยันเพื่อรับ ${(Number(questData.reward) || 0).toLocaleString()} Coins`}
+                : `อัปโหลด "${evidenceFile?.name || ""}" และยืนยันเพื่อรับ ${(Number(questData.reward) || 0).toLocaleString()} Coins`}
             </p>
+            {confirmAction === "submit" && submitting && (
+              <p className="npc-quest-upload-progress">กำลังอัปโหลด... {Math.round(uploadProgress)}%</p>
+            )}
+            {submitError && <p className="npc-quest-upload-error">{submitError}</p>}
             <div className="npc-quest-confirm-actions">
               <button className="npc-quest-confirm-back" type="button" onClick={() => setConfirmAction("")}>
                 Cancel

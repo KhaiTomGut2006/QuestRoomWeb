@@ -94,6 +94,33 @@ const NpcQuestSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const NpcQuestEvidenceSchema = new mongoose.Schema(
+  {
+    url:          String,
+    pathname:     String,
+    contentType:  String,
+    size:         Number,
+    originalName: String
+  },
+  { _id: false }
+);
+
+const NpcQuestSubmissionSchema = new mongoose.Schema(
+  {
+    id:           String,
+    title:        String,
+    description:  String,
+    difficulty:   String,
+    reward:       Number,
+    npcType:      String,
+    npcName:      String,
+    npcCharacter: String,
+    evidence:     NpcQuestEvidenceSchema,
+    submittedAt:  Date
+  },
+  { _id: false }
+);
+
 const MemberSchema = new mongoose.Schema(
   {
     id: String,
@@ -161,6 +188,7 @@ const MemberSchema = new mongoose.Schema(
     stage: { type: String, default: "game-demo-1", index: true },
     quest: { type: QuestSchema, default: () => ({}) },
     npcQuest: { type: NpcQuestSchema, default: null },
+    npcQuestSubmissions: { type: [NpcQuestSubmissionSchema], default: [] },
     roomPosition: { type: PositionSchema, default: () => ({}) }
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }

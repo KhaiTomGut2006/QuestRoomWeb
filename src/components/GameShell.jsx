@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { ChevronLeft, ChevronRight, Coins, Trophy, Zap, Volume2, VolumeX, LogOut, Settings } from "lucide-react";
 import { io } from "socket.io-client";
+import { upload } from "@vercel/blob/client";
 import RoomCanvas from "@/components/RoomCanvas";
 import PlayerLayer from "@/components/PlayerLayer";
 import ProfileModal from "@/components/ProfileModal";
@@ -17,6 +18,50 @@ import ChallengeModal from "@/components/ChallengeModal";
 import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
+
+function safeUploadName(filename) {
+  return String(filename || "evidence")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120) || "evidence";
+}
+
+async function uploadNpcQuestEvidence(file, playerId, onProgress) {
+  if (!file) throw new Error("กรุณาเลือกไฟล์หลักฐาน");
+  const safePlayerId = safeUploadName(playerId || "player");
+  const pathname = `npc-quests/${safePlayerId}/${Date.now()}-${safeUploadName(file.name)}`;
+  const uploadOptions = {
+    access: "public",
+    handleUploadUrl: withBasePath("/api/player/npc-quest/upload"),
+    multipart: file.size > 4 * 1024 * 1024,
+    onUploadProgress: ({ percentage }) => onProgress?.(percentage)
+  };
+
+  try {
+    const blob = await upload(pathname, file, uploadOptions);
+    return {
+      url: blob.url,
+      pathname: blob.pathname,
+      contentType: blob.contentType || file.type,
+      size: file.size,
+      originalName: file.name
+    };
+  } catch (error) {
+    const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+    if (!isLocalhost) throw error;
+
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch(`${withBasePath("/api/player/npc-quest/upload")}?local=1`, {
+      method: "POST",
+      body: formData
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "local_upload_failed");
+    onProgress?.(100);
+    return data.blob;
+  }
+}
 
 const demoMember = {
   discordId: "demo-local",
@@ -729,21 +774,24 @@ export default function GameShell() {
     } catch {}
   }, [applyMember, dismissDoorNpc, isAuthed]);
 
-  const handleNpcQuestSubmit = useCallback(async () => {
-    if (!isAuthed) return;
-    try {
-      const res = await fetch(withBasePath("/api/player/npc-quest"), { method: "PATCH" });
-      if (res.ok) {
-        const data = await res.json();
-        applyMember(data.member);
-        activeNpcQuestRef.current = null;
-        socketRef.current?.emit("quest:active", false);
-        setNpcVisit(null);
-        setNpcQuestData(null);
-        dismissDoorNpc();
-      }
-    } catch {}
-  }, [applyMember, dismissDoorNpc, isAuthed]);
+  const handleNpcQuestSubmit = useCallback(async (file, onUploadProgress) => {
+    if (!isAuthed) throw new Error("กรุณาเข้าสู่ระบบก่อนส่งเควส");
+    const evidence = await uploadNpcQuestEvidence(file, activeMember?.discordId || activeMember?.id, onUploadProgress);
+    const res = await fetch(withBasePath("/api/player/npc-quest"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ evidence })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "quest_submit_failed");
+
+    applyMember(data.member);
+    activeNpcQuestRef.current = null;
+    socketRef.current?.emit("quest:active", false);
+    setNpcVisit(null);
+    setNpcQuestData(null);
+    dismissDoorNpc();
+  }, [activeMember?.discordId, activeMember?.id, applyMember, dismissDoorNpc, isAuthed]);
 
   const handleNpcCoinsNeeded = useCallback((cost) => {
     setNoCoinsCost(Number(cost) || 0);
