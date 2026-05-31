@@ -92,6 +92,7 @@ export async function POST(request) {
         description:  quest.description,
         reward,
         cancelPenalty,
+        source:       "shop",
         npcType:      "quest",
         npcName:      quest.npcCharacter || "witch",
         npcCharacter: quest.npcCharacter || null,

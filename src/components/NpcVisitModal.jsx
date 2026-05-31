@@ -345,6 +345,7 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
   const [evidenceFile, setEvidenceFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [submitError, setSubmitError] = useState("");
+  const standaloneQuest = Boolean(npc.standaloneQuest);
   const charKey = questData.npcCharacter || npc.npcId || npc.id;
   const imgFile = NPC_IMAGE[charKey] || "Witch.png";
   const imgSrc  = withBasePath(`/assets/NPC/${imgFile}`);
@@ -394,19 +395,21 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
   };
 
   return (
-    <div className="npc-quest-layout">
+    <div className={`npc-quest-layout${standaloneQuest ? " npc-quest-layout--standalone" : ""}`}>
       {/* Left — NPC portrait */}
-      <div className="npc-quest-npc-side">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="npc-quest-npc-img" src={imgSrc} alt={charName} />
-        <p className="npc-quest-npc-name">{charName}</p>
-      </div>
+      {!standaloneQuest && (
+        <div className="npc-quest-npc-side">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="npc-quest-npc-img" src={imgSrc} alt={charName} />
+          <p className="npc-quest-npc-name">{charName}</p>
+        </div>
+      )}
 
       {/* Right — speech bubble */}
       <div className="npc-quest-dialog-side">
         {!activeQuest && <p className="npc-quest-warning">*เมื่อยอมรับเควสจะไม่ Spawn Event ใหม่</p>}
         <p className="npc-quest-text">
-          <strong>{charName} :</strong> {questData.description}
+          <strong>{standaloneQuest ? "รายละเอียดเควส :" : `${charName} :`}</strong> {questData.description}
         </p>
         <div className="npc-quest-reward">
           <span>Reward :</span>

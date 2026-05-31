@@ -16,7 +16,6 @@ import RankingModal from "@/components/RankingModal";
 import FriendsModal from "@/components/FriendsModal";
 import ChallengeModal from "@/components/ChallengeModal";
 import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
-import ActiveQuestPanel from "@/components/ActiveQuestPanel";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -128,6 +127,7 @@ const demoNpcQuest = {
   description: "เพื่อนฉันกลับมามองเห็นอีกครั้ง ในรอบ 30 ปี ฉันอยากให้เธอได้เห็นภาพ ทิวทัศน์ที่เต็มไปด้วย Lighting แสนสวย",
   reward: 90,
   cancelPenalty: 23,
+  source: "shop",
   npcType: "quest-easy",
   npcName: "near",
   npcCharacter: "near",
@@ -188,7 +188,7 @@ function playerFromMember(member) {
     y: Number(member.position?.y || 72),
     action: "idle",
     online: true,
-    hasNpcQuest: Boolean(member.npcQuest),
+    hasNpcQuest: Boolean(member.npcQuest && member.npcQuest.source !== "shop"),
     coins: Number(member.coins) || 0,
     // Permanent cooldown reduction: 60s per Lv1 purchase + 60s per Lv2 purchase
     permanentReductionMs: ((member.shopCooldownT1 || 0) + (member.shopCooldownT2 || 0)) * 60_000,
@@ -464,8 +464,9 @@ export default function GameShell() {
 
   useEffect(() => {
     const activeQuest = activeMember?.npcQuest || null;
-    activeNpcQuestRef.current = activeQuest;
-    if (!activeQuest) return;
+    const locksDoorNpc = activeQuest && activeQuest.source !== "shop";
+    activeNpcQuestRef.current = locksDoorNpc ? activeQuest : null;
+    if (!locksDoorNpc) return;
 
     const questNpc = npcFromActiveQuest(activeQuest);
     window.clearTimeout(npcSwapTimerRef.current);
@@ -880,10 +881,9 @@ export default function GameShell() {
 
   const handleQuestScrollBought = useCallback((assignedQuest, updatedMember) => {
     // Quest is assigned directly to the player — no quest NPC spawned at the door.
-    // The shop NPC (Milt) stays until the quest is completed or cancelled.
+    // The shop NPC (Milt) stays until its current cooldown expires.
     applyMember(updatedMember);
-    activeNpcQuestRef.current = assignedQuest;
-    socketRef.current?.emit("quest:active", true);
+    activeNpcQuestRef.current = null;
     // Close the modal but keep the door NPC visible
     setNpcVisit(null);
     setNpcQuestData(null);
@@ -891,22 +891,24 @@ export default function GameShell() {
 
   const handleNpcQuestCancel = useCallback(async () => {
     if (!isAuthed) return;
+    const visitorQuest = activeMember?.npcQuest?.source !== "shop";
     try {
       const res = await fetch(withBasePath("/api/player/npc-quest"), { method: "DELETE" });
       if (res.ok) {
         const data = await res.json();
         applyMember(data.member);
         activeNpcQuestRef.current = null;
-        socketRef.current?.emit("quest:active", false);
+        if (visitorQuest) socketRef.current?.emit("quest:active", false);
         setNpcVisit(null);
         setNpcQuestData(null);
-        dismissDoorNpc();
+        if (visitorQuest) dismissDoorNpc();
       }
     } catch {}
-  }, [applyMember, dismissDoorNpc, isAuthed]);
+  }, [activeMember?.npcQuest?.source, applyMember, dismissDoorNpc, isAuthed]);
 
   const handleNpcQuestSubmit = useCallback(async (file, onUploadProgress) => {
     if (!isAuthed) throw new Error("กรุณาเข้าสู่ระบบก่อนส่งเควส");
+    const visitorQuest = activeMember?.npcQuest?.source !== "shop";
     const evidence = await uploadNpcQuestEvidence(file, activeMember?.discordId || activeMember?.id, onUploadProgress);
     const res = await fetch(withBasePath("/api/player/npc-quest"), {
       method: "PATCH",
@@ -918,12 +920,12 @@ export default function GameShell() {
 
     applyMember(data.member);
     activeNpcQuestRef.current = null;
-    socketRef.current?.emit("quest:active", false);
+    if (visitorQuest) socketRef.current?.emit("quest:active", false);
     setNpcVisit(null);
     setNpcQuestData(null);
-    dismissDoorNpc();
+    if (visitorQuest) dismissDoorNpc();
     setQuestSuccess({ title: data.submission?.title || "NPC Quest", reward: data.reward ?? 0 });
-  }, [activeMember?.discordId, activeMember?.id, applyMember, dismissDoorNpc, isAuthed]);
+  }, [activeMember?.discordId, activeMember?.id, activeMember?.npcQuest?.source, applyMember, dismissDoorNpc, isAuthed]);
 
   const handleChestClaim = useCallback((coins, { dismissNpc = true } = {}) => {
     if (dismissNpc) dismissDoorNpc();
@@ -983,6 +985,18 @@ export default function GameShell() {
     if (!doorNpc || doorNpcPhase === "exiting") return;
     setNpcVisit(doorNpc);
   }, [doorNpc, doorNpcPhase]);
+
+  const handleQuestSidebarOpen = useCallback(() => {
+    if (!activeMember?.npcQuest) return;
+    setNpcQuestData(activeMember.npcQuest);
+    setNpcVisit({
+      id: "quest-sidebar",
+      type: "quest",
+      name: "Quest details",
+      activeQuest: true,
+      standaloneQuest: true,
+    });
+  }, [activeMember?.npcQuest]);
 
   const handleCooldownReduction = useCallback((milliseconds) => {
     if (!milliseconds) return;
@@ -1062,9 +1076,9 @@ export default function GameShell() {
           <button
             className="npc-active-quest-done"
             type="button"
-            onClick={handleNpcInteract}
+            onClick={handleQuestSidebarOpen}
           >
-            คุยกับ NPC
+            ดูรายละเอียด / ส่งเควส
           </button>
         </div>
       )}
@@ -1232,13 +1246,6 @@ export default function GameShell() {
         onDone={() => setChallengeAnnouncement(null)}
       />
       {devMode && <DevPanel socketRef={socketRef} cycleInfo={cycleInfo} />}
-      {activeMember?.npcQuest && !isViewingOtherRoom && (
-        <ActiveQuestPanel
-          quest={activeMember.npcQuest}
-          onSubmit={handleNpcQuestSubmit}
-          onCancel={handleNpcQuestCancel}
-        />
-      )}
       {questSuccess && (
         <div className="quest-success-backdrop" onClick={() => setQuestSuccess(null)}>
           <section className="quest-success-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>

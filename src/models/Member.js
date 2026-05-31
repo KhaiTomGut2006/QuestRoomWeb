@@ -86,6 +86,7 @@ const NpcQuestSchema = new mongoose.Schema(
     description:  String,
     reward:       Number,
     cancelPenalty:Number,
+    source:       String,
     npcType:      String,
     npcName:      String,
     npcCharacter: String,

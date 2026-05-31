@@ -175,6 +175,9 @@ export function normalizeMember(member) {
           description:  member.npcQuest.description || "",
           reward:       member.npcQuest.reward || 0,
           cancelPenalty:member.npcQuest.cancelPenalty || 0,
+          source:
+            member.npcQuest.source ||
+            (member.npcQuest.npcType === "quest" ? "shop" : "visitor"),
           npcType:      member.npcQuest.npcType || "",
           npcName:      member.npcQuest.npcName || "",
           npcCharacter: member.npcQuest.npcCharacter || null,
@@ -485,6 +488,7 @@ export async function acceptNpcQuest(discordId, questData) {
           description:  questData.description,
           reward,
           cancelPenalty,
+          source:       questData.source || "visitor",
           npcType:      questData.npcType || "",
           npcName:      questData.npcName || "",
           npcCharacter: questData.npcCharacter || null,
