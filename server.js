@@ -27,6 +27,8 @@ const CYCLE_MS = 30 * 60 * 1000;
 const socketPersonalTimer = new Map();
 // socketId → remainingMs when frozen
 const socketFrozenMs = new Map();
+// socketId → permanent reduction in ms (from cooldown purchases)
+const socketPermanentReductionMs = new Map();
 
 // Weighted NPC pool — weights sum to 100
 const NPC_POOL = [
@@ -170,20 +172,27 @@ app.prepare().then(() => {
   });
 
   // ─── Per-socket personal NPC cycle ────────────────────────────
+  // Returns the effective full-cycle duration for a socket (with permanent reductions)
+  function effectiveCycleMs(socketId) {
+    const reduction = socketPermanentReductionMs.get(socketId) || 0;
+    return Math.max(60_000, CYCLE_MS - reduction); // minimum 1 minute
+  }
+
   function schedulePersonalCycle(socket, remainingMs) {
-    const dur = Math.max(1000, Math.floor((remainingMs !== undefined ? remainingMs : CYCLE_MS) / cycleSpeedMultiplier));
+    const fullCycle = Math.floor(effectiveCycleMs(socket.id) / cycleSpeedMultiplier);
+    const dur = Math.max(1000, remainingMs !== undefined ? Math.floor(remainingMs / cycleSpeedMultiplier) : fullCycle);
     clearPersonalTimer(socket.id);
-    const startedAt = Date.now() - (Math.floor(CYCLE_MS / cycleSpeedMultiplier) - dur);
+    const startedAt = Date.now() - (fullCycle - dur);
     const timerId = setTimeout(() => {
       socketPersonalTimer.delete(socket.id);
       const pid = socketToPlayer.get(socket.id);
       if (!pid || !playerNpcQuest.get(pid)) {
         socket.emit("npc:visit", enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id)));
       }
-      schedulePersonalCycle(socket, CYCLE_MS);
+      schedulePersonalCycle(socket, effectiveCycleMs(socket.id));
     }, dur);
-    socketPersonalTimer.set(socket.id, { timerId, startedAt, durationMs: Math.floor(CYCLE_MS / cycleSpeedMultiplier) });
-    socket.emit("timer:sync", { cycleStartedAt: startedAt, cycleDurationMs: Math.floor(CYCLE_MS / cycleSpeedMultiplier), frozen: false });
+    socketPersonalTimer.set(socket.id, { timerId, startedAt, durationMs: fullCycle });
+    socket.emit("timer:sync", { cycleStartedAt: startedAt, cycleDurationMs: fullCycle, frozen: false });
   }
 
   function freezePersonalCycle(socket) {
@@ -199,7 +208,7 @@ app.prepare().then(() => {
   function resumePersonalCycle(socket) {
     const remaining = socketFrozenMs.get(socket.id);
     socketFrozenMs.delete(socket.id);
-    schedulePersonalCycle(socket, remaining !== undefined ? remaining : CYCLE_MS);
+    schedulePersonalCycle(socket, remaining !== undefined ? remaining : effectiveCycleMs(socket.id));
   }
   // ────────────────────────────────────────────────────────────────
 
@@ -236,6 +245,9 @@ app.prepare().then(() => {
       // Track socket → player mapping
       socketToPlayer.set(socket.id, player.id);
       socketPlayerCoins.set(socket.id, Math.max(0, Number(payload.coins) || 0));
+      // Restore permanent cooldown reduction from previous purchases
+      const permReduction = Math.max(0, Number(payload.permanentReductionMs) || 0);
+      socketPermanentReductionMs.set(socket.id, permReduction);
       // Restore active quest state if client reports it
       if (payload.hasNpcQuest !== undefined) {
         playerNpcQuest.set(player.id, Boolean(payload.hasNpcQuest));
@@ -271,6 +283,16 @@ app.prepare().then(() => {
 
       socket.emit("room:state", Array.from(room.values()).map(publicPlayer));
       socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
+    });
+
+    socket.on("room:peek", (payload = {}) => {
+      const stage = String(payload.stage || "").trim().slice(0, 96);
+      if (!stage) return;
+      const room = rooms.get(stage);
+      socket.emit("room:peek-state", {
+        stage,
+        players: room ? Array.from(room.values()).map(publicPlayer) : []
+      });
     });
 
     socket.on("player:move", (payload = {}) => {
@@ -359,15 +381,19 @@ app.prepare().then(() => {
     });
 
     socket.on("shop:reduce-cooldown", (payload = {}) => {
-      const milliseconds = Math.min(5 * 60 * 1000, Math.max(0, Number(payload.milliseconds) || 0));
+      const milliseconds = Math.min(10 * 60 * 1000, Math.max(0, Number(payload.milliseconds) || 0));
       if (!milliseconds) return;
-      // Reduce personal timer
+      // Add to permanent reduction for this socket
+      const current = socketPermanentReductionMs.get(socket.id) || 0;
+      socketPermanentReductionMs.set(socket.id, current + milliseconds);
+      // Also reduce the current running/frozen timer immediately
       if (socketFrozenMs.has(socket.id)) {
-        socketFrozenMs.set(socket.id, Math.max(0, socketFrozenMs.get(socket.id) - milliseconds));
-        const remaining = socketFrozenMs.get(socket.id);
+        const remaining = Math.max(0, socketFrozenMs.get(socket.id) - milliseconds);
+        socketFrozenMs.set(socket.id, remaining);
+        const fullCycle = Math.floor(effectiveCycleMs(socket.id) / cycleSpeedMultiplier);
         socket.emit("timer:sync", {
-          cycleStartedAt: Date.now() - (Math.floor(CYCLE_MS / cycleSpeedMultiplier) - remaining),
-          cycleDurationMs: Math.floor(CYCLE_MS / cycleSpeedMultiplier),
+          cycleStartedAt: Date.now() - (fullCycle - remaining),
+          cycleDurationMs: fullCycle,
           frozen: true, frozenRemainingMs: remaining
         });
       } else {
@@ -383,6 +409,7 @@ app.prepare().then(() => {
     socket.on("disconnect", () => {
       clearPersonalTimer(socket.id);
       socketFrozenMs.delete(socket.id);
+      socketPermanentReductionMs.delete(socket.id);
       socketToPlayer.delete(socket.id);
       socketPlayerCoins.delete(socket.id);
       detachPlayer();

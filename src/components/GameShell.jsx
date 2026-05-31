@@ -16,6 +16,7 @@ import RankingModal from "@/components/RankingModal";
 import FriendsModal from "@/components/FriendsModal";
 import ChallengeModal from "@/components/ChallengeModal";
 import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
+import ActiveQuestPanel from "@/components/ActiveQuestPanel";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -189,6 +190,8 @@ function playerFromMember(member) {
     online: true,
     hasNpcQuest: Boolean(member.npcQuest),
     coins: Number(member.coins) || 0,
+    // Permanent cooldown reduction: 60s per Lv1 purchase + 60s per Lv2 purchase
+    permanentReductionMs: ((member.shopCooldownT1 || 0) + (member.shopCooldownT2 || 0)) * 60_000,
   };
 }
 
@@ -321,6 +324,8 @@ export default function GameShell() {
   const [config, setConfig] = useState(null);
   const [member, setMember] = useState(null);
   const [players, setPlayers] = useState([]);
+  const [roomLevels, setRoomLevels] = useState([]);
+  const [viewedStage, setViewedStage] = useState("");
   const [previewMode, setPreviewMode] = useState(false);
   const [demoRequested, setDemoRequested] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -423,6 +428,25 @@ export default function GameShell() {
   const activeMember = member || (previewMode ? demoMember : null);
   const selfPlayer = useMemo(() => (activeMember ? playerFromMember(activeMember) : null), [activeMember]);
   const isChallengePending = activeMember?.challenge?.status === "pending";
+  const actualStage = activeMember?.stage || "";
+  const activeViewedStage = viewedStage || actualStage;
+  const effectiveRoomLevels = useMemo(() => {
+    const levels = Array.isArray(roomLevels) ? [...roomLevels] : [];
+    if (actualStage && !levels.some((level) => level.stageId === actualStage)) {
+      levels.push({
+        stageId: actualStage,
+        name: activeMember?.stageLabel || stageLabel(actualStage),
+        order: Number.MAX_SAFE_INTEGER
+      });
+    }
+    return levels.sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+  }, [activeMember?.stageLabel, actualStage, roomLevels]);
+  const viewedRoomIndex = effectiveRoomLevels.findIndex((level) => level.stageId === activeViewedStage);
+  const isViewingOtherRoom = Boolean(actualStage && activeViewedStage && activeViewedStage !== actualStage);
+  const canViewPreviousRoom = viewedRoomIndex > 0;
+  const canViewNextRoom = viewedRoomIndex >= 0 && viewedRoomIndex < effectiveRoomLevels.length - 1;
+  const viewedRoomLabel = effectiveRoomLevels.find((level) => level.stageId === activeViewedStage)?.name
+    || stageLabel(activeViewedStage);
 
   const applyMember = useCallback((nextMember) => {
     setMember(nextMember);
@@ -573,9 +597,22 @@ export default function GameShell() {
   }, [applyMember, isAuthed]);
 
   useEffect(() => {
-    if (!isAuthed || !activeMember?.stage) return;
+    if (!actualStage) return;
+    setViewedStage(actualStage);
+  }, [actualStage]);
+
+  useEffect(() => {
+    if (!isAuthed) return;
+    fetch(withBasePath("/api/player/rooms"))
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then(({ levels }) => setRoomLevels(Array.isArray(levels) ? levels : []))
+      .catch(() => {});
+  }, [isAuthed]);
+
+  useEffect(() => {
+    if (!isAuthed || !activeViewedStage) return;
     const controller = new AbortController();
-    const stage = activeMember.stage;
+    const stage = activeViewedStage;
 
     fetch(withBasePath(`/api/player/room?stage=${encodeURIComponent(stage)}`), {
       signal: controller.signal
@@ -597,7 +634,7 @@ export default function GameShell() {
       .catch(() => {});
 
     return () => controller.abort();
-  }, [activeMember?.stage, isAuthed]);
+  }, [activeViewedStage, isAuthed]);
 
   useEffect(() => {
     if (!selfPlayer) return;
@@ -625,6 +662,15 @@ export default function GameShell() {
     socket.on("player:leave", (id) => {
       setPlayers((prev) => prev.filter((player) => player.id !== id));
     });
+    socket.on("room:peek-state", ({ players: roomPlayers = [] } = {}) => {
+      setPlayers((prev) => {
+        const merged = new Map(prev.map((player) => [player.id, player]));
+        for (const player of roomPlayers) {
+          merged.set(player.id, player);
+        }
+        return Array.from(merged.values());
+      });
+    });
     socket.on("timer:sync", (data) => setCycleInfo(data));
     socket.on("npc:visit", (npc) => {
       queueDoorNpc(npc);
@@ -648,6 +694,16 @@ export default function GameShell() {
   }, [previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage]);
 
   useEffect(() => {
+    if (!isViewingOtherRoom || !activeViewedStage) return;
+    const requestRoomSnapshot = () => {
+      socketRef.current?.emit("room:peek", { stage: activeViewedStage });
+    };
+    requestRoomSnapshot();
+    const interval = window.setInterval(requestRoomSnapshot, 3000);
+    return () => window.clearInterval(interval);
+  }, [activeViewedStage, isViewingOtherRoom]);
+
+  useEffect(() => {
     if (!selfPlayer) return;
     setPlayers((prev) => {
       const map = new Map(prev.map((item) => [item.id, item]));
@@ -663,7 +719,7 @@ export default function GameShell() {
 
   const moveSelf = useCallback(
     (x, y) => {
-      if (!activeMember || !selfPlayer) return;
+      if (!activeMember || !selfPlayer || isViewingOtherRoom) return;
       const nextPosition = getWalkablePoint({ x, y });
       if (!nextPosition) return;
       setTarget(nextPosition);
@@ -689,21 +745,22 @@ export default function GameShell() {
         }).catch(() => {});
       }, 240);
     },
-    [activeMember, isAuthed, previewMode, selfPlayer]
+    [activeMember, isAuthed, isViewingOtherRoom, previewMode, selfPlayer]
   );
 
   const handleStageClick = useCallback(
     (event) => {
-      if (!activeMember) return;
+      if (!activeMember || isViewingOtherRoom) return;
       const rect = event.currentTarget.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 100;
       const y = ((event.clientY - rect.top) / rect.height) * 100;
       moveSelf(x, y);
     },
-    [activeMember, moveSelf]
+    [activeMember, isViewingOtherRoom, moveSelf]
   );
 
   const handleChallenge = () => {
+    if (isViewingOtherRoom) return;
     if (!isAuthed) {
       setMessage("Preview mode");
       return;
@@ -945,9 +1002,20 @@ export default function GameShell() {
   }, [applyMember, isAuthed, reward?.id]);
 
   const visiblePlayers = useMemo(() => {
-    if (!activeMember) return [];
-    return players.filter((player) => player.stage === activeMember.stage || !player.stage);
-  }, [activeMember, players]);
+    if (!activeViewedStage) return [];
+    return players.filter((player) => {
+      const isInViewedRoom = player.stage === activeViewedStage || !player.stage;
+      const isBrowsingSelf = isViewingOtherRoom && player.id === selfPlayer?.id;
+      return isInViewedRoom && !isBrowsingSelf;
+    });
+  }, [activeViewedStage, isViewingOtherRoom, players, selfPlayer?.id]);
+
+  const navigateViewedRoom = useCallback((direction) => {
+    const nextRoom = effectiveRoomLevels[viewedRoomIndex + direction];
+    if (!nextRoom) return;
+    setTarget(null);
+    setViewedStage(nextRoom.stageId);
+  }, [effectiveRoomLevels, viewedRoomIndex]);
 
   if (!activeMember) {
     return <LoginScreen authConfigured={Boolean(config?.authConfigured)} authError={authError} />;
@@ -965,7 +1033,7 @@ export default function GameShell() {
             className={`challenge-button ${isChallengePending ? "is-pending" : ""}`}
             type="button"
             onClick={handleChallenge}
-            disabled={isChallengePending}
+            disabled={isChallengePending || isViewingOtherRoom}
           >
             <Zap size={23} fill="currentColor" />
             <span>{isChallengePending ? "Pending..." : "Challenge"}</span>
@@ -984,7 +1052,7 @@ export default function GameShell() {
         </div>
       </section>
 
-      {activeMember?.npcQuest && (
+      {activeMember?.npcQuest && !isViewingOtherRoom && (
         <div className="npc-quest-sidebar">
           <span className="npc-active-quest-label">📜 เควสที่รับไว้</span>
           <span className="npc-active-quest-title">{activeMember.npcQuest.title}</span>
@@ -1078,15 +1146,45 @@ export default function GameShell() {
 
 
 
+      <button
+        className="nav-arrow nav-left"
+        type="button"
+        aria-label="View previous room"
+        disabled={!canViewPreviousRoom}
+        onClick={() => navigateViewedRoom(-1)}
+      >
+        <ChevronLeft size={96} strokeWidth={3} />
+      </button>
+      <button
+        className="nav-arrow nav-right"
+        type="button"
+        aria-label="View next room"
+        disabled={!canViewNextRoom}
+        onClick={() => navigateViewedRoom(1)}
+      >
+        <ChevronRight size={96} strokeWidth={3} />
+      </button>
+      {isViewingOtherRoom && (
+        <div className="room-view-indicator">
+          <span>Viewing room: {viewedRoomLabel}</span>
+          <button type="button" onClick={() => setViewedStage(actualStage)}>
+            Back to my room
+          </button>
+        </div>
+      )}
       <section className="game-stage" onClick={handleStageClick}>
-        <RoomCanvas target={target} onTargetHandled={() => setTarget(null)} />
+        <RoomCanvas target={isViewingOtherRoom ? null : target} onTargetHandled={() => setTarget(null)} />
         <PlayerLayer
           players={visiblePlayers}
-          selfId={selfPlayer?.id}
+          selfId={isViewingOtherRoom ? undefined : selfPlayer?.id}
           onOpenProfile={(player) => handleOpenProfile(player.id, player)}
         />
-        <NpcDoorVisitor key={npcKey} npc={doorNpc} phase={doorNpcPhase} onInteract={handleNpcInteract} />
-        <RoomClock cycleInfo={cycleInfo} />
+        {!isViewingOtherRoom && (
+          <>
+            <NpcDoorVisitor key={npcKey} npc={doorNpc} phase={doorNpcPhase} onInteract={handleNpcInteract} />
+            <RoomClock cycleInfo={cycleInfo} />
+          </>
+        )}
       </section>
       {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayer(null)} />}
       {reward && <RewardModal reward={reward} onClose={handleRewardClose} />}
@@ -1130,6 +1228,13 @@ export default function GameShell() {
         onDone={() => setChallengeAnnouncement(null)}
       />
       {devMode && <DevPanel socketRef={socketRef} cycleInfo={cycleInfo} />}
+      {activeMember?.npcQuest && !isViewingOtherRoom && (
+        <ActiveQuestPanel
+          quest={activeMember.npcQuest}
+          onSubmit={handleNpcQuestSubmit}
+          onCancel={handleNpcQuestCancel}
+        />
+      )}
       {questSuccess && (
         <div className="quest-success-backdrop" onClick={() => setQuestSuccess(null)}>
           <section className="quest-success-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>

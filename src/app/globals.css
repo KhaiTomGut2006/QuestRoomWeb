@@ -757,6 +757,16 @@ button {
   background: transparent;
   color: #171717;
   cursor: pointer;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.nav-arrow:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+
+.nav-arrow:disabled {
+  cursor: default;
+  opacity: 0.16;
 }
 
 .nav-left {
@@ -765,6 +775,35 @@ button {
 
 .nav-right {
   right: 18px;
+}
+
+.room-view-indicator {
+  position: absolute;
+  top: 236px;
+  left: 50%;
+  z-index: 36;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px 9px 16px;
+  border: 2px solid #201c1d;
+  background: rgba(255, 250, 230, 0.96);
+  box-shadow: 0 4px 0 rgba(32, 28, 29, 0.2);
+  color: #201c1d;
+  font-size: 15px;
+  font-weight: 900;
+  transform: translateX(-50%);
+}
+
+.room-view-indicator button {
+  border: 2px solid #201c1d;
+  background: #ffd84d;
+  padding: 6px 10px;
+  color: #201c1d;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .login-screen {
@@ -3643,6 +3682,215 @@ button {
   border-radius: 0 8px 8px 0;
   backdrop-filter: blur(6px);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* ── Active Quest Side Panel ──────────────────────────────────────────── */
+.aqp {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 60;
+  width: 220px;
+  background: linear-gradient(160deg, #1e1a14 0%, #2c2418 100%);
+  border: 2px solid #a07840;
+  border-left: none;
+  border-radius: 0 14px 14px 0;
+  color: #f5ead8;
+  box-shadow: 4px 4px 20px rgba(0,0,0,0.55);
+  overflow: hidden;
+  transition: width 200ms ease;
+}
+.aqp--collapsed {
+  width: 48px;
+}
+
+.aqp-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px 10px 12px;
+  cursor: pointer;
+  background: rgba(160, 120, 64, 0.18);
+  border-bottom: 1px solid rgba(160, 120, 64, 0.3);
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aqp-header-icon { font-size: 18px; flex-shrink: 0; }
+.aqp-header-title { flex: 1; font-size: 12px; font-weight: 700; letter-spacing: 0.3px; overflow: hidden; text-overflow: ellipsis; }
+.aqp-header-chevron { font-size: 10px; color: #a07840; flex-shrink: 0; }
+
+.aqp-body {
+  padding: 10px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.aqp-quest-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #fde68a;
+  line-height: 1.3;
+  margin: 0;
+}
+.aqp-quest-desc {
+  font-size: 11px;
+  color: #d6c9a8;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.aqp-reward-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+.aqp-reward-row img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.aqp-upload-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  background: rgba(255,255,255,0.07);
+  border: 1px dashed rgba(160,120,64,0.6);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 150ms;
+}
+.aqp-upload-label:hover { background: rgba(255,255,255,0.12); }
+.aqp-upload-icon { font-size: 16px; flex-shrink: 0; }
+.aqp-upload-text {
+  font-size: 10px;
+  color: #c8b88a;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.aqp-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #c8b88a;
+}
+.aqp-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: #a07840;
+  border-radius: 99px;
+  transition: width 200ms;
+}
+
+.aqp-error {
+  font-size: 10px;
+  color: #fca5a5;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.aqp-submit-btn {
+  width: 100%;
+  padding: 8px 0;
+  background: linear-gradient(135deg, #a07840 0%, #78560a 100%);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 150ms, transform 100ms;
+}
+.aqp-submit-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+.aqp-submit-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.aqp-cancel-btn {
+  width: 100%;
+  padding: 6px 0;
+  background: transparent;
+  border: 1px solid rgba(239,68,68,0.5);
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms;
+}
+.aqp-cancel-btn:hover:not(:disabled) { background: rgba(239,68,68,0.15); }
+.aqp-cancel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.aqp-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15,12,8,0.88);
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  border-radius: 0 14px 14px 0;
+}
+.aqp-confirm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.aqp-confirm-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fde68a;
+  margin: 0;
+  text-align: center;
+  line-height: 1.4;
+}
+.aqp-confirm-penalty {
+  font-size: 11px;
+  color: #fca5a5;
+  margin: 0;
+  text-align: center;
+}
+.aqp-confirm-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.aqp-confirm-yes {
+  padding: 7px 4px;
+  background: #a07840;
+  border: none;
+  border-radius: 7px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.aqp-confirm-no {
+  padding: 7px 4px;
+  background: transparent;
+  border: 1px solid rgba(160,120,64,0.5);
+  border-radius: 7px;
+  color: #c8b88a;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .aqp {
+    top: auto;
+    bottom: 110px;
+    transform: none;
+    width: 180px;
+    font-size: 11px;
+  }
 }
 
 /* ── Quest Success Popup ──────────────────────────────────────────────── */
