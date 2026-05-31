@@ -38,8 +38,35 @@ async function uploadNpcQuestEvidence(file, playerId, onProgress) {
     onUploadProgress: ({ percentage }) => onProgress?.(percentage)
   };
 
-  const storageResponse = await fetch(`${uploadUrl}?config=1`);
+  const configUrl = `${uploadUrl}?config=1&type=${encodeURIComponent(file.type)}&name=${encodeURIComponent(file.name)}`;
+  const storageResponse = await fetch(configUrl);
   const storageConfig = storageResponse.ok ? await storageResponse.json() : { storage: "gridfs" };
+
+  // ── Cloudflare R2: PUT directly with presigned URL ────────────────────────
+  if (storageConfig.storage === "r2") {
+    const { uploadUrl: presignedUrl, publicUrl, key, headers: extraHeaders } = storageConfig;
+    const xhr = new XMLHttpRequest();
+    await new Promise((resolve, reject) => {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`r2_upload_failed_${xhr.status}`)));
+      xhr.onerror = () => reject(new Error("r2_upload_network_error"));
+      xhr.open("PUT", presignedUrl);
+      Object.entries(extraHeaders || {}).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+      xhr.send(file);
+    });
+    onProgress?.(100);
+    return {
+      url: publicUrl,
+      pathname: `r2/${key}`,
+      contentType: file.type,
+      size: file.size,
+      originalName: file.name,
+    };
+  }
+
+  // ── GridFS: POST multipart to server ─────────────────────────────────────
   if (storageConfig.storage !== "blob") {
     const formData = new FormData();
     formData.append("file", file);
@@ -53,6 +80,7 @@ async function uploadNpcQuestEvidence(file, playerId, onProgress) {
     return data.blob;
   }
 
+  // ── Vercel Blob ───────────────────────────────────────────────────────────
   try {
     const blob = await upload(pathname, file, uploadOptions);
     return {

@@ -1,8 +1,12 @@
 import { Readable } from "node:stream";
+import crypto from "node:crypto";
+import path from "node:path";
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { handleUpload } from "@vercel/blob/client";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 
@@ -23,6 +27,52 @@ function safeSegment(value, fallback = "file") {
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 120) || fallback;
+}
+
+// ── Cloudflare R2 helpers ────────────────────────────────────────────────────
+let _r2Client = null;
+function isR2Configured() {
+  return Boolean(
+    process.env.R2_ACCOUNT_ID &&
+    process.env.R2_ACCESS_KEY_ID &&
+    process.env.R2_SECRET_ACCESS_KEY &&
+    process.env.R2_BUCKET &&
+    process.env.R2_PUBLIC_BASE_URL
+  );
+}
+function getR2Client() {
+  if (_r2Client) return _r2Client;
+  _r2Client = new S3Client({
+    region: "auto",
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    },
+  });
+  return _r2Client;
+}
+function buildR2Key(discordId, fileName) {
+  const ext = path.extname(fileName || "").toLowerCase();
+  const base = safeSegment(path.basename(fileName || "upload", ext), "upload");
+  const safeId = safeSegment(discordId, "player");
+  const stamp = new Date().toISOString().slice(0, 10);
+  const nonce = crypto.randomBytes(6).toString("hex");
+  return `npc-quests/${safeId}/${stamp}/${base}-${nonce}${ext}`;
+}
+function r2PublicUrl(key) {
+  const base = String(process.env.R2_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  return `${base}/${encodeURI(key).replace(/%2F/g, "/")}`;
+}
+async function createR2PresignedUrl(discordId, mimeType, fileName) {
+  const key = buildR2Key(discordId, fileName);
+  const command = new PutObjectCommand({
+    Bucket: process.env.R2_BUCKET,
+    Key: key,
+    ContentType: mimeType || "application/octet-stream",
+  });
+  const uploadUrl = await getSignedUrl(getR2Client(), command, { expiresIn: 900 });
+  return { key, uploadUrl, publicUrl: r2PublicUrl(key) };
 }
 
 function getUploadPrefix(discordId) {
@@ -91,6 +141,25 @@ async function saveGridFsUpload(request, discordId) {
 
 export async function GET(request) {
   if (request.nextUrl.searchParams.get("config") === "1") {
+    if (isR2Configured()) {
+      const discordId = await getDiscordId();
+      if (!discordId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      const mimeType = request.nextUrl.searchParams.get("type") || "application/octet-stream";
+      const fileName = request.nextUrl.searchParams.get("name") || "upload";
+      if (!ALLOWED_CONTENT_TYPES.includes(mimeType)) {
+        return NextResponse.json({ error: "unsupported_file_type" }, { status: 400 });
+      }
+      const { key, uploadUrl, publicUrl } = await createR2PresignedUrl(discordId, mimeType, fileName);
+      return NextResponse.json({
+        storage: "r2",
+        uploadUrl,
+        publicUrl,
+        key,
+        method: "PUT",
+        headers: { "Content-Type": mimeType },
+        maximumSizeInBytes: MAX_UPLOAD_BYTES,
+      });
+    }
     return NextResponse.json({
       storage: process.env.BLOB_READ_WRITE_TOKEN ? "blob" : "gridfs",
       maximumSizeInBytes: MAX_UPLOAD_BYTES

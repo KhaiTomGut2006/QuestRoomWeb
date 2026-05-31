@@ -109,6 +109,7 @@ function normalizeNpcQuestEvidence(discordId, evidence) {
   const isBlobUrl = parsedUrl.protocol === "https:"
     && parsedUrl.hostname.endsWith(".blob.vercel-storage.com")
     && pathname.startsWith(blobPrefix);
+
   const configuredOrigin = process.env.NEXTAUTH_URL
     ? new URL(process.env.NEXTAUTH_URL).origin
     : "";
@@ -117,9 +118,17 @@ function normalizeNpcQuestEvidence(discordId, evidence) {
     && pathname === `gridfs/${safeDiscordId}/${gridFsId}`
     && parsedUrl.pathname.endsWith("/api/player/npc-quest/upload")
     && (!configuredOrigin || parsedUrl.origin === configuredOrigin);
+
+  // Cloudflare R2: pathname is "r2/npc-quests/<discordId>/..."
+  const r2PublicBase = String(process.env.R2_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  const r2PathPrefix = `npc-quests/${safeDiscordId}/`;
+  const isR2Url = r2PublicBase
+    && url.startsWith(`${r2PublicBase}/`)
+    && pathname.startsWith(`r2/${r2PathPrefix}`);
+
   const isAllowedType = contentType.startsWith("image/") || contentType.startsWith("video/");
 
-  if (!isBlobUrl && !isGridFsUrl) throw new Error("invalid_quest_evidence_url");
+  if (!isBlobUrl && !isGridFsUrl && !isR2Url) throw new Error("invalid_quest_evidence_url");
   if (!isAllowedType) throw new Error("invalid_quest_evidence_type");
   if (!size || size > 100 * 1024 * 1024) throw new Error("invalid_quest_evidence_size");
 
