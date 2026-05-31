@@ -333,6 +333,7 @@ export default function GameShell() {
   const [hintResult, setHintResult] = useState(null);
   const [showNoCoins, setShowNoCoins] = useState(false);
   const [noCoinsCost, setNoCoinsCost] = useState(250);
+  const [questSuccess, setQuestSuccess] = useState(null); // { title, reward }
   const [showRanking, setShowRanking] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
@@ -832,6 +833,7 @@ export default function GameShell() {
     setNpcVisit(null);
     setNpcQuestData(null);
     dismissDoorNpc();
+    setQuestSuccess({ title: data.submission?.title || "NPC Quest", reward: data.reward ?? 0 });
   }, [activeMember?.discordId, activeMember?.id, applyMember, dismissDoorNpc, isAuthed]);
 
   const handleNpcCoinsNeeded = useCallback((cost) => {
@@ -1084,6 +1086,25 @@ export default function GameShell() {
         onDone={() => setChallengeAnnouncement(null)}
       />
       {devMode && <DevPanel socketRef={socketRef} cycleInfo={cycleInfo} />}
+      {questSuccess && (
+        <div className="quest-success-backdrop" onClick={() => setQuestSuccess(null)}>
+          <section className="quest-success-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="quest-success-icon">⚔️</div>
+            <p className="quest-success-kicker">QUEST COMPLETE!</p>
+            <h2 className="quest-success-title">เควสสำเร็จ!!</h2>
+            <p className="quest-success-subtitle">{questSuccess.title}</p>
+            <div className="quest-success-reward">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+              <span>+{Number(questSuccess.reward).toLocaleString()}</span>
+              <span className="quest-success-reward-label">Coins</span>
+            </div>
+            <button type="button" className="quest-success-btn" onClick={() => setQuestSuccess(null)}>
+              รับรางวัล!
+            </button>
+          </section>
+        </div>
+      )}
       {showNoCoins && (
         <NoCoinsModal
           cost={noCoinsCost}

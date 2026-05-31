@@ -3524,3 +3524,115 @@ button {
   backdrop-filter: blur(6px);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
 }
+
+/* ── Quest Success Popup ──────────────────────────────────────────────── */
+.quest-success-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(34, 23, 12, 0.62);
+  backdrop-filter: blur(8px);
+}
+
+.quest-success-modal {
+  position: relative;
+  display: grid;
+  width: min(400px, 100%);
+  justify-items: center;
+  gap: 8px;
+  padding: 36px 28px 28px;
+  border: 4px solid #372817;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 219, 82, 0.72), transparent 40%),
+    #fffbe8;
+  text-align: center;
+  box-shadow: 0 16px 0 rgba(50, 36, 24, 0.24);
+  animation: reward-pop 300ms cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+.quest-success-icon {
+  font-size: 52px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(200, 130, 0, 0.4));
+}
+
+.quest-success-kicker {
+  margin: 0;
+  color: #d78316;
+  font-size: 13px;
+  font-weight: 950;
+  letter-spacing: 0.18em;
+}
+
+.quest-success-title {
+  margin: 0;
+  color: #372817;
+  font-size: clamp(26px, 6vw, 36px);
+  font-weight: 950;
+}
+
+.quest-success-subtitle {
+  margin: 0;
+  color: #6d5538;
+  font-size: 14px;
+  font-weight: 700;
+  max-width: 320px;
+  line-height: 1.4;
+}
+
+.quest-success-reward {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+  padding: 10px 24px;
+  border: 2.5px solid #c77a16;
+  background: rgba(255, 219, 82, 0.35);
+}
+
+.quest-success-reward img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.quest-success-reward span:first-of-type {
+  color: #c77a16;
+  font-size: 28px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.quest-success-reward-label {
+  color: #9d7040;
+  font-size: 15px;
+  font-weight: 800;
+  align-self: flex-end;
+  padding-bottom: 2px;
+}
+
+.quest-success-btn {
+  min-width: 180px;
+  height: 50px;
+  margin-top: 10px;
+  border: 3px solid #372817;
+  background: #ffdb52;
+  color: #272018;
+  font-size: 17px;
+  font-weight: 950;
+  box-shadow: inset 0 -6px 0 rgba(255, 124, 76, 0.34);
+  cursor: pointer;
+  transition: filter 0.1s;
+}
+
+.quest-success-btn:hover {
+  filter: brightness(1.06);
+}
+
+.quest-success-btn:active {
+  box-shadow: none;
+  transform: translateY(2px);
+}
