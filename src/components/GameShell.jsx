@@ -13,6 +13,8 @@ import NpcDoorVisitor from "@/components/NpcDoorVisitor";
 import NoCoinsModal from "@/components/NoCoinsModal";
 import RankingModal from "@/components/RankingModal";
 import FriendsModal from "@/components/FriendsModal";
+import ChallengeModal from "@/components/ChallengeModal";
+import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -247,6 +249,8 @@ export default function GameShell() {
   const [noCoinsCost, setNoCoinsCost] = useState(250);
   const [showRanking, setShowRanking] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
+  const [showChallengeModal, setShowChallengeModal] = useState(false);
+  const [challengeAnnouncement, setChallengeAnnouncement] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.5);
@@ -529,6 +533,9 @@ export default function GameShell() {
       queueDoorNpc(npc);
       setNpcVisit(null);
     });
+    socket.on("challenge:announce", (data) => {
+      setChallengeAnnouncement(data);
+    });
     socket.on("connect", () => {
       socket.emit("player:join", selfPlayer);
     });
@@ -599,13 +606,17 @@ export default function GameShell() {
     [activeMember, moveSelf]
   );
 
-  const handleChallenge = async () => {
+  const handleChallenge = () => {
     if (!isAuthed) {
       setMessage("Preview mode");
       return;
     }
-
     if (isChallengePending) return;
+    setShowChallengeModal(true);
+  };
+
+  const handleChallengeConfirm = async () => {
+    setShowChallengeModal(false);
     setMessage("Pedding...");
     const response = await fetch(withBasePath("/api/player/challenge"), { method: "POST" });
     const data = await response.json();
@@ -619,6 +630,9 @@ export default function GameShell() {
     }
     applyMember(data.member);
     setMessage("ให้น้องไปเรียกพี่ประจำห้องได้เลย");
+    socketRef.current?.emit("challenge:announce", {
+      stageName: activeMember?.stageLabel || activeMember?.stage || "",
+    });
   };
   // Fetch quest template when a quest-type NPC visits
   useEffect(() => {
@@ -968,6 +982,17 @@ export default function GameShell() {
           onClose={handleNpcQuestClose}
         />
       )}
+      {showChallengeModal && (
+        <ChallengeModal
+          member={activeMember}
+          onConfirm={handleChallengeConfirm}
+          onCancel={() => setShowChallengeModal(false)}
+        />
+      )}
+      <ChallengeAnnouncement
+        announcement={challengeAnnouncement}
+        onDone={() => setChallengeAnnouncement(null)}
+      />
       {devMode && <DevPanel socketRef={socketRef} cycleInfo={cycleInfo} />}
       {showNoCoins && (
         <NoCoinsModal

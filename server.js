@@ -280,7 +280,17 @@ app.prepare().then(() => {
     socket.on("player:balance", (payload = {}) => {
       socketPlayerCoins.set(socket.id, Math.max(0, Number(payload.coins) || 0));
     });
-    // ─────────────────────────────────────────────────────────────
+    // ─── Challenge broadcast ──────────────────────────────────────────
+    socket.on("challenge:announce", (payload = {}) => {
+      if (!activeStage || !activePlayerId) return;
+      const room = getRoom(activeStage);
+      const player = room.get(activePlayerId);
+      if (!player) return;
+      io.to(activeStage).emit("challenge:announce", {
+        playerName: player.name || "Player",
+        stageName: String(payload.stageName || activeStage).slice(0, 64),
+      });
+    });    // ─────────────────────────────────────────────────────────────
 
     // ─── Dev controls ────────────────────────────────────────────
     socket.on("dev:trigger", (payload = {}) => {
