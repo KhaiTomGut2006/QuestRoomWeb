@@ -820,13 +820,12 @@ export default function GameShell() {
   }, [applyMember, isAuthed, npcQuestData, npcVisit]);
 
   const handleQuestScrollBought = useCallback((assignedQuest, updatedMember) => {
+    // Quest is assigned directly to the player — no quest NPC spawned at the door.
+    // The shop NPC (Milt) stays until the quest is completed or cancelled.
     applyMember(updatedMember);
     activeNpcQuestRef.current = assignedQuest;
-    const questNpc = npcFromActiveQuest(assignedQuest);
-    doorNpcRef.current = questNpc;
-    setDoorNpc(questNpc);
-    setDoorNpcPhase("idle");
     socketRef.current?.emit("quest:active", true);
+    // Close the modal but keep the door NPC visible
     setNpcVisit(null);
     setNpcQuestData(null);
   }, [applyMember]);

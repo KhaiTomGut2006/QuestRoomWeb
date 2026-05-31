@@ -262,10 +262,22 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
   const hasLimitBreak  = memberShop?.limitBreak ?? false;
   const hasActiveQuest = memberShop?.hasActiveQuest ?? false;
 
+  // Hide limit-break and cooldown-lv2 entirely until prerequisites are met
+  const visibleOffers = offers.filter((itemId) => {
+    if (itemId === "limit-break" && t1Count < 10) return false;
+    if (itemId === "cooldown-minute-lv2" && !hasLimitBreak) return false;
+    return true;
+  });
+
   return (
-    <InteractDialog npcId="milt" npcName="Milt" intro="มีของน่าสนใจมาให้เลือก">
+    <InteractDialog npcId="milt" npcName="Milt" intro={hasActiveQuest ? "เควสยังไม่เสร็จนะ! ฉันจะรออยู่ตรงนี้" : "มีของน่าสนใจมาให้เลือก"}>
+      {hasActiveQuest && (
+        <p className="npc-shop-active-quest-notice">
+          ⚔️ มีเควสค้างอยู่ — Quest scroll ถูกล็อกจนกว่าจะเคลียร์หรือยกเลิกเควส
+        </p>
+      )}
       <div className="npc-shop-list">
-        {offers.map((itemId) => {
+        {visibleOffers.map((itemId) => {
           const item = SHOP_ITEMS[itemId];
           if (!item) return null;
           const status      = getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, hasActiveQuest);
