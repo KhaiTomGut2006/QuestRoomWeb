@@ -260,7 +260,7 @@ export default function GameShell() {
   useEffect(() => {
     const audio = new Audio(withBasePath("/assets/bgmusic.mp3"));
     audio.loop = true;
-    audio.volume = 0.5;
+    audio.volume = 0.25; // 0.5 (default volume state) * 0.5 scale
     audioRef.current = audio;
 
     const startPlay = () => {
@@ -307,7 +307,7 @@ export default function GameShell() {
     if (!audioRef.current) return;
     const nextVol = parseFloat(e.target.value);
     setVolume(nextVol);
-    audioRef.current.volume = nextVol;
+    audioRef.current.volume = nextVol * 0.5; // Scale actual played volume by 50%
     if (nextVol > 0) {
       setIsMuted(false);
       audioRef.current.muted = false;
