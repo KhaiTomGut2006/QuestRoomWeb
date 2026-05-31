@@ -207,6 +207,7 @@ export function normalizeMember(member) {
     shopCooldownT1: member.shopCooldownT1 || 0,
     shopCooldownT2: member.shopCooldownT2 || 0,
     shopLimitBreak: Boolean(member.shopLimitBreak),
+    shopAssetTickets: member.shopAssetTickets || 0,
   };
 }
 

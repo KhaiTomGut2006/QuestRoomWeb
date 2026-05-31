@@ -4,9 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import { normalizeMember } from "@/lib/player";
-
-const MIN_CHEST_COINS = 20;
-const MAX_CHEST_COINS = 200;
+import { openChestReward } from "@/lib/shop";
 
 export async function POST() {
   const session = await getServerSession(authOptions);
@@ -15,15 +13,11 @@ export async function POST() {
 
   try {
     await connectDb();
-    const coins = Math.floor(Math.random() * (MAX_CHEST_COINS - MIN_CHEST_COINS + 1)) + MIN_CHEST_COINS;
-    const member = await Member.findOneAndUpdate(
-      { discord_id: String(discordId) },
-      [{ $set: { coin: { $toString: { $add: [{ $toInt: { $ifNull: ["$coin", "0"] } }, coins] } } } }],
-      { new: true }
-    );
-
+    const member = await Member.findOne({ discord_id: String(discordId) });
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
-    return NextResponse.json({ coins, member: normalizeMember(member) });
+    const reward = await openChestReward(member);
+    await member.save({ validateModifiedOnly: true });
+    return NextResponse.json({ reward, member: normalizeMember(member) });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503 });
   }

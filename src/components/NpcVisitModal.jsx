@@ -28,6 +28,12 @@ const TYPE_META = {
 };
 
 const SHOP_ITEMS = {
+  "asset-ticket": {
+    name: "Select 1 Asset on HamStore",
+    description: "Ticket can be stacked and exchanged for 1 asset on HamStore",
+    cost: 500,
+    image: "AssetTicket.png",
+  },
   "quest-scroll-normal": {
     name: "Quest (Normal)",
     description: "รับเควสระดับ Easy ทันที",
@@ -51,7 +57,7 @@ const SHOP_ITEMS = {
   },
   "chest-small": {
     name: "Chests (x10-100 Coins)",
-    description: "เปิดหีบสุ่มรับ 10-100 Coins",
+    description: "เปิดหีบสุ่มรับ Coin หรือไอเท็มจาก Shop",
     cost: 50,
     image: "chest_close.png",
     imageFolder: "NPC",
@@ -59,7 +65,7 @@ const SHOP_ITEMS = {
   },
   "chest-medium": {
     name: "Chests (x50-200 Coins)",
-    description: "เปิดหีบสุ่มรับ 50-200 Coins",
+    description: "เปิดหีบสุ่มรับ Coin หรือไอเท็มจาก Shop",
     cost: 100,
     image: "chest_close.png",
     imageFolder: "NPC",
@@ -67,7 +73,7 @@ const SHOP_ITEMS = {
   },
   "chest-large": {
     name: "Chests (x200-500 Coins)",
-    description: "เปิดหีบสุ่มรับ 200-500 Coins",
+    description: "เปิดหีบสุ่มรับ Coin หรือไอเท็มจาก Shop",
     cost: 350,
     image: "chest_close.png",
     imageFolder: "NPC",
@@ -94,6 +100,7 @@ const SHOP_ITEMS = {
 };
 
 const DEFAULT_SHOP_OFFERS = [
+  "asset-ticket",
   "quest-scroll-normal", "quest-scroll-rare", "quest-scroll-epic",
   "chest-small", "chest-medium", "chest-large",
   "cooldown-minute", "cooldown-minute-lv2", "limit-break",
@@ -206,19 +213,26 @@ function HintsDialog({ hintsData, hintResult, hintBought, onHintBuy, onClose }) 
   );
 }
 
+function getChestRewardText(result) {
+  if (!result) return "";
+  if (result.kind === "coins") return `+${Number(result.coins || 0).toLocaleString()} Coins`;
+  if (result.itemId === "asset-ticket") return `${result.itemName} x1`;
+  return result.itemName || result.itemId || "Shop item";
+}
+
 function ChestDialog({ result, loading, onClaim, onClose }) {
   return (
     <InteractDialog npcId="chest" npcName="Treasure Chest" intro="หีบสมบัติลึกลับมาหยุดอยู่หน้าประตู">
       {result ? (
         <>
           <div className="npc-interact-result npc-interact-result--win">
-            คุณได้รับ +{result.coins.toLocaleString()} Coins
+            คุณได้รับ {getChestRewardText(result)}
           </div>
           <button className="npc-quest-decline-btn" type="button" onClick={onClose}>เก็บสมบัติ</button>
         </>
       ) : (
         <>
-          <p className="npc-quest-text">เปิดหีบเพื่อลุ้นรับ 20-200 Coins</p>
+          <p className="npc-quest-text">เปิดหีบเพื่อลุ้นรับ Coin หรือไอเท็มจาก Shop</p>
           <button className="npc-quest-accept-btn" type="button" onClick={onClaim} disabled={loading}>
             {loading ? "กำลังเปิดหีบ..." : "เปิดหีบสมบัติ"}
           </button>
@@ -261,6 +275,7 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
   const t2Count        = memberShop?.cooldownT2 ?? 0;
   const hasLimitBreak  = memberShop?.limitBreak ?? false;
   const hasActiveQuest = memberShop?.hasActiveQuest ?? false;
+  const assetTickets   = memberShop?.assetTickets ?? 0;
 
   // Hide limit-break and cooldown-lv2 entirely until prerequisites are met
   const visibleOffers = offers.filter((itemId) => {
@@ -314,6 +329,9 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
                 )}
                 {itemId === "cooldown-minute-lv2" && hasLimitBreak && !isBought && (
                   <small className="npc-shop-item-counter">{t2Count} / 10</small>
+                )}
+                {itemId === "asset-ticket" && !isBought && (
+                  <small className="npc-shop-item-counter">Owned: {assetTickets}</small>
                 )}
               </span>
               <span className="npc-shop-price">
@@ -542,7 +560,9 @@ export default function NpcVisitModal({
       const data = await response.json();
       if (!response.ok) return;
       onMemberUpdate?.(data.member);
-      onChestClaim?.(data.coins ?? 0, { dismissNpc: true });
+      onCooldownReduction?.(data.reward?.cooldownReductionMs);
+      if (data.reward?.assignedQuest) onQuestScrollBought?.(data.reward.assignedQuest, data.member);
+      onChestClaim?.(data.reward, { dismissNpc: true });
       onClose?.();
     } finally {
       setClaimingChest(false);
@@ -570,9 +590,11 @@ export default function NpcVisitModal({
       if (data.assignedQuest) {
         onQuestScrollBought?.(data.assignedQuest, data.member);
         purchaseMsg = "รับเควสแล้ว!";
-      } else if (data.chestCoins > 0) {
-        onChestClaim?.(data.chestCoins, { dismissNpc: false });
-        purchaseMsg = `+${data.chestCoins.toLocaleString()} Coins!`;
+      } else if (data.chestReward) {
+        onChestClaim?.(data.chestReward, { dismissNpc: false });
+        purchaseMsg = `${getChestRewardText(data.chestReward)}!`;
+      } else if (itemId === "asset-ticket") {
+        purchaseMsg = `Ticket x${Number(data.member?.shopAssetTickets || 0).toLocaleString()}`;
       }
       // Mark as bought — shop stays open, item becomes unavailable for this visit
       onShopPurchase?.(itemId, purchaseMsg);

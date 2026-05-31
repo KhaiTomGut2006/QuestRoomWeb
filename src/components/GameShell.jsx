@@ -112,6 +112,7 @@ const demoMember = {
   avatar: "",
   stage: "game-demo-1",
   coins: 1080,
+  shopAssetTickets: 0,
   quest: {
     current: "Find the quiet corner",
     status: "active",
@@ -174,6 +175,14 @@ function stageLabel(stage) {
   const stageNumber = Number.parseInt(String(stage || "game-demo-1").split("-").pop(), 10) || 1;
   const numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
   return `Game Demo - ${numerals[stageNumber - 1] || stageNumber}`;
+}
+
+function getChestRewardIcon(reward) {
+  if (!reward || reward.kind === "coins") return "/assets/Coin.png";
+  if (reward.itemId === "asset-ticket") return "/assets/Item/AssetTicket.png";
+  if (String(reward.itemId || "").startsWith("quest-scroll-")) return "/assets/Item/quest.png";
+  if (String(reward.itemId || "").startsWith("cooldown-minute")) return "/assets/Item/Cooldown.png";
+  return "/assets/Coin.png";
 }
 
 function playerFromMember(member) {
@@ -953,9 +962,9 @@ export default function GameShell() {
     setQuestSuccess({ title: data.submission?.title || "NPC Quest", reward: data.reward ?? 0 });
   }, [activeMember?.discordId, activeMember?.id, activeMember?.npcQuest?.source, applyMember, dismissDoorNpc, isAuthed]);
 
-  const handleChestClaim = useCallback((coins, { dismissNpc = true } = {}) => {
+  const handleChestClaim = useCallback((chestReward, { dismissNpc = true } = {}) => {
     if (dismissNpc) dismissDoorNpc();
-    setQuestSuccess({ title: "หีบสมบัติ", reward: coins, isChest: true });
+    setQuestSuccess({ title: "หีบสมบัติ", chestReward, isChest: true });
   }, [dismissDoorNpc]);
 
   const handleNpcCoinsNeeded = useCallback((cost) => {
@@ -1116,6 +1125,11 @@ export default function GameShell() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={withBasePath("/assets/Coin.png")} alt="coin" />
           </div>
+          <div className="ticket-pill" title="Select 1 Asset on HamStore tickets">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={withBasePath("/assets/Item/AssetTicket.png")} alt="asset ticket" />
+            <span>x{Number(activeMember?.shopAssetTickets || 0).toLocaleString()}</span>
+          </div>
           <div className="profile-action">
             <button
               className="circle-button global"
@@ -1259,6 +1273,7 @@ export default function GameShell() {
             cooldownT1: activeMember.shopCooldownT1 || 0,
             cooldownT2: activeMember.shopCooldownT2 || 0,
             limitBreak: activeMember.shopLimitBreak || false,
+            assetTickets: activeMember.shopAssetTickets || 0,
             hasActiveQuest: Boolean(activeMember.npcQuest),
           } : null}
           shopPurchases={shopPurchases}
@@ -1292,9 +1307,22 @@ export default function GameShell() {
             <p className="quest-success-subtitle">{questSuccess.title}</p>
             <div className="quest-success-reward">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withBasePath("/assets/Coin.png")} alt="coin" />
-              <span>+{Number(questSuccess.reward).toLocaleString()}</span>
-              <span className="quest-success-reward-label">Coins</span>
+              <img
+                src={withBasePath(questSuccess.isChest ? getChestRewardIcon(questSuccess.chestReward) : "/assets/Coin.png")}
+                alt={questSuccess.isChest && questSuccess.chestReward?.kind === "item" ? "item" : "coin"}
+              />
+              <span>
+                {questSuccess.isChest
+                  ? questSuccess.chestReward?.kind === "coins"
+                    ? `+${Number(questSuccess.chestReward.coins || 0).toLocaleString()}`
+                    : questSuccess.chestReward?.itemName || "Shop item"
+                  : `+${Number(questSuccess.reward).toLocaleString()}`}
+              </span>
+              <span className="quest-success-reward-label">
+                {questSuccess.isChest && questSuccess.chestReward?.kind === "item"
+                  ? questSuccess.chestReward.itemId === "asset-ticket" ? "Ticket x1" : "Shop item"
+                  : "Coins"}
+              </span>
             </div>
             <button type="button" className="quest-success-btn" onClick={() => setQuestSuccess(null)}>
               {questSuccess.isChest ? "เก็บสมบัติ!" : "รับรางวัล!"}

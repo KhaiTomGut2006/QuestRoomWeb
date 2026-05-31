@@ -208,6 +208,7 @@ const MemberSchema = new mongoose.Schema(
     shopCooldownT1: { type: Number, default: 0 },
     shopCooldownT2: { type: Number, default: 0 },
     shopLimitBreak: { type: Boolean, default: false },
+    shopAssetTickets: { type: Number, default: 0 },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
