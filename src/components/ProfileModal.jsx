@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeftRight, Gamepad2, MessageSquare, X } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 
@@ -35,18 +35,52 @@ function Badge({ achievement }) {
   );
 }
 
-export default function ProfileModal({ player, onClose }) {
+export default function ProfileModal({ player, selfId, onClose, onTrade }) {
+  const [showTrade, setShowTrade] = useState(false);
+  const [tradeAmount, setTradeAmount] = useState("");
+  const [tradeError, setTradeError] = useState("");
+  const [tradeSuccess, setTradeSuccess] = useState("");
+  const [transferring, setTransferring] = useState(false);
+
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      if (showTrade) {
+        setShowTrade(false);
+        return;
+      }
+      onClose();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, showTrade]);
 
   if (!player) return null;
 
   const achievements = Array.isArray(player.achievements) ? player.achievements : [];
+  const isSelf = player.id === selfId;
+
+  const handleTradeSubmit = async (event) => {
+    event.preventDefault();
+    if (!onTrade || transferring) return;
+    setTransferring(true);
+    setTradeError("");
+    setTradeSuccess("");
+    try {
+      const result = await onTrade(player.id, Number(tradeAmount));
+      setTradeSuccess(`ส่ง ${Number(result.amount).toLocaleString()} Coins ให้ ${player.name} แล้ว`);
+      setTradeAmount("");
+    } catch (error) {
+      setTradeError(error.message || "ส่ง Coin ไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const handleOpenDiscord = () => {
+    if (!player.id) return;
+    window.open(`https://discord.com/users/${encodeURIComponent(player.id)}`, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <div
@@ -95,15 +129,43 @@ export default function ProfileModal({ player, onClose }) {
         </div>
 
         <div className="profile-modal-actions">
-          <button type="button" disabled title="Coming soon">
+          <button type="button" disabled={isSelf} title={isSelf ? "ไม่สามารถส่ง Coin ให้ตัวเองได้" : "ส่ง Coin ให้เพื่อน"} onClick={() => setShowTrade(true)}>
             <ArrowLeftRight size={24} strokeWidth={3} />
             <span>Trade</span>
           </button>
-          <button type="button" disabled title="Coming soon">
+          <button type="button" disabled={isSelf} title={isSelf ? "นี่คือโปรไฟล์ของคุณ" : "เปิด Discord DM"} onClick={handleOpenDiscord}>
             <MessageSquare size={24} strokeWidth={3} />
             <span>Chat</span>
           </button>
         </div>
+
+        {showTrade && (
+          <div className="profile-trade-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setShowTrade(false)}>
+            <form className="profile-trade-card" onSubmit={handleTradeSubmit}>
+              <h3>ส่ง Coin ให้ {player.name}</h3>
+              <p>ระบุจำนวน Coin ที่ต้องการแจกให้เพื่อน</p>
+              <input
+                type="number"
+                min="1"
+                max="1000000"
+                step="1"
+                inputMode="numeric"
+                value={tradeAmount}
+                onChange={(event) => setTradeAmount(event.target.value)}
+                placeholder="จำนวน Coin"
+                autoFocus
+              />
+              {tradeError && <p className="profile-trade-error">{tradeError}</p>}
+              {tradeSuccess && <p className="profile-trade-success">{tradeSuccess}</p>}
+              <div className="profile-trade-actions">
+                <button type="button" onClick={() => setShowTrade(false)}>ยกเลิก</button>
+                <button type="submit" disabled={transferring || !tradeAmount}>
+                  {transferring ? "กำลังส่ง..." : "ส่ง Coin"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </section>
     </div>
   );

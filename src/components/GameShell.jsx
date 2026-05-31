@@ -544,6 +544,27 @@ export default function GameShell() {
       });
   }, [players]);
 
+  const handleTradeCoins = useCallback(async (recipientId, amount) => {
+    const response = await fetch(withBasePath("/api/player/trade"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipientId, amount })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      const message = {
+        invalid_trade_amount: "กรุณาระบุจำนวน Coin ตั้งแต่ 1 ถึง 1,000,000",
+        cannot_trade_self: "ไม่สามารถส่ง Coin ให้ตัวเองได้",
+        recipient_not_found: "ไม่พบเพื่อนคนนี้ในระบบ",
+        player_not_found: "ไม่พบข้อมูลผู้เล่น",
+        not_enough_coins: "Coin ของคุณไม่เพียงพอ"
+      }[data.error] || "ส่ง Coin ไม่สำเร็จ กรุณาลองใหม่";
+      throw new Error(message);
+    }
+    applyMember(data.member);
+    return data;
+  }, [applyMember]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const wantsDemo = params.get("demo") === "1";
@@ -1210,7 +1231,14 @@ export default function GameShell() {
           </>
         )}
       </section>
-      {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayer(null)} />}
+      {profilePlayer && (
+        <ProfileModal
+          player={profilePlayer}
+          selfId={selfPlayer?.id}
+          onClose={() => setProfilePlayer(null)}
+          onTrade={handleTradeCoins}
+        />
+      )}
       {reward && <RewardModal reward={reward} onClose={handleRewardClose} />}
       {npcVisit && (
         <NpcVisitModal

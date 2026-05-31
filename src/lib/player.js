@@ -352,6 +352,71 @@ export async function updateMemberPosition(discordId, position) {
   return member ? normalizeMember(member) : null;
 }
 
+export async function transferCoins(senderDiscordId, recipientDiscordId, amount) {
+  await connectDb();
+  await ensureLevels();
+
+  const senderId = String(senderDiscordId || "");
+  const recipientId = String(recipientDiscordId || "");
+  const coinAmount = Number(amount);
+  if (!Number.isInteger(coinAmount) || coinAmount < 1 || coinAmount > 1_000_000) {
+    throw new Error("invalid_trade_amount");
+  }
+  if (!senderId || !recipientId) throw new Error("player_not_found");
+  if (senderId === recipientId) throw new Error("cannot_trade_self");
+
+  const recipientExists = await Member.exists({ discord_id: recipientId });
+  if (!recipientExists) throw new Error("recipient_not_found");
+
+  const coinValue = {
+    $convert: {
+      input: { $ifNull: ["$coin", "0"] },
+      to: "int",
+      onError: 0,
+      onNull: 0
+    }
+  };
+
+  const sender = await Member.findOneAndUpdate(
+    {
+      discord_id: senderId,
+      $expr: { $gte: [coinValue, coinAmount] }
+    },
+    [{ $set: { coin: { $toString: { $subtract: [coinValue, coinAmount] } } } }],
+    { new: true }
+  );
+
+  if (!sender) {
+    const senderExists = await Member.exists({ discord_id: senderId });
+    if (!senderExists) throw new Error("player_not_found");
+    throw new Error("not_enough_coins");
+  }
+
+  try {
+    const recipient = await Member.findOneAndUpdate(
+      { discord_id: recipientId },
+      [{ $set: { coin: { $toString: { $add: [coinValue, coinAmount] } } } }],
+      { new: true }
+    );
+    if (!recipient) throw new Error("recipient_not_found");
+
+    return {
+      amount: coinAmount,
+      member: normalizeMember(sender),
+      recipient: {
+        id: recipient.discord_id || "",
+        name: normalizeMember(recipient).name
+      }
+    };
+  } catch (error) {
+    await Member.updateOne(
+      { discord_id: senderId },
+      [{ $set: { coin: { $toString: { $add: [coinValue, coinAmount] } } } }]
+    );
+    throw error;
+  }
+}
+
 export async function requestChallenge(discordId) {
   await connectDb();
   await ensureLevels();

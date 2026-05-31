@@ -604,7 +604,92 @@ button {
   font-size: 21px;
   font-weight: 950;
   box-shadow: inset 0 -8px 0 rgba(255, 124, 76, 0.34);
-  opacity: 0.66;
+  cursor: pointer;
+}
+
+.profile-modal-actions button:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.profile-modal-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.profile-trade-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(37, 27, 17, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.profile-trade-card {
+  display: grid;
+  width: min(390px, 100%);
+  gap: 14px;
+  padding: 26px;
+  border: 3px solid #1f1d1c;
+  background: #fffdf8;
+  box-shadow: 0 9px 0 rgba(50, 36, 24, 0.2);
+}
+
+.profile-trade-card h3 {
+  color: #201f1d;
+  font-size: 23px;
+}
+
+.profile-trade-card p {
+  color: #776b5d;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.profile-trade-card input {
+  width: 100%;
+  padding: 12px;
+  border: 3px solid #2b2825;
+  background: #fff;
+  color: #201f1d;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.profile-trade-error {
+  color: #d60000 !important;
+}
+
+.profile-trade-success {
+  color: #248857 !important;
+}
+
+.profile-trade-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-trade-actions button {
+  min-height: 48px;
+  border: 3px solid #2b2825;
+  background: #fff;
+  color: #201f1d;
+  cursor: pointer;
+  font-weight: 950;
+}
+
+.profile-trade-actions button[type="submit"] {
+  background: #ffdb52;
+  box-shadow: inset 0 -6px 0 rgba(255, 124, 76, 0.34);
+}
+
+.profile-trade-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .reward-modal-backdrop {
