@@ -3,6 +3,7 @@ const os = require("node:os");
 const { loadEnvConfig } = require("@next/env");
 const next = require("next");
 const { Server } = require("socket.io");
+const mongoose = require("mongoose");
 
 loadEnvConfig(process.cwd());
 
@@ -13,6 +14,8 @@ const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 const basePath = rawBasePath ? `/${rawBasePath.replace(/^\/+|\/+$/g, "")}` : "";
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
+const mongoUri = process.env.MONGODB_URI;
+const mongoDbName = process.env.MONGODB_DB || undefined;
 
 const rooms = new Map();
 const playerStages = new Map();   // playerId → current stage (cross-socket tracking)
@@ -74,6 +77,43 @@ function clearPersonalTimer(socketId) {
   const state = socketPersonalTimer.get(socketId);
   if (state?.timerId) clearTimeout(state.timerId);
   socketPersonalTimer.delete(socketId);
+}
+
+async function getMembersCollection() {
+  if (!mongoUri) throw new Error("MONGODB_URI is not configured");
+  if (mongoose.connection.readyState !== 1) {
+    await mongoose.connect(mongoUri, {
+      bufferCommands: false,
+      dbName: mongoDbName
+    });
+  }
+  return mongoose.connection.collection("members");
+}
+
+async function getPersistedNpcCycle(playerId) {
+  const members = await getMembersCollection();
+  return members.findOne(
+    { discord_id: String(playerId || "") },
+    { projection: { npcCycle: 1 } }
+  );
+}
+
+async function setPersistedNpcCycle(playerId, npcCycle) {
+  if (!playerId) return;
+  const members = await getMembersCollection();
+  await members.updateOne(
+    { discord_id: String(playerId) },
+    { $set: { npcCycle } }
+  );
+}
+
+async function setPersistedPendingNpc(playerId, pendingNpc) {
+  if (!playerId) return;
+  const members = await getMembersCollection();
+  await members.updateOne(
+    { discord_id: String(playerId) },
+    { $set: { "npcCycle.pendingNpc": pendingNpc || null } }
+  );
 }
 
 let cycleStartedAt = Date.now(); // kept for legacy compat, not used for per-socket logic
@@ -215,12 +255,160 @@ app.prepare().then(() => {
     socketFrozenMs.delete(socket.id);
     schedulePersonalCycle(socket, remaining !== undefined ? remaining : effectiveCycleMs(socket.id));
   }
+
+  function currentPersistedCycleDurationMs(socketId) {
+    return Math.max(1000, Math.floor(effectiveCycleMs(socketId) / cycleSpeedMultiplier));
+  }
+
+  function emitPersistedRunningTimer(socket, deadlineMs, durationMs) {
+    const remainingMs = Math.max(0, deadlineMs - Date.now());
+    socket.emit("timer:sync", {
+      cycleStartedAt: Date.now() - Math.max(0, durationMs - remainingMs),
+      cycleDurationMs: durationMs,
+      frozen: false
+    });
+  }
+
+  function emitPersistedFrozenTimer(socket, durationMs, frozenRemainingMs) {
+    const remainingMs = Math.max(0, Number(frozenRemainingMs) || 0);
+    socket.emit("timer:sync", {
+      cycleStartedAt: Date.now() - Math.max(0, durationMs - remainingMs),
+      cycleDurationMs: durationMs,
+      frozen: true,
+      frozenRemainingMs: remainingMs
+    });
+  }
+
+  function armPersistedCycle(socket, npcCycle) {
+    clearPersonalTimer(socket.id);
+    const durationMs = Math.max(1000, Number(npcCycle?.durationMs) || currentPersistedCycleDurationMs(socket.id));
+    const deadlineMs = new Date(npcCycle?.nextResetAt || Date.now() + durationMs).getTime();
+    const remainingMs = Math.max(1000, deadlineMs - Date.now());
+    const timerId = setTimeout(() => {
+      void handlePersistedCycleElapsed(socket).catch((error) => {
+        console.error("Failed to advance NPC cycle:", error.message);
+      });
+    }, remainingMs);
+    socketPersonalTimer.set(socket.id, {
+      timerId,
+      deadlineMs,
+      durationMs,
+      pendingNpc: npcCycle?.pendingNpc || null
+    });
+    emitPersistedRunningTimer(socket, deadlineMs, durationMs);
+  }
+
+  async function schedulePersistedCycle(socket, remainingMs, pendingNpc = null) {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
+    const durationMs = currentPersistedCycleDurationMs(socket.id);
+    const waitMs = Math.max(1000, Number.isFinite(Number(remainingMs)) ? Number(remainingMs) : durationMs);
+    const npcCycle = {
+      nextResetAt: new Date(Date.now() + waitMs),
+      durationMs,
+      pendingNpc: pendingNpc || null,
+      frozenRemainingMs: null
+    };
+    await setPersistedNpcCycle(playerId, npcCycle);
+    armPersistedCycle(socket, npcCycle);
+  }
+
+  async function freezePersistedCycle(socket, remainingMs = 1000) {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
+    const state = socketPersonalTimer.get(socket.id);
+    clearPersonalTimer(socket.id);
+    const durationMs = state?.durationMs || currentPersistedCycleDurationMs(socket.id);
+    const frozenRemainingMs = Math.max(0, Number(remainingMs) || 0);
+    socketFrozenMs.set(socket.id, frozenRemainingMs);
+    await setPersistedNpcCycle(playerId, {
+      nextResetAt: null,
+      durationMs,
+      pendingNpc: state?.pendingNpc || null,
+      frozenRemainingMs
+    });
+    emitPersistedFrozenTimer(socket, durationMs, frozenRemainingMs);
+  }
+
+  async function resumePersistedCycle(socket) {
+    const remainingMs = socketFrozenMs.get(socket.id);
+    socketFrozenMs.delete(socket.id);
+    await schedulePersistedCycle(
+      socket,
+      remainingMs !== undefined ? remainingMs : currentPersistedCycleDurationMs(socket.id)
+    );
+  }
+
+  async function handlePersistedCycleElapsed(socket) {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
+    socketPersonalTimer.delete(socket.id);
+    if (playerNpcQuest.get(playerId)) {
+      await freezePersistedCycle(socket, 1000);
+      return;
+    }
+
+    const npc = enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id));
+    socket.emit("npc:visit", npc);
+    await schedulePersistedCycle(socket, undefined, npc);
+  }
+
+  async function restorePersistedCycle(socket) {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
+    const persisted = await getPersistedNpcCycle(playerId);
+    const storedCycle = persisted?.npcCycle || null;
+    const durationMs = Math.max(1000, Number(storedCycle?.durationMs) || currentPersistedCycleDurationMs(socket.id));
+    const frozenRemainingMs = storedCycle?.frozenRemainingMs;
+
+    if (frozenRemainingMs !== null && frozenRemainingMs !== undefined) {
+      if (playerNpcQuest.get(playerId)) {
+        socketFrozenMs.set(socket.id, Number(frozenRemainingMs) || 0);
+        emitPersistedFrozenTimer(socket, durationMs, frozenRemainingMs);
+        return;
+      }
+      socketFrozenMs.set(socket.id, Number(frozenRemainingMs) || 0);
+      await resumePersistedCycle(socket);
+      return;
+    }
+
+    if (!storedCycle?.nextResetAt) {
+      const randomRemainingMs = Math.max(1000, Math.floor(Math.random() * currentPersistedCycleDurationMs(socket.id)));
+      await schedulePersistedCycle(socket, randomRemainingMs);
+      return;
+    }
+
+    let deadlineMs = new Date(storedCycle.nextResetAt).getTime();
+    if (deadlineMs <= Date.now()) {
+      if (playerNpcQuest.get(playerId)) {
+        socketPersonalTimer.set(socket.id, {
+          durationMs,
+          pendingNpc: storedCycle.pendingNpc || null
+        });
+        await freezePersistedCycle(socket, 1000);
+        return;
+      }
+
+      const npc = enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id));
+      while (deadlineMs <= Date.now()) deadlineMs += durationMs;
+      const nextCycle = {
+        nextResetAt: new Date(deadlineMs),
+        durationMs,
+        pendingNpc: npc,
+        frozenRemainingMs: null
+      };
+      await setPersistedNpcCycle(playerId, nextCycle);
+      socket.emit("npc:visit", npc);
+      armPersistedCycle(socket, nextCycle);
+      return;
+    }
+
+    if (storedCycle.pendingNpc) socket.emit("npc:visit", storedCycle.pendingNpc);
+    armPersistedCycle(socket, storedCycle);
+  }
   // ────────────────────────────────────────────────────────────────
 
   io.on("connection", (socket) => {
-    // Start personal 30-min cycle for this socket
-    schedulePersonalCycle(socket, CYCLE_MS);
-
     let activeStage = null;
     let activePlayerId = null;
 
@@ -243,7 +431,7 @@ app.prepare().then(() => {
       socket.to(activeStage).emit("player:upsert", player);
     }
 
-    socket.on("player:join", (payload = {}) => {
+    socket.on("player:join", async (payload = {}) => {
       const player = compactPlayer(payload);
       if (!player.id) return;
 
@@ -256,9 +444,6 @@ app.prepare().then(() => {
       // Restore active quest state if client reports it
       if (payload.hasNpcQuest !== undefined) {
         playerNpcQuest.set(player.id, Boolean(payload.hasNpcQuest));
-        if (payload.hasNpcQuest) {
-          freezePersonalCycle(socket);
-        }
       }
 
       // Remove player from old stage if they switched stage across socket reconnections
@@ -288,6 +473,12 @@ app.prepare().then(() => {
 
       socket.emit("room:state", Array.from(room.values()).map(publicPlayer));
       socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
+      try {
+        await restorePersistedCycle(socket);
+      } catch (error) {
+        console.error("Failed to restore NPC cycle:", error.message);
+        await schedulePersistedCycle(socket, currentPersistedCycleDurationMs(socket.id));
+      }
     });
 
     socket.on("room:peek", (payload = {}) => {
@@ -326,8 +517,19 @@ app.prepare().then(() => {
       // Timer is not frozen on quest accept — it keeps counting.
       // Only resume if the timer was frozen at the last 1 second.
       if (!isActive && socketFrozenMs.has(socket.id)) {
-        resumePersonalCycle(socket);
+        void resumePersistedCycle(socket).catch((error) => {
+          console.error("Failed to resume NPC cycle:", error.message);
+        });
       }
+    });
+
+    socket.on("npc:dismiss", () => {
+      const pid = socketToPlayer.get(socket.id);
+      const state = socketPersonalTimer.get(socket.id);
+      if (state) state.pendingNpc = null;
+      void setPersistedPendingNpc(pid, null).catch((error) => {
+        console.error("Failed to dismiss persisted NPC:", error.message);
+      });
     });
 
     socket.on("player:balance", (payload = {}) => {
@@ -352,19 +554,35 @@ app.prepare().then(() => {
       const specific = payload.npcId
         ? NPC_POOL.find((e) => e.npc.id === payload.npcId)?.npc
         : null;
-      socket.emit("npc:visit", enrichNpc(specific || pickWeightedNpc(), socketPlayerCoins.get(socket.id)));
+      const npc = enrichNpc(specific || pickWeightedNpc(), socketPlayerCoins.get(socket.id));
+      const state = socketPersonalTimer.get(socket.id);
+      if (state) state.pendingNpc = npc;
+      socket.emit("npc:visit", npc);
+      void setPersistedPendingNpc(pid, npc).catch((error) => {
+        console.error("Failed to persist dev NPC:", error.message);
+      });
     });
 
     socket.on("dev:skip", () => {
       const pid = socketToPlayer.get(socket.id);
       if (!pid || !playerNpcQuest.get(pid)) {
-        socket.emit("npc:visit", enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id)));
+        const npc = enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id));
+        socket.emit("npc:visit", npc);
+        void schedulePersistedCycle(socket, undefined, npc).catch((error) => {
+          console.error("Failed to skip NPC cycle:", error.message);
+        });
+        return;
       }
-      schedulePersonalCycle(socket, CYCLE_MS);
+      void schedulePersistedCycle(socket).catch((error) => {
+        console.error("Failed to skip NPC cycle:", error.message);
+      });
     });
 
     socket.on("dev:reset", () => {
-      schedulePersonalCycle(socket, CYCLE_MS);
+      const pendingNpc = socketPersonalTimer.get(socket.id)?.pendingNpc || null;
+      void schedulePersistedCycle(socket, undefined, pendingNpc).catch((error) => {
+        console.error("Failed to reset NPC cycle:", error.message);
+      });
     });
 
     socket.on("dev:set-speed", (multiplier) => {
@@ -372,16 +590,15 @@ app.prepare().then(() => {
       // Restart personal cycle with new speed for this socket
       const frozen = socketFrozenMs.get(socket.id);
       if (frozen !== undefined) {
-        // Update frozen remaining to use new speed (just re-emit frozen state)
-        socket.emit("timer:sync", { 
-          cycleStartedAt: Date.now() - (Math.floor(CYCLE_MS / cycleSpeedMultiplier) - frozen),
-          cycleDurationMs: Math.floor(CYCLE_MS / cycleSpeedMultiplier),
-          frozen: true, frozenRemainingMs: frozen
+        void freezePersistedCycle(socket, frozen).catch((error) => {
+          console.error("Failed to update frozen NPC cycle:", error.message);
         });
       } else {
         const state = socketPersonalTimer.get(socket.id);
-        const remaining = state ? Math.max(0, state.durationMs - (Date.now() - state.startedAt)) : CYCLE_MS;
-        schedulePersonalCycle(socket, remaining);
+        const remaining = state ? Math.max(0, state.deadlineMs - Date.now()) : undefined;
+        void schedulePersistedCycle(socket, remaining, state?.pendingNpc || null).catch((error) => {
+          console.error("Failed to update NPC cycle speed:", error.message);
+        });
       }
     });
 
@@ -395,17 +612,16 @@ app.prepare().then(() => {
       if (socketFrozenMs.has(socket.id)) {
         const remaining = Math.max(0, socketFrozenMs.get(socket.id) - milliseconds);
         socketFrozenMs.set(socket.id, remaining);
-        const fullCycle = Math.floor(effectiveCycleMs(socket.id) / cycleSpeedMultiplier);
-        socket.emit("timer:sync", {
-          cycleStartedAt: Date.now() - (fullCycle - remaining),
-          cycleDurationMs: fullCycle,
-          frozen: true, frozenRemainingMs: remaining
+        void freezePersistedCycle(socket, remaining).catch((error) => {
+          console.error("Failed to reduce frozen NPC cycle:", error.message);
         });
       } else {
         const state = socketPersonalTimer.get(socket.id);
         if (state) {
-          const remaining = Math.max(0, state.durationMs - (Date.now() - state.startedAt) - milliseconds);
-          schedulePersonalCycle(socket, remaining);
+          const remaining = Math.max(0, state.deadlineMs - Date.now() - milliseconds);
+          void schedulePersistedCycle(socket, remaining, state.pendingNpc).catch((error) => {
+            console.error("Failed to reduce NPC cycle:", error.message);
+          });
         }
       }
     });

@@ -125,6 +125,16 @@ const NpcQuestSubmissionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const NpcCycleSchema = new mongoose.Schema(
+  {
+    nextResetAt:       Date,
+    durationMs:        Number,
+    pendingNpc:        mongoose.Schema.Types.Mixed,
+    frozenRemainingMs: Number
+  },
+  { _id: false }
+);
+
 const MemberSchema = new mongoose.Schema(
   {
     id: String,
@@ -193,6 +203,7 @@ const MemberSchema = new mongoose.Schema(
     quest: { type: QuestSchema, default: () => ({}) },
     npcQuest: { type: NpcQuestSchema, default: null },
     npcQuestSubmissions: { type: [NpcQuestSubmissionSchema], default: [] },
+    npcCycle: { type: NpcCycleSchema, default: null },
     roomPosition: { type: PositionSchema, default: () => ({}) },
     shopCooldownT1: { type: Number, default: 0 },
     shopCooldownT2: { type: Number, default: 0 },

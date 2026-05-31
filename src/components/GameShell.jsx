@@ -507,6 +507,7 @@ export default function GameShell() {
   const dismissDoorNpc = useCallback(() => {
     window.clearTimeout(npcSwapTimerRef.current);
     if (!doorNpcRef.current) return;
+    socketRef.current?.emit("npc:dismiss");
     setDoorNpcPhase("exiting");
     npcSwapTimerRef.current = window.setTimeout(() => {
       doorNpcRef.current = null;
