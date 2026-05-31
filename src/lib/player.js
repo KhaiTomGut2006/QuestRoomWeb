@@ -105,6 +105,7 @@ export function normalizeMember(member) {
           title:        member.npcQuest.title || "",
           description:  member.npcQuest.description || "",
           reward:       member.npcQuest.reward || 0,
+          cancelPenalty:member.npcQuest.cancelPenalty || 0,
           npcType:      member.npcQuest.npcType || "",
           npcName:      member.npcQuest.npcName || "",
           npcCharacter: member.npcQuest.npcCharacter || null,
@@ -396,15 +397,21 @@ export async function getStageRanking(stageId) {
 export async function acceptNpcQuest(discordId, questData) {
   await connectDb();
   await ensureLevels();
+  const reward = Math.max(0, Number(questData.reward) || 0);
+  const cancelPenalty = reward > 0 ? Math.max(1, Math.round(reward * 0.25)) : 0;
   const member = await Member.findOneAndUpdate(
-    { discord_id: String(discordId || "") },
+    {
+      discord_id: String(discordId || ""),
+      $or: [{ npcQuest: null }, { npcQuest: { $exists: false } }]
+    },
     {
       $set: {
         npcQuest: {
           difficulty:   questData.difficulty,
           title:        questData.title,
           description:  questData.description,
-          reward:       Number(questData.reward) || 0,
+          reward,
+          cancelPenalty,
           npcType:      questData.npcType || "",
           npcName:      questData.npcName || "",
           npcCharacter: questData.npcCharacter || null,
@@ -414,18 +421,47 @@ export async function acceptNpcQuest(discordId, questData) {
     },
     { new: true }
   );
-  return member ? normalizeMember(member) : null;
+  if (member) return normalizeMember(member);
+
+  const existingMember = await Member.exists({ discord_id: String(discordId || "") });
+  if (!existingMember) return null;
+  throw new Error("active_quest_exists");
 }
 
-export async function dismissNpcQuest(discordId) {
+export async function cancelNpcQuest(discordId) {
   await connectDb();
   await ensureLevels();
-  const member = await Member.findOneAndUpdate(
-    { discord_id: String(discordId || "") },
-    { $set: { npcQuest: null } },
-    { new: true }
-  );
-  return member ? normalizeMember(member) : null;
+  const member = await Member.findOne({ discord_id: String(discordId || "") });
+  if (!member) return null;
+
+  const currentCoins = Math.max(0, Number.parseInt(member.coin || "0", 10) || 0);
+  const storedPenalty = Number(member.npcQuest?.cancelPenalty) || 0;
+  const fallbackPenalty = member.npcQuest?.reward
+    ? Math.max(1, Math.round(Number(member.npcQuest.reward) * 0.25))
+    : 0;
+  const penalty = member.npcQuest
+    ? Math.min(currentCoins, Math.max(0, storedPenalty || fallbackPenalty))
+    : 0;
+  member.coin = String(currentCoins - penalty);
+  member.npcQuest = null;
+  await member.save();
+  return { member: normalizeMember(member), penalty };
+}
+
+export async function submitNpcQuest(discordId) {
+  await connectDb();
+  await ensureLevels();
+  const member = await Member.findOne({ discord_id: String(discordId || "") });
+  if (!member) return null;
+
+  const currentCoins = Math.max(0, Number.parseInt(member.coin || "0", 10) || 0);
+  const reward = member.npcQuest
+    ? Math.max(0, Number(member.npcQuest.reward) || 0)
+    : 0;
+  member.coin = String(currentCoins + reward);
+  member.npcQuest = null;
+  await member.save();
+  return { member: normalizeMember(member), reward };
 }
 
 export async function getActiveClasses() {

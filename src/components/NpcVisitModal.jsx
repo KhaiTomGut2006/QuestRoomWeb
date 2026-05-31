@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MessageSquare } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 
 // npcId → image filename
@@ -212,13 +213,28 @@ function ShopDialog({ npc, purchases, loadingItem, onBuy, onClose }) {
 }
 
 // ── Quest dialog (when npc.type === "quest" and questData is loaded) ──────────
-function QuestDialog({ npc, questData, onAccept, onClose }) {
+function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit, onClose }) {
+  const [confirmAction, setConfirmAction] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const charKey = questData.npcCharacter || npc.npcId || npc.id;
   const imgFile = NPC_IMAGE[charKey] || "Witch.png";
   const imgSrc  = withBasePath(`/assets/NPC/${imgFile}`);
   const charName = charKey
     ? charKey.charAt(0).toUpperCase() + charKey.slice(1)
     : npc.name;
+  const cancelPenalty = Number(questData.cancelPenalty)
+    || Math.max(1, Math.round((Number(questData.reward) || 0) * 0.25));
+
+  const handleConfirm = async () => {
+    if (!confirmAction || submitting) return;
+    setSubmitting(true);
+    try {
+      if (confirmAction === "cancel") await onCancel?.();
+      if (confirmAction === "submit") await onSubmit?.();
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="npc-quest-layout">
@@ -231,7 +247,7 @@ function QuestDialog({ npc, questData, onAccept, onClose }) {
 
       {/* Right — speech bubble */}
       <div className="npc-quest-dialog-side">
-        <p className="npc-quest-warning">*เมื่อยอมรับเควสจะไม่ Spawn Event ใหม่</p>
+        {!activeQuest && <p className="npc-quest-warning">*เมื่อยอมรับเควสจะไม่ Spawn Event ใหม่</p>}
         <p className="npc-quest-text">
           <strong>{charName} :</strong> {questData.description}
         </p>
@@ -241,19 +257,73 @@ function QuestDialog({ npc, questData, onAccept, onClose }) {
           <img src={withBasePath("/assets/Coin.png")} alt="coin" />
           <span>×{questData.reward}</span>
         </div>
-        <button className="npc-quest-accept-btn" type="button" onClick={onAccept}>
-          ยอมรับเควส
-        </button>
-        <button className="npc-quest-decline-btn" type="button" onClick={onClose}>
-          ฉันยังไม่พร้อม
-        </button>
+        {activeQuest ? (
+          <div className="npc-active-quest-actions">
+            <div className="npc-active-quest-submit-row">
+              <button className="npc-quest-submit-btn" type="button" onClick={() => setConfirmAction("submit")}>
+                ส่งเควส
+              </button>
+              <button className="npc-quest-message-btn" type="button" aria-label="ข้อความ เร็ว ๆ นี้" disabled>
+                <MessageSquare size={28} strokeWidth={2.2} />
+              </button>
+            </div>
+            <div className="npc-active-quest-footer">
+              <button className="npc-quest-decline-btn" type="button" onClick={onClose}>
+                ปิดบทสนทนา
+              </button>
+              <button className="npc-quest-cancel-btn" type="button" onClick={() => setConfirmAction("cancel")}>
+                ยกเลิกเควส
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <button className="npc-quest-accept-btn" type="button" onClick={onAccept}>
+              ยอมรับเควส
+            </button>
+            <button className="npc-quest-decline-btn" type="button" onClick={onClose}>
+              ฉันยังไม่พร้อม
+            </button>
+          </>
+        )}
       </div>
+      {confirmAction && (
+        <div className="npc-quest-confirm-overlay" role="dialog" aria-modal="true">
+          <section className="npc-quest-confirm-card">
+            <h3>
+              {confirmAction === "cancel"
+                ? `ยกเลิก "${questData.title}"?`
+                : `ส่งมอบ "${questData.title}"?`}
+            </h3>
+            <p>
+              {confirmAction === "cancel"
+                ? `หากยกเลิกเควสจะเสีย ${cancelPenalty.toLocaleString()} Coins`
+                : `ยืนยันเพื่อรับ ${(Number(questData.reward) || 0).toLocaleString()} Coins`}
+            </p>
+            <div className="npc-quest-confirm-actions">
+              <button className="npc-quest-confirm-back" type="button" onClick={() => setConfirmAction("")}>
+                Cancel
+              </button>
+              <button
+                className={`npc-quest-confirm-primary npc-quest-confirm-primary--${confirmAction}`}
+                type="button"
+                onClick={handleConfirm}
+                disabled={submitting}
+              >
+                {submitting
+                  ? "กำลังดำเนินการ..."
+                  : confirmAction === "cancel" ? "ยกเลิกเควส" : "ยืนยันรางวัล"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function NpcVisitModal({
-  npc, questData, onAccept,
+  npc, questData, activeQuest, onAccept, onQuestCancel, onQuestSubmit,
   hintsData, hintResult, onHintBuy,
   gamblingResult, onGamble,
   onMemberUpdate, onCooldownReduction, onNeedCoins,
@@ -356,7 +426,10 @@ export default function NpcVisitModal({
           <QuestDialog
             npc={npc}
             questData={questData}
+            activeQuest={activeQuest}
             onAccept={onAccept}
+            onCancel={onQuestCancel}
+            onSubmit={onQuestSubmit}
             onClose={onClose}
           />
         )}

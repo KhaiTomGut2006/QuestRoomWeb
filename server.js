@@ -284,6 +284,8 @@ app.prepare().then(() => {
 
     // ─── Dev controls ────────────────────────────────────────────
     socket.on("dev:trigger", (payload = {}) => {
+      const pid = socketToPlayer.get(socket.id);
+      if (pid && playerNpcQuest.get(pid)) return;
       const specific = payload.npcId
         ? NPC_POOL.find((e) => e.npc.id === payload.npcId)?.npc
         : null;

@@ -2094,6 +2094,141 @@ button {
   transform: translateY(-1px);
 }
 
+.npc-active-quest-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.npc-active-quest-submit-row,
+.npc-active-quest-footer,
+.npc-quest-confirm-actions {
+  display: flex;
+  gap: 14px;
+}
+
+.npc-quest-submit-btn,
+.npc-quest-message-btn,
+.npc-quest-cancel-btn,
+.npc-quest-confirm-primary {
+  padding: 15px 20px 20px;
+  border: 3px solid #201f1d;
+  border-radius: 0;
+  color: #171717;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: clamp(22px, 1.65vw, 27px);
+  font-weight: 800;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.npc-quest-submit-btn {
+  flex: 1;
+  background: #6399e6;
+  box-shadow: inset 0 -7px 0 #3565b4;
+  color: #fff;
+  text-align: left;
+}
+
+.npc-quest-message-btn {
+  display: grid;
+  width: 92px;
+  place-items: center;
+  background: #6399e6;
+  box-shadow: inset 0 -7px 0 #3565b4;
+}
+
+.npc-quest-message-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.npc-active-quest-footer .npc-quest-decline-btn {
+  flex: 1;
+}
+
+.npc-quest-cancel-btn {
+  width: 43%;
+  background: #ff6268;
+  box-shadow: inset 0 -7px 0 #d60000;
+  text-align: left;
+}
+
+.npc-quest-submit-btn:hover {
+  background: #78a9ec;
+  transform: translateY(-1px);
+}
+
+.npc-quest-cancel-btn:hover {
+  background: #ff7d81;
+  transform: translateY(-1px);
+}
+
+.npc-quest-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(25, 20, 15, 0.28);
+}
+
+.npc-quest-confirm-card {
+  width: min(680px, calc(100vw - 32px));
+  padding: 42px 50px;
+  border: 3px solid #201f1d;
+  background: #fff;
+}
+
+.npc-quest-confirm-card h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(24px, 2vw, 34px);
+  line-height: 1.35;
+}
+
+.npc-quest-confirm-card p {
+  margin: 12px 0 28px;
+  color: #65584b;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.npc-quest-confirm-actions {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.npc-quest-confirm-back {
+  padding: 12px 20px;
+  border: 0;
+  background: transparent;
+  color: #171717;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 24px;
+}
+
+.npc-quest-confirm-primary {
+  min-width: 240px;
+  text-align: left;
+}
+
+.npc-quest-confirm-primary--cancel {
+  background: #ff6268;
+  box-shadow: inset 0 -7px 0 #d60000;
+}
+
+.npc-quest-confirm-primary--submit {
+  background: #29c55f;
+  box-shadow: inset 0 -7px 0 #087126;
+}
+
+.npc-quest-confirm-primary:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 /* ── Active Quest HUD ────────────────────────────────────────────────────── */
 .npc-active-quest-hud {
   display: flex;
@@ -2329,11 +2464,55 @@ button {
 
   .npc-quest-accept-btn,
   .npc-quest-decline-btn,
-  .npc-interact-choice-btn {
+  .npc-interact-choice-btn,
+  .npc-quest-submit-btn,
+  .npc-quest-message-btn,
+  .npc-quest-cancel-btn,
+  .npc-quest-confirm-primary {
     padding: 12px 14px 16px;
     border-width: 2px;
     box-shadow: inset 0 -5px 0 #ff9f4a;
     font-size: 17px;
+  }
+
+  .npc-quest-submit-btn,
+  .npc-quest-message-btn {
+    box-shadow: inset 0 -5px 0 #3565b4;
+  }
+
+  .npc-quest-cancel-btn,
+  .npc-quest-confirm-primary--cancel {
+    box-shadow: inset 0 -5px 0 #d60000;
+  }
+
+  .npc-quest-confirm-primary--submit {
+    box-shadow: inset 0 -5px 0 #087126;
+  }
+
+  .npc-quest-message-btn {
+    width: 58px;
+  }
+
+  .npc-active-quest-footer {
+    display: grid;
+    gap: 9px;
+  }
+
+  .npc-quest-cancel-btn {
+    width: 100%;
+  }
+
+  .npc-quest-confirm-card {
+    padding: 28px 22px;
+  }
+
+  .npc-quest-confirm-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .npc-quest-confirm-primary {
+    min-width: 0;
   }
 
   .npc-shop-item-copy small {
@@ -2708,4 +2887,78 @@ button {
   font-size: 12px;
   color: #8b7668;
   font-weight: 700;
+}
+
+/* ─── HUD Volume expanding slider & Logout styles ─── */
+.volume-control-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-direction: row !important;
+}
+
+.volume-slider-container {
+  display: flex;
+  align-items: center;
+  width: 0;
+  overflow: hidden;
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), padding 0.35s, border 0.35s;
+  background: #fcfaf2;
+  border-radius: 99px;
+  padding: 0;
+  border: 0 solid transparent;
+  box-sizing: border-box;
+}
+
+.volume-control-wrapper:hover .volume-slider-container,
+.volume-control-wrapper:focus-within .volume-slider-container {
+  width: 100px;
+  padding: 4px 12px;
+  border: 3px solid #2b2622;
+  margin-right: -12px;
+  z-index: 10;
+}
+
+.volume-slider {
+  width: 100%;
+  height: 8px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e2dcd0;
+  border-radius: 99px;
+  outline: none;
+  cursor: pointer;
+  border: 2px solid #2b2622;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #f15c3c;
+  border: 2px solid #2b2622;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.circle-button.volume {
+  background: #ffd24d;
+  color: #2b2622;
+  z-index: 11;
+}
+
+.circle-button.logout {
+  background: #ff5c5c;
+  color: #fff;
+  font-size: 24px;
+}
+
+.circle-button.logout:hover {
+  background: #e04b4b;
 }

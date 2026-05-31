@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { ChevronLeft, ChevronRight, Coins, Trophy, Zap } from "lucide-react";
+import { ChevronLeft, ChevronRight, Coins, Trophy, Zap, Volume2, VolumeX, LogOut } from "lucide-react";
 import { io } from "socket.io-client";
 import RoomCanvas from "@/components/RoomCanvas";
 import PlayerLayer from "@/components/PlayerLayer";
@@ -29,7 +29,20 @@ const demoMember = {
     completed: [],
     cooldownUntil: new Date(Date.now() + 40 * 60 * 1000).toISOString()
   },
+  npcQuest: null,
   position: { x: 56, y: 72 }
+};
+
+const demoNpcQuest = {
+  difficulty: "easy",
+  title: "ภาพ Lighting แสนสวย",
+  description: "เพื่อนฉันกลับมามองเห็นอีกครั้ง ในรอบ 30 ปี ฉันอยากให้เธอได้เห็นภาพ ทิวทัศน์ที่เต็มไปด้วย Lighting แสนสวย",
+  reward: 90,
+  cancelPenalty: 23,
+  npcType: "quest-easy",
+  npcName: "witch",
+  npcCharacter: "witch",
+  acceptedAt: "demo-quest-preview",
 };
 
 // ─── Room Clock (synchronized 40-min countdown) ─────────────────
@@ -121,6 +134,18 @@ const NPC_IDS = [
   { id: "gambling",     label: "Gambling/Begger (5%)" },
 ];
 const NPC_EXIT_MS = 720;
+
+function npcFromActiveQuest(quest) {
+  if (!quest) return null;
+  return {
+    id: quest.npcType || "quest-active",
+    type: quest.npcType === "stupid-quest" ? "stupid-quest" : "quest",
+    name: quest.title || "Quest",
+    npcId: quest.npcCharacter || quest.npcName || "witch",
+    description: quest.description || "",
+    activeQuest: true,
+  };
+}
 
 function DevPanel({ socketRef, cycleInfo }) {
   const [open, setOpen] = useState(false);
@@ -222,11 +247,63 @@ export default function GameShell() {
   const [noCoinsCost, setNoCoinsCost] = useState(250);
   const [showRanking, setShowRanking] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(0.5);
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    const audio = new Audio(withBasePath("/assets/bgmusic.mp3"));
+    audio.loop = true;
+    audio.volume = 0.5;
+    audioRef.current = audio;
+
+    const startPlay = () => {
+      audio.play().catch((err) => {
+        console.log("Audio playback waiting for interaction", err);
+      });
+      document.removeEventListener("click", startPlay);
+      document.removeEventListener("keydown", startPlay);
+      document.removeEventListener("touchstart", startPlay);
+    };
+
+    document.addEventListener("click", startPlay);
+    document.addEventListener("keydown", startPlay);
+    document.addEventListener("touchstart", startPlay);
+
+    return () => {
+      audio.pause();
+      document.removeEventListener("click", startPlay);
+      document.removeEventListener("keydown", startPlay);
+      document.removeEventListener("touchstart", startPlay);
+    };
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    if (!audioRef.current) return;
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    audioRef.current.muted = nextMuted;
+  }, [isMuted]);
+
+  const handleVolumeChange = useCallback((e) => {
+    if (!audioRef.current) return;
+    const nextVol = parseFloat(e.target.value);
+    setVolume(nextVol);
+    audioRef.current.volume = nextVol;
+    if (nextVol > 0) {
+      setIsMuted(false);
+      audioRef.current.muted = false;
+    } else {
+      setIsMuted(true);
+      audioRef.current.muted = true;
+    }
+  }, []);
   const socketRef = useRef(null);
   const emitTimerRef = useRef(null);
   const autoLoginStartedRef = useRef(false);
   const shownRewardIdsRef = useRef(new Set());
   const doorNpcRef = useRef(null);
+  const activeNpcQuestRef = useRef(null);
   const npcSwapTimerRef = useRef(null);
 
   const isAuthed = status === "authenticated";
@@ -247,13 +324,30 @@ export default function GameShell() {
     doorNpcRef.current = doorNpc;
   }, [doorNpc]);
 
+  useEffect(() => {
+    const activeQuest = activeMember?.npcQuest || null;
+    activeNpcQuestRef.current = activeQuest;
+    if (!activeQuest) return;
+
+    const questNpc = npcFromActiveQuest(activeQuest);
+    window.clearTimeout(npcSwapTimerRef.current);
+    setDoorNpc((current) => {
+      const nextNpc = current ? { ...current, ...questNpc } : questNpc;
+      doorNpcRef.current = nextNpc;
+      return nextNpc;
+    });
+    setDoorNpcPhase(doorNpcRef.current ? "idle" : "entering");
+  }, [activeMember?.npcQuest?.acceptedAt]);
+
   useEffect(() => () => {
     window.clearTimeout(npcSwapTimerRef.current);
   }, []);
 
   const queueDoorNpc = useCallback((npc) => {
+    if (activeNpcQuestRef.current) return;
     window.clearTimeout(npcSwapTimerRef.current);
     if (!doorNpcRef.current) {
+      doorNpcRef.current = npc;
       setDoorNpc(npc);
       setDoorNpcPhase("entering");
       return;
@@ -261,8 +355,20 @@ export default function GameShell() {
 
     setDoorNpcPhase("exiting");
     npcSwapTimerRef.current = window.setTimeout(() => {
+      doorNpcRef.current = npc;
       setDoorNpc(npc);
       setDoorNpcPhase("entering");
+    }, NPC_EXIT_MS);
+  }, []);
+
+  const dismissDoorNpc = useCallback(() => {
+    window.clearTimeout(npcSwapTimerRef.current);
+    if (!doorNpcRef.current) return;
+    setDoorNpcPhase("exiting");
+    npcSwapTimerRef.current = window.setTimeout(() => {
+      doorNpcRef.current = null;
+      setDoorNpc(null);
+      setDoorNpcPhase("idle");
     }, NPC_EXIT_MS);
   }, []);
 
@@ -297,8 +403,13 @@ export default function GameShell() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setDemoRequested(params.get("demo") === "1");
-    setDevMode(params.get("dev") === "1");
+    const wantsDemo = params.get("demo") === "1";
+    const wantsDev = params.get("dev") === "1";
+    demoMember.npcQuest = wantsDemo && wantsDev && params.get("questPreview") === "1"
+      ? demoNpcQuest
+      : null;
+    setDemoRequested(wantsDemo);
+    setDevMode(wantsDev);
     setAuthError(params.get("error") || "");
     fetch(withBasePath("/api/config"))
       .then((res) => res.json())
@@ -497,6 +608,11 @@ export default function GameShell() {
   };
   // Fetch quest template when a quest-type NPC visits
   useEffect(() => {
+    if (npcVisit?.activeQuest && activeMember?.npcQuest) {
+      setNpcQuestData(activeMember.npcQuest);
+      return;
+    }
+
     const QUEST_DIFFICULTY_MAP = {
       "quest-easy":   "easy",
       "quest-medium": "medium",
@@ -536,7 +652,7 @@ export default function GameShell() {
     if (npcVisit?.type !== "gambling") {
       setGamblingResult(null);
     }
-  }, [npcVisit]);
+  }, [activeMember?.npcQuest, npcVisit]);
 
   const handleNpcQuestAccept = useCallback(async () => {
     if (!isAuthed || !npcQuestData || !npcVisit) return;
@@ -557,6 +673,11 @@ export default function GameShell() {
       if (res.ok) {
         const data = await res.json();
         applyMember(data.member);
+        activeNpcQuestRef.current = data.member.npcQuest;
+        const questNpc = npcFromActiveQuest(data.member.npcQuest);
+        doorNpcRef.current = questNpc;
+        setDoorNpc(questNpc);
+        setDoorNpcPhase("idle");
         socketRef.current?.emit("quest:active", true);
       }
     } catch {}
@@ -564,17 +685,37 @@ export default function GameShell() {
     setNpcQuestData(null);
   }, [applyMember, isAuthed, npcQuestData, npcVisit]);
 
-  const handleNpcQuestDismiss = useCallback(async () => {
+  const handleNpcQuestCancel = useCallback(async () => {
     if (!isAuthed) return;
     try {
       const res = await fetch(withBasePath("/api/player/npc-quest"), { method: "DELETE" });
       if (res.ok) {
         const data = await res.json();
         applyMember(data.member);
+        activeNpcQuestRef.current = null;
         socketRef.current?.emit("quest:active", false);
+        setNpcVisit(null);
+        setNpcQuestData(null);
+        dismissDoorNpc();
       }
     } catch {}
-  }, [applyMember, isAuthed]);
+  }, [applyMember, dismissDoorNpc, isAuthed]);
+
+  const handleNpcQuestSubmit = useCallback(async () => {
+    if (!isAuthed) return;
+    try {
+      const res = await fetch(withBasePath("/api/player/npc-quest"), { method: "PATCH" });
+      if (res.ok) {
+        const data = await res.json();
+        applyMember(data.member);
+        activeNpcQuestRef.current = null;
+        socketRef.current?.emit("quest:active", false);
+        setNpcVisit(null);
+        setNpcQuestData(null);
+        dismissDoorNpc();
+      }
+    } catch {}
+  }, [applyMember, dismissDoorNpc, isAuthed]);
 
   const handleNpcCoinsNeeded = useCallback((cost) => {
     setNoCoinsCost(Number(cost) || 0);
@@ -694,9 +835,9 @@ export default function GameShell() {
               <button
                 className="npc-active-quest-done"
                 type="button"
-                onClick={handleNpcQuestDismiss}
+                onClick={handleNpcInteract}
               >
-                ✓ Done
+                คุยกับ NPC
               </button>
             </div>
           )}
@@ -730,6 +871,42 @@ export default function GameShell() {
             </button>
             <span>Friends</span>
           </div>
+          <div className="profile-action volume-control-wrapper">
+            <div className="volume-slider-container">
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={volume}
+                onChange={handleVolumeChange}
+                className="volume-slider"
+                aria-label="Volume"
+              />
+            </div>
+            <button
+              className="circle-button volume"
+              type="button"
+              aria-label={isMuted ? "Unmute music" : "Mute music"}
+              onClick={toggleMute}
+            >
+              {isMuted ? <VolumeX size={24} strokeWidth={2.5} /> : <Volume2 size={24} strokeWidth={2.5} />}
+            </button>
+            <span>{isMuted ? "Muted" : `Vol: ${Math.round(volume * 100)}%`}</span>
+          </div>
+          {isAuthed && (
+            <div className="profile-action">
+              <button
+                className="circle-button logout"
+                type="button"
+                aria-label="Logout"
+                onClick={() => signOut()}
+              >
+                <LogOut size={24} strokeWidth={2.5} />
+              </button>
+              <span>Logout</span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -752,6 +929,9 @@ export default function GameShell() {
           npc={npcVisit}
           questData={npcQuestData}
           onAccept={handleNpcQuestAccept}
+          activeQuest={Boolean(npcVisit.activeQuest && activeMember?.npcQuest)}
+          onQuestCancel={handleNpcQuestCancel}
+          onQuestSubmit={handleNpcQuestSubmit}
           hintsData={hintsData}
           hintResult={hintResult}
           onHintBuy={handleHintBuy}
