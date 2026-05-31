@@ -717,16 +717,16 @@ export async function reactToGlobalQuestPost(discordId, postId, reaction) {
 export async function getClassFriends(classId) {
   await connectDb();
   
-  const botUrl = process.env.BOT_SERVER_URL || "http://localhost:5000";
+  const botUrl = (process.env.BOT_SERVER_URL || "https://api.hamsterquest.com/attendance").replace(/\/$/, "");
+  const botTimeoutMs = Math.max(2000, Number(process.env.BOT_SERVER_TIMEOUT_MS) || 20000);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2000);
+  const timeoutId = setTimeout(() => controller.abort(), botTimeoutMs);
 
   let sheetStudents = [];
   try {
     const res = await fetch(`${botUrl}/api/attendance?course=${encodeURIComponent(classId)}`, {
       signal: controller.signal
     });
-    clearTimeout(timeoutId);
     if (res.ok) {
       const data = await res.json();
       if (data && data.success && Array.isArray(data.students)) {
@@ -734,8 +734,9 @@ export async function getClassFriends(classId) {
       }
     }
   } catch (err) {
-    clearTimeout(timeoutId);
     console.warn("Failed to fetch students from bot server, falling back to local DB:", err.message);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   let members = [];
@@ -799,21 +800,12 @@ export async function getClassFriends(classId) {
       }
     });
   } else {
-    // Local MongoDB Heuristic Fallback
-    const lowercaseClassId = String(classId).toLowerCase();
-    let query = {
-      discord_id: { $exists: true, $ne: "" }
+    // Return only exact local matches if the Google Sheet service is unavailable.
+    const query = {
+      discord_id: { $exists: true, $ne: "" },
+      courses: String(classId)
     };
-    if (lowercaseClassId.includes("nsc")) {
-      query.courses = { $in: [classId, "C0008", "C0009"] };
-    } else if (lowercaseClassId.includes("starways")) {
-      query.courses = { $in: [classId, "C0001", "C0002", "C0005", "C0038", "C0061", "C0072", "C0076", "C0077", "C0078", "C0080", "C0081", "C0082", "C0092"] };
-    } else if (lowercaseClassId.includes("hero")) {
-      query.courses = { $in: [classId, "C0001", "C0002", "C0008", "C0009"] };
-    } else {
-      query.courses = classId;
-    }
-    
+
     members = await Member.find(query).lean();
     return members.map(m => {
       const normalized = normalizeMember(m);
