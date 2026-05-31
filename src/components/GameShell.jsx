@@ -30,12 +30,28 @@ async function uploadNpcQuestEvidence(file, playerId, onProgress) {
   if (!file) throw new Error("กรุณาเลือกไฟล์หลักฐาน");
   const safePlayerId = safeUploadName(playerId || "player");
   const pathname = `npc-quests/${safePlayerId}/${Date.now()}-${safeUploadName(file.name)}`;
+  const uploadUrl = withBasePath("/api/player/npc-quest/upload");
   const uploadOptions = {
     access: "public",
-    handleUploadUrl: withBasePath("/api/player/npc-quest/upload"),
+    handleUploadUrl: uploadUrl,
     multipart: file.size > 4 * 1024 * 1024,
     onUploadProgress: ({ percentage }) => onProgress?.(percentage)
   };
+
+  const storageResponse = await fetch(`${uploadUrl}?config=1`);
+  const storageConfig = storageResponse.ok ? await storageResponse.json() : { storage: "gridfs" };
+  if (storageConfig.storage !== "blob") {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch(`${uploadUrl}?storage=gridfs`, {
+      method: "POST",
+      body: formData
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "quest_evidence_upload_failed");
+    onProgress?.(100);
+    return data.blob;
+  }
 
   try {
     const blob = await upload(pathname, file, uploadOptions);
@@ -47,17 +63,14 @@ async function uploadNpcQuestEvidence(file, playerId, onProgress) {
       originalName: file.name
     };
   } catch (error) {
-    const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-    if (!isLocalhost) throw error;
-
     const formData = new FormData();
     formData.append("file", file);
-    const response = await fetch(`${withBasePath("/api/player/npc-quest/upload")}?local=1`, {
+    const response = await fetch(`${uploadUrl}?storage=gridfs`, {
       method: "POST",
       body: formData
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "local_upload_failed");
+    if (!response.ok) throw new Error(data.error || error.message || "quest_evidence_upload_failed");
     onProgress?.(100);
     return data.blob;
   }

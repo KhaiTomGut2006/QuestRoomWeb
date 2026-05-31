@@ -3517,7 +3517,7 @@ button {
   gap: 6px;
   width: clamp(160px, 14vw, 210px);
   padding: 12px 14px;
-  background: rgba(30, 20, 0, 0.72);
+  background: rgba(255, 220, 115, 0.72);
   border: 1px solid rgba(245, 158, 11, 0.45);
   border-left: 3px solid #f59e0b;
   border-radius: 0 8px 8px 0;

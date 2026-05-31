@@ -1,10 +1,10 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { Readable } from "node:stream";
+import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { handleUpload } from "@vercel/blob/client";
 import { authOptions } from "@/lib/auth";
+import { connectDb } from "@/lib/db";
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 const ALLOWED_CONTENT_TYPES = [
@@ -34,11 +34,13 @@ async function getDiscordId() {
   return session?.user?.discordId ? String(session.user.discordId) : "";
 }
 
-async function saveLocalUpload(request, discordId) {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "local_upload_disabled" }, { status: 403 });
-  }
+function getGridFsBucket() {
+  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+    bucketName: "npcQuestEvidence"
+  });
+}
 
+async function saveGridFsUpload(request, discordId) {
   const formData = await request.formData();
   const file = formData.get("file");
   if (!(file instanceof File)) {
@@ -51,21 +53,32 @@ async function saveLocalUpload(request, discordId) {
     return NextResponse.json({ error: "file_too_large" }, { status: 400 });
   }
 
-  const filename = `${randomUUID()}-${safeSegment(file.name)}`;
-  const prefix = getUploadPrefix(discordId);
-  const pathname = `${prefix}${filename}`;
-  const uploadDirectory = path.join(process.cwd(), "public", "uploads", prefix);
-  await mkdir(uploadDirectory, { recursive: true });
-  await writeFile(path.join(uploadDirectory, filename), Buffer.from(await file.arrayBuffer()));
+  await connectDb();
+  const filename = safeSegment(file.name);
+  const bucket = getGridFsBucket();
+  const fileId = new mongoose.Types.ObjectId();
+  const uploadStream = bucket.openUploadStreamWithId(fileId, filename, {
+    contentType: file.type,
+    metadata: {
+      discordId,
+      originalName: file.name,
+      size: file.size
+    }
+  });
+  await new Promise(async (resolve, reject) => {
+    uploadStream.on("finish", resolve);
+    uploadStream.on("error", reject);
+    Readable.from(Buffer.from(await file.arrayBuffer())).pipe(uploadStream);
+  });
 
   const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
   const basePath = rawBasePath ? `/${rawBasePath.replace(/^\/+|\/+$/g, "")}` : "";
-  const url = `${request.nextUrl.origin}${basePath}/uploads/${pathname}`;
+  const url = `${request.nextUrl.origin}${basePath}/api/player/npc-quest/upload?file=${fileId}`;
 
   return NextResponse.json({
     blob: {
       url,
-      pathname,
+      pathname: `gridfs/${safeSegment(discordId, "player")}/${fileId}`,
       contentType: file.type,
       size: file.size,
       originalName: file.name
@@ -73,12 +86,56 @@ async function saveLocalUpload(request, discordId) {
   });
 }
 
+export async function GET(request) {
+  if (request.nextUrl.searchParams.get("config") === "1") {
+    return NextResponse.json({
+      storage: process.env.BLOB_READ_WRITE_TOKEN ? "blob" : "gridfs",
+      maximumSizeInBytes: MAX_UPLOAD_BYTES
+    });
+  }
+
+  const rawId = request.nextUrl.searchParams.get("file");
+  if (!rawId || !mongoose.Types.ObjectId.isValid(rawId)) {
+    return NextResponse.json({ error: "file_not_found" }, { status: 404 });
+  }
+
+  await connectDb();
+  const bucket = getGridFsBucket();
+  const fileId = new mongoose.Types.ObjectId(rawId);
+  const file = await bucket.find({ _id: fileId }).next();
+  if (!file) return NextResponse.json({ error: "file_not_found" }, { status: 404 });
+
+  const headers = new Headers({
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "public, max-age=31536000, immutable",
+    "Content-Type": file.contentType || "application/octet-stream",
+    "Content-Disposition": `inline; filename="${safeSegment(file.filename)}"`
+  });
+  const range = request.headers.get("range");
+  if (range) {
+    const match = /^bytes=(\d+)-(\d*)$/.exec(range);
+    if (!match) return new Response(null, { status: 416 });
+    const start = Number(match[1]);
+    const end = match[2] ? Math.min(Number(match[2]), file.length - 1) : file.length - 1;
+    if (start > end || start >= file.length) return new Response(null, { status: 416 });
+    headers.set("Content-Length", String(end - start + 1));
+    headers.set("Content-Range", `bytes ${start}-${end}/${file.length}`);
+    return new Response(Readable.toWeb(bucket.openDownloadStream(fileId, { start, end: end + 1 })), {
+      status: 206,
+      headers
+    });
+  }
+
+  headers.set("Content-Length", String(file.length));
+  return new Response(Readable.toWeb(bucket.openDownloadStream(fileId)), { headers });
+}
+
 export async function POST(request) {
   const discordId = await getDiscordId();
   if (!discordId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  if (request.nextUrl.searchParams.get("local") === "1") {
-    return saveLocalUpload(request, discordId);
+  if (request.nextUrl.searchParams.get("storage") === "gridfs") {
+    return saveGridFsUpload(request, discordId);
   }
 
   if (!process.env.BLOB_READ_WRITE_TOKEN) {

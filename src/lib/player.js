@@ -1,6 +1,7 @@
 import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import { getWalkablePoint } from "@/lib/walkableArea";
+import mongoose from "mongoose";
 
 import Level from "@/models/Level";
 import CourseConfig from "@/models/CourseConfig";
@@ -95,7 +96,8 @@ function normalizeNpcQuestEvidence(discordId, evidence) {
   const contentType = String(evidence?.contentType || "").toLowerCase();
   const size = Math.max(0, Number(evidence?.size) || 0);
   const originalName = String(evidence?.originalName || "").slice(0, 180);
-  const localUploadPrefix = `/uploads/npc-quests/${String(discordId || "")}/`;
+  const safeDiscordId = String(discordId || "").replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const blobPrefix = `npc-quests/${safeDiscordId}/`;
 
   let parsedUrl;
   try {
@@ -105,13 +107,19 @@ function normalizeNpcQuestEvidence(discordId, evidence) {
   }
 
   const isBlobUrl = parsedUrl.protocol === "https:"
-    && parsedUrl.hostname.endsWith(".blob.vercel-storage.com");
-  const isLocalUpload = process.env.NODE_ENV !== "production"
-    && ["localhost", "127.0.0.1"].includes(parsedUrl.hostname)
-    && parsedUrl.pathname.includes(localUploadPrefix);
+    && parsedUrl.hostname.endsWith(".blob.vercel-storage.com")
+    && pathname.startsWith(blobPrefix);
+  const configuredOrigin = process.env.NEXTAUTH_URL
+    ? new URL(process.env.NEXTAUTH_URL).origin
+    : "";
+  const gridFsId = parsedUrl.searchParams.get("file") || "";
+  const isGridFsUrl = mongoose.Types.ObjectId.isValid(gridFsId)
+    && pathname === `gridfs/${safeDiscordId}/${gridFsId}`
+    && parsedUrl.pathname.endsWith("/api/player/npc-quest/upload")
+    && (!configuredOrigin || parsedUrl.origin === configuredOrigin);
   const isAllowedType = contentType.startsWith("image/") || contentType.startsWith("video/");
 
-  if (!isBlobUrl && !isLocalUpload) throw new Error("invalid_quest_evidence_url");
+  if (!isBlobUrl && !isGridFsUrl) throw new Error("invalid_quest_evidence_url");
   if (!isAllowedType) throw new Error("invalid_quest_evidence_type");
   if (!size || size > 100 * 1024 * 1024) throw new Error("invalid_quest_evidence_size");
 
@@ -513,6 +521,7 @@ export async function submitNpcQuest(discordId, evidence) {
   const currentCoins = Math.max(0, Number.parseInt(member.coin || "0", 10) || 0);
   const reward = Math.max(0, Number(member.npcQuest.reward) || 0);
   const submittedAt = new Date();
+  if (!Array.isArray(member.npcQuestSubmissions)) member.npcQuestSubmissions = [];
   member.npcQuestSubmissions.push({
     id: `${String(discordId || "")}-${submittedAt.getTime()}`,
     title: member.npcQuest.title || "NPC Quest",
