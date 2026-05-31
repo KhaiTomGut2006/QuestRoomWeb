@@ -344,6 +344,7 @@ export default function GameShell() {
   const [hintsData, setHintsData] = useState(null);
   const [hintResult, setHintResult] = useState(null);
   const [hintBought, setHintBought] = useState(false);
+  const [shopPurchases, setShopPurchases] = useState({});
   const [showNoCoins, setShowNoCoins] = useState(false);
   const [noCoinsCost, setNoCoinsCost] = useState(250);
   const [questSuccess, setQuestSuccess] = useState(null); // { title, reward }
@@ -838,11 +839,12 @@ export default function GameShell() {
     }
   }, [activeMember?.npcQuest, hintsData, npcVisit]);
 
-  // Reset hint state when a new NPC spawns (npcKey increments on each new arrival)
+  // Reset hint + shop state when a new NPC spawns (npcKey increments on each new arrival)
   useEffect(() => {
     setHintBought(false);
     setHintResult(null);
     setHintsData(null);
+    setShopPurchases({});
   }, [npcKey]);
 
   const handleNpcQuestAccept = useCallback(async () => {
@@ -1208,6 +1210,8 @@ export default function GameShell() {
             limitBreak: activeMember.shopLimitBreak || false,
             hasActiveQuest: Boolean(activeMember.npcQuest),
           } : null}
+          shopPurchases={shopPurchases}
+          onShopPurchase={(itemId, msg) => setShopPurchases((prev) => ({ ...prev, [itemId]: msg }))}
           onMemberUpdate={applyMember}
           onCooldownReduction={handleCooldownReduction}
           onNeedCoins={handleNpcCoinsNeeded}

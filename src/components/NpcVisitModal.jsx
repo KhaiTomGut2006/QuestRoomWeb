@@ -494,12 +494,12 @@ export default function NpcVisitModal({
   hintsData, hintResult, hintBought, onHintBuy,
   gamblingResult, onGamble,
   memberShop,
+  shopPurchases, onShopPurchase,
   onMemberUpdate, onCooldownReduction, onNeedCoins, onChestClaim, onQuestScrollBought,
   onClose,
 }) {
   const [chestResult, setChestResult] = useState(null);
   const [claimingChest, setClaimingChest] = useState(false);
-  const [shopPurchases, setShopPurchases] = useState({});
   const [loadingShopItem, setLoadingShopItem] = useState("");
 
   if (!npc) return null;
@@ -554,7 +554,7 @@ export default function NpcVisitModal({
         purchaseMsg = `+${data.chestCoins.toLocaleString()} Coins!`;
       }
       // Mark as bought — shop stays open, item becomes unavailable for this visit
-      setShopPurchases((current) => ({ ...current, [itemId]: purchaseMsg }));
+      onShopPurchase?.(itemId, purchaseMsg);
     } finally {
       setLoadingShopItem("");
     }
