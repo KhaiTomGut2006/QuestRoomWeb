@@ -1064,6 +1064,116 @@ button {
   }
 }
 
+/* NPC waits at the front door until the player chooses to interact. */
+.npc-door-visitor {
+  position: absolute;
+  left: 30.6%;
+  top: 54%;
+  z-index: 18;
+  display: grid;
+  width: clamp(74px, 7vw, 132px);
+  min-height: clamp(92px, 9vw, 165px);
+  place-items: end center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  transform: translate(-50%, -100%);
+  animation: npc-walk-to-door 1.45s cubic-bezier(0.18, 0.72, 0.28, 1) both;
+}
+
+.npc-door-visitor img {
+  position: relative;
+  z-index: 2;
+  display: block;
+  max-width: 100%;
+  height: clamp(72px, 8vw, 148px);
+  object-fit: contain;
+  filter: drop-shadow(0 5px 2px rgba(47, 31, 16, 0.22));
+  animation: npc-door-idle 1.7s ease-in-out 1.45s infinite alternate;
+}
+
+.npc-door-visitor--chest img {
+  height: clamp(58px, 6vw, 108px);
+}
+
+.npc-door-visitor-name {
+  position: relative;
+  z-index: 3;
+  margin-top: 1px;
+  color: #1b1b1b;
+  font-size: clamp(11px, 0.78vw, 15px);
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.npc-door-visitor-shadow {
+  position: absolute;
+  bottom: 14px;
+  z-index: 1;
+  width: 72%;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(38, 30, 22, 0.25);
+}
+
+.npc-door-visitor-prompt {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  z-index: 4;
+  width: max-content;
+  padding: 5px 9px;
+  border: 2px solid #45311c;
+  border-radius: 9px;
+  background: #fff9e8;
+  color: #6f4819;
+  font-size: clamp(10px, 0.7vw, 13px);
+  font-weight: 900;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.npc-door-visitor:hover .npc-door-visitor-prompt,
+.npc-door-visitor:focus-visible .npc-door-visitor-prompt {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.npc-door-visitor:focus-visible {
+  outline: 3px solid #ffdb52;
+  outline-offset: 5px;
+  border-radius: 18px;
+}
+
+@keyframes npc-walk-to-door {
+  0% {
+    opacity: 0;
+    transform: translate(-245%, -77%) scale(0.78);
+  }
+  15% {
+    opacity: 1;
+  }
+  70% {
+    transform: translate(-72%, -98%) scale(0.97);
+  }
+  86% {
+    transform: translate(-48%, -104%) scale(1.02);
+  }
+  100% {
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+
+@keyframes npc-door-idle {
+  from { transform: translateY(0); }
+  to { transform: translateY(-4px); }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    NPC Visit Overlay & Smoke Animation
 ═══════════════════════════════════════════════════════════════ */
@@ -2067,6 +2177,87 @@ button {
   color: #991b1b;
 }
 
+.npc-shop-list {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.npc-shop-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #eadbb9;
+  border-radius: 10px;
+  background: #f5f2ed;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.npc-shop-item:hover {
+  border-color: #f59e0b;
+  transform: translateY(-1px);
+}
+
+.npc-shop-item:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.npc-shop-item > img {
+  width: 42px;
+  height: 42px;
+  border: 2px solid #2c2925;
+  border-radius: 10px;
+  object-fit: contain;
+  background: #fff;
+}
+
+.npc-shop-item-copy {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.npc-shop-item-copy strong {
+  font-size: 13px;
+}
+
+.npc-shop-item-copy small {
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npc-shop-price {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #78350f;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.npc-shop-price img {
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .npc-door-visitor,
+  .npc-door-visitor img {
+    animation: none;
+  }
+}
+
 /* ─── Friends Modal Styles ───────────────── */
 .friends-backdrop {
   position: fixed;
@@ -2428,5 +2619,4 @@ button {
   color: #8b7668;
   font-weight: 700;
 }
-
 

@@ -9,6 +9,7 @@ import PlayerLayer from "@/components/PlayerLayer";
 import ProfileModal from "@/components/ProfileModal";
 import RewardModal from "@/components/RewardModal";
 import NpcVisitModal from "@/components/NpcVisitModal";
+import NpcDoorVisitor from "@/components/NpcDoorVisitor";
 import NoCoinsModal from "@/components/NoCoinsModal";
 import RankingModal from "@/components/RankingModal";
 import FriendsModal from "@/components/FriendsModal";
@@ -208,6 +209,7 @@ export default function GameShell() {
   const [reward, setReward] = useState(null);
   const [message, setMessage] = useState("Pedding...");
   const [cycleInfo, setCycleInfo] = useState(null);
+  const [pendingNpc, setPendingNpc] = useState(null);
   const [npcVisit, setNpcVisit] = useState(null);
   const [npcQuestData, setNpcQuestData] = useState(null);
   const [gamblingResult, setGamblingResult] = useState(null);
@@ -370,7 +372,10 @@ export default function GameShell() {
       setPlayers((prev) => prev.filter((player) => player.id !== id));
     });
     socket.on("timer:sync", (data) => setCycleInfo(data));
-    socket.on("npc:visit", (npc) => setNpcVisit(npc));
+    socket.on("npc:visit", (npc) => {
+      setPendingNpc(npc);
+      setNpcVisit(null);
+    });
     socket.on("connect", () => {
       socket.emit("player:join", selfPlayer);
     });
@@ -538,6 +543,11 @@ export default function GameShell() {
     } catch {}
   }, [applyMember, isAuthed]);
 
+  const handleNpcCoinsNeeded = useCallback((cost) => {
+    setNoCoinsCost(Number(cost) || 0);
+    setShowNoCoins(true);
+  }, []);
+
   const handleGamble = useCallback(async (betAmount) => {
     if (!isAuthed) return;
     try {
@@ -546,13 +556,15 @@ export default function GameShell() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ betAmount }),
       });
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
         applyMember(data.member);
         setGamblingResult({ won: data.won, delta: data.delta });
+      } else if (data.error === "not_enough_coins") {
+        handleNpcCoinsNeeded(betAmount);
       }
     } catch {}
-  }, [applyMember, isAuthed]);
+  }, [applyMember, handleNpcCoinsNeeded, isAuthed]);
 
   const handleHintBuy = useCallback(async (hintId) => {
     if (!isAuthed) return;
@@ -562,13 +574,15 @@ export default function GameShell() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hintId }),
       });
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
         applyMember(data.member);
         setHintResult({ title: data.hintTitle, content: data.hintContent });
+      } else if (data.error === "not_enough_coins") {
+        handleNpcCoinsNeeded(data.cost);
       }
     } catch {}
-  }, [applyMember, isAuthed]);
+  }, [applyMember, handleNpcCoinsNeeded, isAuthed]);
 
   const handleNpcQuestClose = useCallback(() => {
     setNpcVisit(null);
@@ -576,6 +590,17 @@ export default function GameShell() {
     setGamblingResult(null);
     setHintsData(null);
     setHintResult(null);
+  }, []);
+
+  const handleNpcInteract = useCallback(() => {
+    if (!pendingNpc) return;
+    setNpcVisit(pendingNpc);
+    setPendingNpc(null);
+  }, [pendingNpc]);
+
+  const handleCooldownReduction = useCallback((milliseconds) => {
+    if (!milliseconds) return;
+    socketRef.current?.emit("shop:reduce-cooldown", { milliseconds });
   }, []);
 
   const handleRewardClose = useCallback(() => {
@@ -685,6 +710,7 @@ export default function GameShell() {
           selfId={selfPlayer?.id}
           onOpenProfile={(player) => handleOpenProfile(player.id, player)}
         />
+        <NpcDoorVisitor npc={pendingNpc} onInteract={handleNpcInteract} />
         <RoomClock cycleInfo={cycleInfo} />
       </section>
       {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayer(null)} />}
@@ -699,6 +725,9 @@ export default function GameShell() {
           onHintBuy={handleHintBuy}
           gamblingResult={gamblingResult}
           onGamble={handleGamble}
+          onMemberUpdate={applyMember}
+          onCooldownReduction={handleCooldownReduction}
+          onNeedCoins={handleNpcCoinsNeeded}
           onClose={handleNpcQuestClose}
         />
       )}

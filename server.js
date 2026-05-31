@@ -49,6 +49,11 @@ function enrichNpc(npc) {
   if (npc.type === "gambling") {
     return { ...npc, betAmount: Math.floor(Math.random() * 9901) + 100 };
   }
+  if (npc.type === "shop") {
+    const catalog = ["quest-scroll", "asset-ticket", "cooldown-minute", "limit-break"];
+    const offers = [...catalog].sort(() => Math.random() - 0.5).slice(0, 3);
+    return { ...npc, offers };
+  }
   return npc;
 }
 
@@ -156,26 +161,31 @@ app.prepare().then(() => {
     if (cycleTimer) clearTimeout(cycleTimer);
     const dur = effectiveDuration();
     const elapsed = Date.now() - cycleStartedAt;
-    const remaining = Math.max(500, dur - (elapsed % dur));
+    const remaining = Math.max(500, dur - elapsed);
 
     cycleTimer = setTimeout(() => {
-      // Each connected socket gets its own random NPC (skip players with active quest)
-      for (const [, s] of io.sockets.sockets) {
-        const pid = socketToPlayer.get(s.id);
-        if (pid && playerNpcQuest.get(pid)) continue;
-        s.emit("npc:visit", enrichNpc(pickWeightedNpc()));
-      }
-      cycleStartedAt = Date.now();
-      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
-      scheduleCycle();
+      triggerNpcVisits();
     }, remaining);
   }
+
+  function triggerNpcVisits() {
+    // Each connected socket gets its own random NPC (skip players with active quest)
+    for (const [, s] of io.sockets.sockets) {
+      const pid = socketToPlayer.get(s.id);
+      if (pid && playerNpcQuest.get(pid)) continue;
+      s.emit("npc:visit", enrichNpc(pickWeightedNpc()));
+    }
+    cycleStartedAt = Date.now();
+    io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
+    scheduleCycle();
+  }
+
   scheduleCycle();
   // ────────────────────────────────────────────────────────────────
 
   io.on("connection", (socket) => {
     // Send current cycle state immediately on connect
-    socket.emit("timer:sync", { cycleStartedAt, cycleDurationMs: CYCLE_MS });
+    socket.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
 
     let activeStage = null;
     let activePlayerId = null;
@@ -274,14 +284,7 @@ app.prepare().then(() => {
     });
 
     socket.on("dev:skip", () => {
-      for (const [, s] of io.sockets.sockets) {
-        const pid = socketToPlayer.get(s.id);
-        if (pid && playerNpcQuest.get(pid)) continue;
-        s.emit("npc:visit", enrichNpc(pickWeightedNpc()));
-      }
-      cycleStartedAt = Date.now();
-      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
-      scheduleCycle();
+      triggerNpcVisits();
     });
 
     socket.on("dev:reset", () => {
@@ -292,6 +295,14 @@ app.prepare().then(() => {
 
     socket.on("dev:set-speed", (multiplier) => {
       cycleSpeedMultiplier = Math.max(1, Number(multiplier) || 1);
+      io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
+      scheduleCycle();
+    });
+
+    socket.on("shop:reduce-cooldown", (payload = {}) => {
+      const milliseconds = Math.min(5 * 60 * 1000, Math.max(0, Number(payload.milliseconds) || 0));
+      if (!milliseconds) return;
+      cycleStartedAt -= milliseconds;
       io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
       scheduleCycle();
     });

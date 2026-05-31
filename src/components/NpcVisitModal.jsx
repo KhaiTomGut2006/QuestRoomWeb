@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { withBasePath } from "@/lib/basePath";
 
 // npcId → image filename
@@ -22,6 +23,35 @@ const TYPE_META = {
   "stupid-quest":{ label: "Stupid Quest", cls: "type-stupid" },
   gambling:     { label: "Gambling",   cls: "type-gambling" },
 };
+
+const SHOP_ITEMS = {
+  "quest-scroll": {
+    name: "Quest (Normal)",
+    description: "เก็บตั๋วเควสปกติไว้ใช้ภายหลัง",
+    cost: 50,
+    image: "quest.png",
+  },
+  "asset-ticket": {
+    name: "Asset Ticket",
+    description: "ตั๋วไอเทมสำหรับกิจกรรมพิเศษ",
+    cost: 120,
+    image: "AssetTicket.png",
+  },
+  "cooldown-minute": {
+    name: "Cooldown -1 min",
+    description: "ลดเวลารอ NPC รอบถัดไป 1 นาที",
+    cost: 200,
+    image: "Cooldown.png",
+  },
+  "limit-break": {
+    name: "Limit Break",
+    description: "ไอเทมหายากสำหรับปลดขีดจำกัด",
+    cost: 500,
+    image: "limitbreak.png",
+  },
+};
+
+const DEFAULT_SHOP_OFFERS = ["quest-scroll", "asset-ticket", "cooldown-minute"];
 
 // 6 smoke puff positions (top-left origin, %)
 const SMOKE_PUFFS = [
@@ -113,6 +143,68 @@ function HintsDialog({ hintsData, hintResult, onHintBuy, onClose }) {
   );
 }
 
+function ChestDialog({ result, loading, onClaim, onClose }) {
+  return (
+    <InteractDialog npcId="chest" npcName="Treasure Chest" intro="หีบสมบัติลึกลับมาหยุดอยู่หน้าประตู">
+      {result ? (
+        <>
+          <div className="npc-interact-result npc-interact-result--win">
+            คุณได้รับ +{result.coins.toLocaleString()} Coins
+          </div>
+          <button className="npc-quest-decline-btn" type="button" onClick={onClose}>เก็บสมบัติ</button>
+        </>
+      ) : (
+        <>
+          <p className="npc-quest-text">เปิดหีบเพื่อลุ้นรับ 20-200 Coins</p>
+          <button className="npc-quest-accept-btn" type="button" onClick={onClaim} disabled={loading}>
+            {loading ? "กำลังเปิดหีบ..." : "เปิดหีบสมบัติ"}
+          </button>
+          <button className="npc-quest-decline-btn" type="button" onClick={onClose}>ไว้คราวหน้า</button>
+        </>
+      )}
+    </InteractDialog>
+  );
+}
+
+function ShopDialog({ npc, purchases, loadingItem, onBuy, onClose }) {
+  const offers = Array.isArray(npc.offers) && npc.offers.length > 0
+    ? npc.offers
+    : DEFAULT_SHOP_OFFERS;
+
+  return (
+    <InteractDialog npcId="milt" npcName="Milt" intro="มีของน่าสนใจมาให้เลือก 3 ชิ้น">
+      <div className="npc-shop-list">
+        {offers.map((itemId) => {
+          const item = SHOP_ITEMS[itemId];
+          if (!item) return null;
+          return (
+            <button
+              key={itemId}
+              className="npc-shop-item"
+              type="button"
+              onClick={() => onBuy(itemId)}
+              disabled={Boolean(loadingItem)}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={withBasePath(`/assets/Item/${item.image}`)} alt="" />
+              <span className="npc-shop-item-copy">
+                <strong>{item.name}</strong>
+                <small>{purchases[itemId] || item.description}</small>
+              </span>
+              <span className="npc-shop-price">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+                {loadingItem === itemId ? "..." : item.cost}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <button className="npc-quest-decline-btn" type="button" onClick={onClose}>ฉันไม่ต้องการ!</button>
+    </InteractDialog>
+  );
+}
+
 // ── Quest dialog (when npc.type === "quest" and questData is loaded) ──────────
 function QuestDialog({ npc, questData, onAccept, onClose }) {
   const charKey = questData.npcCharacter || npc.npcId || npc.id;
@@ -158,8 +250,14 @@ export default function NpcVisitModal({
   npc, questData, onAccept,
   hintsData, hintResult, onHintBuy,
   gamblingResult, onGamble,
+  onMemberUpdate, onCooldownReduction, onNeedCoins,
   onClose,
 }) {
+  const [chestResult, setChestResult] = useState(null);
+  const [claimingChest, setClaimingChest] = useState(false);
+  const [shopPurchases, setShopPurchases] = useState({});
+  const [loadingShopItem, setLoadingShopItem] = useState("");
+
   if (!npc) return null;
 
   const imgFile = NPC_IMAGE[npc.npcId] || NPC_IMAGE[npc.id] || "chest_open.png";
@@ -168,7 +266,43 @@ export default function NpcVisitModal({
   const isQuestDialog    = (npc.type === "quest" || npc.type === "stupid-quest") && questData;
   const isGamblingDialog = npc.type === "gambling";
   const isHintsDialog    = npc.type === "hints";
-  const isWideDialog     = isQuestDialog || isGamblingDialog || isHintsDialog;
+  const isShopDialog     = npc.type === "shop";
+  const isChestDialog    = npc.type === "chest";
+  const isWideDialog     = isQuestDialog || isGamblingDialog || isHintsDialog || isShopDialog || isChestDialog;
+
+  const handleChestClaim = async () => {
+    setClaimingChest(true);
+    try {
+      const response = await fetch(withBasePath("/api/player/npc-reward"), { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) return;
+      onMemberUpdate?.(data.member);
+      setChestResult({ coins: data.coins });
+    } finally {
+      setClaimingChest(false);
+    }
+  };
+
+  const handleShopBuy = async (itemId) => {
+    setLoadingShopItem(itemId);
+    try {
+      const response = await fetch(withBasePath("/api/player/npc-shop"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (data.error === "not_enough_coins") onNeedCoins?.(data.cost);
+        return;
+      }
+      onMemberUpdate?.(data.member);
+      onCooldownReduction?.(data.cooldownReductionMs);
+      setShopPurchases((current) => ({ ...current, [itemId]: "ซื้อสำเร็จ" }));
+    } finally {
+      setLoadingShopItem("");
+    }
+  };
 
   return (
     <div
@@ -193,7 +327,7 @@ export default function NpcVisitModal({
       <div className={`npc-visit-card${isWideDialog ? " npc-visit-card--quest" : ""}`}>
         <button className="npc-visit-close" type="button" onClick={onClose} aria-label="Close">✕</button>
 
-        {!isQuestDialog && !isGamblingDialog && !isHintsDialog && (
+        {!isQuestDialog && !isGamblingDialog && !isHintsDialog && !isShopDialog && !isChestDialog && (
           <>
             <span className={`npc-visit-type-badge ${meta.cls}`}>{meta.label}</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -238,8 +372,26 @@ export default function NpcVisitModal({
             onClose={onClose}
           />
         )}
+
+        {isShopDialog && (
+          <ShopDialog
+            npc={npc}
+            purchases={shopPurchases}
+            loadingItem={loadingShopItem}
+            onBuy={handleShopBuy}
+            onClose={onClose}
+          />
+        )}
+
+        {isChestDialog && (
+          <ChestDialog
+            result={chestResult}
+            loading={claimingChest}
+            onClaim={handleChestClaim}
+            onClose={onClose}
+          />
+        )}
       </div>
     </div>
   );
 }
-

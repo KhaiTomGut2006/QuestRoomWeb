@@ -37,7 +37,7 @@ export async function PUT(request) {
 
     // Validate entries
     const valid = incoming.filter(
-      (q) => ["easy", "medium", "hard"].includes(q.difficulty) && q.title && q.description
+      (q) => ["easy", "medium", "hard", "stupid"].includes(q.difficulty) && q.title && q.description
     );
 
     await connectDb();
