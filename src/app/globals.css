@@ -1098,7 +1098,16 @@ button {
   height: clamp(72px, 8vw, 148px);
   object-fit: contain;
   filter: drop-shadow(0 5px 2px rgba(47, 31, 16, 0.22));
-  animation: npc-door-idle 1.7s ease-in-out 1.45s infinite alternate;
+  animation: npc-door-idle 1.9s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+.npc-door-visitor--entering img {
+  animation-delay: 1.45s;
+}
+
+.npc-door-visitor--exiting img {
+  animation: none;
 }
 
 .npc-door-visitor--chest img {
@@ -1113,6 +1122,16 @@ button {
   height: 12px;
   border-radius: 999px;
   background: rgba(38, 30, 22, 0.25);
+  animation: npc-door-shadow-idle 1.9s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.npc-door-visitor--entering .npc-door-visitor-shadow {
+  animation-delay: 1.45s;
+}
+
+.npc-door-visitor--exiting .npc-door-visitor-shadow {
+  animation: none;
 }
 
 .npc-door-visitor-prompt {
@@ -1181,8 +1200,19 @@ button {
 }
 
 @keyframes npc-door-idle {
-  from { transform: translateY(0); }
-  to { transform: translateY(-4px); }
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(-3px) scaleY(1.006); }
+}
+
+@keyframes npc-door-shadow-idle {
+  0%, 100% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  50% {
+    opacity: 0.78;
+    transform: scaleX(0.9);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -2522,7 +2552,8 @@ button {
 
 @media (prefers-reduced-motion: reduce) {
   .npc-door-visitor,
-  .npc-door-visitor img {
+  .npc-door-visitor img,
+  .npc-door-visitor-shadow {
     animation: none;
   }
 }
