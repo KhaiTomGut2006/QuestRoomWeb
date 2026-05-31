@@ -1184,8 +1184,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(31, 20, 8, 0.52);
-  backdrop-filter: blur(4px);
+  padding: 24px 24px 24px clamp(150px, 19vw, 260px);
+  background: rgba(251, 241, 211, 0.76);
   animation: npc-overlay-in 0.35s ease forwards;
 }
 
@@ -1196,11 +1196,7 @@ button {
 
 /* Smoke stage — full-screen absolute layer, pointer-events: none */
 .npc-smoke-stage {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 201;
-  overflow: hidden;
+  display: none;
 }
 
 .npc-smoke-puff {
@@ -1938,130 +1934,154 @@ button {
 
 /* ── NPC Quest Dialog (inside .npc-visit-card--quest) ───────────────────── */
 .npc-visit-card--quest {
-  max-width: 560px;
-  min-width: 380px;
-  padding: 24px 28px 20px;
+  width: min(760px, calc(100vw - clamp(190px, 24vw, 330px)));
+  max-width: 760px;
+  min-width: 560px;
+  padding: clamp(34px, 4vw, 50px) clamp(34px, 4vw, 52px) clamp(38px, 4vw, 56px);
+  border: 3px solid #201f1d;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+}
+
+.npc-visit-card--quest .npc-visit-close {
+  display: none;
 }
 
 .npc-quest-layout {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  position: relative;
+  display: block;
   width: 100%;
 }
 
 .npc-quest-npc-side {
+  position: absolute;
+  top: 50%;
+  left: clamp(-238px, -16vw, -168px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  gap: 8px;
+  width: clamp(136px, 12vw, 178px);
+  transform: translateY(-50%);
 }
 
 .npc-quest-npc-img {
-  width: 100px;
-  height: 120px;
+  width: clamp(120px, 11vw, 166px);
+  height: clamp(134px, 13vw, 192px);
   object-fit: contain;
 }
 
 .npc-quest-npc-name {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: clamp(20px, 1.55vw, 28px);
+  font-weight: 950;
   color: var(--ink);
   text-align: center;
   margin: 0;
 }
 
 .npc-quest-dialog-side {
-  flex: 1;
-  background: #fffbf0;
-  border: 2px solid #c8943c;
-  border-radius: 12px;
-  padding: 14px 16px 12px;
   position: relative;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 
 /* Speech bubble arrow pointing left */
 .npc-quest-dialog-side::before {
   content: '';
   position: absolute;
-  left: -14px;
-  top: 28px;
-  border-width: 10px 14px 10px 0;
+  left: clamp(-104px, -6.6vw, -70px);
+  top: 46%;
+  border-width: 28px clamp(70px, 6.6vw, 104px) 28px 0;
   border-style: solid;
-  border-color: transparent #c8943c transparent transparent;
+  border-color: transparent #201f1d transparent transparent;
+  transform: translateY(-50%);
 }
 .npc-quest-dialog-side::after {
   content: '';
   position: absolute;
-  left: -10px;
-  top: 30px;
-  border-width: 8px 11px 8px 0;
+  left: clamp(-97px, -6.2vw, -65px);
+  top: 46%;
+  border-width: 24px clamp(64px, 6.2vw, 97px) 24px 0;
   border-style: solid;
-  border-color: transparent #fffbf0 transparent transparent;
+  border-color: transparent #fff transparent transparent;
+  transform: translateY(-50%);
 }
 
 .npc-quest-warning {
-  font-size: 11px;
+  font-size: clamp(11px, 0.82vw, 14px);
   color: #dc2626;
   font-style: italic;
-  margin: 0 0 10px;
+  margin: 0 0 14px;
   line-height: 1.4;
 }
 
 .npc-quest-text {
-  font-size: 13px;
+  font-size: clamp(23px, 1.7vw, 28px);
   color: var(--ink);
-  line-height: 1.65;
-  margin: 0 0 12px;
+  line-height: 1.4;
+  margin: 0 0 24px;
 }
 
 .npc-quest-reward {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 15px;
-  font-weight: 700;
+  gap: 8px;
+  font-size: clamp(18px, 1.25vw, 23px);
+  font-weight: 900;
   color: #92400e;
-  margin: 0 0 14px;
+  margin: -6px 0 16px;
 }
 
 .npc-quest-reward img {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
 }
 
 .npc-quest-accept-btn {
   width: 100%;
-  padding: 9px 0;
-  background: #f59e0b;
-  color: #78350f;
-  font-weight: 700;
-  font-size: 14px;
-  border: none;
-  border-radius: 8px;
+  padding: 15px 20px 20px;
+  background: #ffdc52;
+  color: #171717;
+  font-weight: 800;
+  font-size: clamp(22px, 1.65vw, 27px);
+  text-align: left;
+  border: 3px solid #201f1d;
+  border-radius: 0;
   cursor: pointer;
-  margin-bottom: 7px;
-  transition: background 0.15s;
+  margin-bottom: 9px;
+  box-shadow: inset 0 -7px 0 #ff9f4a;
+  transition: background 0.15s, transform 0.1s;
   font-family: inherit;
 }
-.npc-quest-accept-btn:hover { background: #d97706; }
+.npc-quest-accept-btn:hover {
+  background: #ffe779;
+  transform: translateY(-1px);
+}
 
 .npc-quest-decline-btn {
   width: 100%;
-  padding: 9px 0;
-  background: transparent;
-  color: #92400e;
-  font-weight: 700;
-  font-size: 13px;
-  border: 2px solid #f59e0b;
-  border-radius: 8px;
+  padding: 15px 20px 20px;
+  background: #ffdc52;
+  color: #171717;
+  font-weight: 800;
+  font-size: clamp(22px, 1.65vw, 27px);
+  text-align: left;
+  border: 3px solid #201f1d;
+  border-radius: 0;
   cursor: pointer;
-  transition: background 0.15s;
+  box-shadow: inset 0 -7px 0 #ff9f4a;
+  transition: background 0.15s, transform 0.1s;
   font-family: inherit;
 }
-.npc-quest-decline-btn:hover { background: rgba(245,158,11,0.1); }
+.npc-quest-decline-btn:hover {
+  background: #ffe779;
+  transform: translateY(-1px);
+}
 
 /* ── Active Quest HUD ────────────────────────────────────────────────────── */
 .npc-active-quest-hud {
@@ -2120,21 +2140,22 @@ button {
 .npc-interact-choice-btn {
   display: block;
   width: 100%;
-  margin-top: 8px;
-  padding: 9px 14px;
-  background: #f59e0b;
-  color: #78350f;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 700;
+  margin-top: 9px;
+  padding: 15px 20px 20px;
+  background: #ffdc52;
+  color: #171717;
+  border: 3px solid #201f1d;
+  border-radius: 0;
+  box-shadow: inset 0 -7px 0 #ff9f4a;
+  font-size: clamp(22px, 1.65vw, 27px);
+  font-weight: 800;
   font-family: inherit;
   text-align: left;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
 }
 .npc-interact-choice-btn:hover {
-  background: #d97706;
+  background: #ffe779;
   transform: translateY(-1px);
 }
 
@@ -2249,6 +2270,58 @@ button {
   width: 19px;
   height: 19px;
   object-fit: contain;
+}
+
+@media (max-width: 820px) {
+  .npc-visit-overlay {
+    align-items: flex-end;
+    padding: 20px 16px 28px;
+  }
+
+  .npc-visit-card--quest {
+    width: min(100%, 620px);
+    min-width: 0;
+    padding: 24px 18px 20px;
+  }
+
+  .npc-quest-npc-side {
+    position: static;
+    width: 100%;
+    margin-bottom: 14px;
+    transform: none;
+  }
+
+  .npc-quest-npc-img {
+    width: 100px;
+    height: 112px;
+  }
+
+  .npc-quest-npc-name {
+    font-size: 20px;
+  }
+
+  .npc-quest-dialog-side::before,
+  .npc-quest-dialog-side::after {
+    display: none;
+  }
+
+  .npc-quest-text {
+    margin-bottom: 16px;
+    font-size: 17px;
+  }
+
+  .npc-quest-accept-btn,
+  .npc-quest-decline-btn,
+  .npc-interact-choice-btn {
+    padding: 12px 14px 16px;
+    border-width: 2px;
+    box-shadow: inset 0 -5px 0 #ff9f4a;
+    font-size: 17px;
+  }
+
+  .npc-shop-item-copy small {
+    white-space: normal;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2619,4 +2692,3 @@ button {
   color: #8b7668;
   font-weight: 700;
 }
-
