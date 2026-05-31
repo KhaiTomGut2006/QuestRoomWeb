@@ -836,6 +836,11 @@ export default function GameShell() {
     setQuestSuccess({ title: data.submission?.title || "NPC Quest", reward: data.reward ?? 0 });
   }, [activeMember?.discordId, activeMember?.id, applyMember, dismissDoorNpc, isAuthed]);
 
+  const handleChestClaim = useCallback((coins) => {
+    dismissDoorNpc();
+    setQuestSuccess({ title: "หีบสมบัติ", reward: coins, isChest: true });
+  }, [dismissDoorNpc]);
+
   const handleNpcCoinsNeeded = useCallback((cost) => {
     setNoCoinsCost(Number(cost) || 0);
     setShowNoCoins(true);
@@ -1071,6 +1076,7 @@ export default function GameShell() {
           onMemberUpdate={applyMember}
           onCooldownReduction={handleCooldownReduction}
           onNeedCoins={handleNpcCoinsNeeded}
+          onChestClaim={handleChestClaim}
           onClose={handleNpcQuestClose}
         />
       )}
@@ -1089,9 +1095,9 @@ export default function GameShell() {
       {questSuccess && (
         <div className="quest-success-backdrop" onClick={() => setQuestSuccess(null)}>
           <section className="quest-success-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <div className="quest-success-icon">⚔️</div>
-            <p className="quest-success-kicker">QUEST COMPLETE!</p>
-            <h2 className="quest-success-title">เควสสำเร็จ!!</h2>
+            <div className="quest-success-icon">{questSuccess.isChest ? "🎁" : "⚔️"}</div>
+            <p className="quest-success-kicker">{questSuccess.isChest ? "TREASURE FOUND!" : "QUEST COMPLETE!"}</p>
+            <h2 className="quest-success-title">{questSuccess.isChest ? "ได้สมบัติ!!" : "เควสสำเร็จ!!"}</h2>
             <p className="quest-success-subtitle">{questSuccess.title}</p>
             <div className="quest-success-reward">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1100,7 +1106,7 @@ export default function GameShell() {
               <span className="quest-success-reward-label">Coins</span>
             </div>
             <button type="button" className="quest-success-btn" onClick={() => setQuestSuccess(null)}>
-              รับรางวัล!
+              {questSuccess.isChest ? "เก็บสมบัติ!" : "รับรางวัล!"}
             </button>
           </section>
         </div>

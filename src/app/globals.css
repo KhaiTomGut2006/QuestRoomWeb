@@ -1082,12 +1082,17 @@ button {
 }
 
 .npc-door-visitor--entering {
-  animation: npc-walk-to-door 1.45s cubic-bezier(0.18, 0.72, 0.28, 1) both;
+  animation: npc-walk-to-door 1.6s cubic-bezier(0.22, 0.8, 0.28, 1) both;
 }
 
 .npc-door-visitor--exiting {
   pointer-events: none;
-  animation: npc-leave-door 720ms cubic-bezier(0.55, 0.05, 0.8, 0.45) both;
+  animation: npc-leave-door 680ms cubic-bezier(0.55, 0.05, 0.8, 0.45) both;
+}
+
+.npc-door-visitor--swapping {
+  pointer-events: none;
+  animation: npc-swap-out 340ms ease-in both;
 }
 
 .npc-door-visitor img {
@@ -1160,19 +1165,26 @@ button {
 @keyframes npc-walk-to-door {
   0% {
     opacity: 0;
-    transform: translate(-245%, -77%) scale(0.78);
+    transform: translate(-210%, -80%) scale(0.72);
+    filter: brightness(0.6);
   }
-  15% {
+  8% {
     opacity: 1;
+    filter: brightness(1);
   }
-  70% {
-    transform: translate(-72%, -98%) scale(0.97);
+  60% {
+    transform: translate(-68%, -99%) scale(0.98);
   }
-  86% {
-    transform: translate(-48%, -104%) scale(1.02);
+  78% {
+    transform: translate(-44%, -105%) scale(1.03);
+  }
+  90% {
+    transform: translate(-52%, -99%) scale(0.99);
   }
   100% {
+    opacity: 1;
     transform: translate(-50%, -100%) scale(1);
+    filter: brightness(1);
   }
 }
 
@@ -1181,14 +1193,19 @@ button {
     opacity: 1;
     transform: translate(-50%, -100%) scale(1);
   }
-  40% {
+  30% {
     opacity: 1;
-    transform: translate(-78%, -94%) scale(0.96);
+    transform: translate(-72%, -95%) scale(0.95);
   }
   100% {
     opacity: 0;
-    transform: translate(-245%, -77%) scale(0.78);
+    transform: translate(-210%, -80%) scale(0.72);
   }
+}
+
+@keyframes npc-swap-out {
+  0% { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -108%) scale(0.88); }
 }
 
 @keyframes npc-door-idle {

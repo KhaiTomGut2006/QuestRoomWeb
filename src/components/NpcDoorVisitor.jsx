@@ -22,7 +22,7 @@ export default function NpcDoorVisitor({ npc, phase = "idle", onInteract }) {
     <button
       className={`npc-door-visitor npc-door-visitor--${npc.type} npc-door-visitor--${phase}`}
       type="button"
-      disabled={phase === "exiting"}
+      disabled={phase === "exiting" || phase === "swapping"}
       onClick={(event) => {
         event.stopPropagation();
         onInteract?.();

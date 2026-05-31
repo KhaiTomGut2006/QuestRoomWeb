@@ -368,7 +368,7 @@ export default function NpcVisitModal({
   npc, questData, activeQuest, onAccept, onQuestCancel, onQuestSubmit,
   hintsData, hintResult, onHintBuy,
   gamblingResult, onGamble,
-  onMemberUpdate, onCooldownReduction, onNeedCoins,
+  onMemberUpdate, onCooldownReduction, onNeedCoins, onChestClaim,
   onClose,
 }) {
   const [chestResult, setChestResult] = useState(null);
@@ -395,7 +395,8 @@ export default function NpcVisitModal({
       const data = await response.json();
       if (!response.ok) return;
       onMemberUpdate?.(data.member);
-      setChestResult({ coins: data.coins });
+      onChestClaim?.(data.coins ?? 0);
+      onClose?.();
     } finally {
       setClaimingChest(false);
     }
