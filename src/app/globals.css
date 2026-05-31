@@ -2646,28 +2646,29 @@ button {
 
 .npc-shop-list {
   display: grid;
-  gap: 8px;
-  margin: 4px 0 10px;
+  gap: 10px;
+  margin: 8px 0 14px;
 }
 
 .npc-shop-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid #eadbb9;
-  border-radius: 10px;
-  background: #f5f2ed;
+  padding: 12px 14px;
+  border: 2px solid #e5d9c4;
+  border-radius: 14px;
+  background: #f7f4ef;
   color: var(--ink);
   cursor: pointer;
   text-align: left;
-  transition: border-color 150ms ease, transform 150ms ease;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
 }
 
 .npc-shop-item:hover {
   border-color: #f59e0b;
-  transform: translateY(-1px);
+  background: #fffbf0;
+  transform: translateY(-2px);
 }
 
 .npc-shop-item:disabled {
@@ -2676,33 +2677,35 @@ button {
 }
 
 .npc-shop-item--unavailable {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .npc-shop-item--unavailable:hover {
-  border-color: #eadbb9;
+  border-color: #e5d9c4;
+  background: #f7f4ef;
   transform: none;
 }
 
 .npc-shop-item-counter {
   color: #92400e;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 
 .npc-shop-out-of-stock {
   color: #dc2626;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 900;
   line-height: 1;
 }
 
 .npc-shop-item > img {
-  width: 42px;
-  height: 42px;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
   border: 2px solid #2c2925;
-  border-radius: 10px;
+  border-radius: 12px;
   object-fit: contain;
   background: #fff;
 }
@@ -2713,16 +2716,16 @@ button {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 42px;
-  height: 42px;
+  width: 56px;
+  height: 56px;
   border: 2px solid #2c2925;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 .npc-shop-item-icon img {
-  width: 30px;
-  height: 30px;
+  width: 38px;
+  height: 38px;
   object-fit: contain;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35));
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4));
 }
 .npc-shop-item-icon--normal {
   background: linear-gradient(135deg, #4ade80 0%, #16a34a 100%);
@@ -2737,17 +2740,18 @@ button {
 /* Bought item — subtle green tint, still visible */
 .npc-shop-item--bought {
   background: #f0fdf4;
-  border-color: #bbf7d0;
+  border-color: #86efac;
   cursor: default;
   opacity: 0.85;
 }
 .npc-shop-item--bought:hover {
-  border-color: #bbf7d0;
+  border-color: #86efac;
+  background: #f0fdf4;
   transform: none;
 }
 .npc-shop-bought-mark {
   color: #16a34a;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 900;
   line-height: 1;
 }
@@ -2755,18 +2759,20 @@ button {
 .npc-shop-item-copy {
   display: grid;
   flex: 1;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
 
 .npc-shop-item-copy strong {
-  font-size: 13px;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .npc-shop-item-copy small {
   overflow: hidden;
   color: var(--ink-soft);
-  font-size: 11px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2774,15 +2780,16 @@ button {
 .npc-shop-price {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  flex-shrink: 0;
   color: #78350f;
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 900;
 }
 
 .npc-shop-price img {
-  width: 19px;
-  height: 19px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
 }
 
