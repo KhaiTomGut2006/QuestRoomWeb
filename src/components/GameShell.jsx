@@ -81,6 +81,7 @@ function playerFromMember(member) {
     action: "idle",
     online: true,
     hasNpcQuest: Boolean(member.npcQuest),
+    coins: Number(member.coins) || 0,
   };
 }
 
@@ -119,6 +120,7 @@ const NPC_IDS = [
   { id: "stupid-quest", label: "Stupid Quest/Dog (5%)" },
   { id: "gambling",     label: "Gambling/Begger (5%)" },
 ];
+const NPC_EXIT_MS = 720;
 
 function DevPanel({ socketRef, cycleInfo }) {
   const [open, setOpen] = useState(false);
@@ -209,7 +211,8 @@ export default function GameShell() {
   const [reward, setReward] = useState(null);
   const [message, setMessage] = useState("Pedding...");
   const [cycleInfo, setCycleInfo] = useState(null);
-  const [pendingNpc, setPendingNpc] = useState(null);
+  const [doorNpc, setDoorNpc] = useState(null);
+  const [doorNpcPhase, setDoorNpcPhase] = useState("idle");
   const [npcVisit, setNpcVisit] = useState(null);
   const [npcQuestData, setNpcQuestData] = useState(null);
   const [gamblingResult, setGamblingResult] = useState(null);
@@ -223,6 +226,8 @@ export default function GameShell() {
   const emitTimerRef = useRef(null);
   const autoLoginStartedRef = useRef(false);
   const shownRewardIdsRef = useRef(new Set());
+  const doorNpcRef = useRef(null);
+  const npcSwapTimerRef = useRef(null);
 
   const isAuthed = status === "authenticated";
   const activeMember = member || (previewMode ? demoMember : null);
@@ -236,6 +241,29 @@ export default function GameShell() {
       shownRewardIdsRef.current.add(nextReward.id);
       setReward(nextReward);
     }
+  }, []);
+
+  useEffect(() => {
+    doorNpcRef.current = doorNpc;
+  }, [doorNpc]);
+
+  useEffect(() => () => {
+    window.clearTimeout(npcSwapTimerRef.current);
+  }, []);
+
+  const queueDoorNpc = useCallback((npc) => {
+    window.clearTimeout(npcSwapTimerRef.current);
+    if (!doorNpcRef.current) {
+      setDoorNpc(npc);
+      setDoorNpcPhase("entering");
+      return;
+    }
+
+    setDoorNpcPhase("exiting");
+    npcSwapTimerRef.current = window.setTimeout(() => {
+      setDoorNpc(npc);
+      setDoorNpcPhase("entering");
+    }, NPC_EXIT_MS);
   }, []);
 
   const handleOpenProfile = useCallback((playerId, preloadedPlayer = null) => {
@@ -373,7 +401,7 @@ export default function GameShell() {
     });
     socket.on("timer:sync", (data) => setCycleInfo(data));
     socket.on("npc:visit", (npc) => {
-      setPendingNpc(npc);
+      queueDoorNpc(npc);
       setNpcVisit(null);
     });
     socket.on("connect", () => {
@@ -388,7 +416,7 @@ export default function GameShell() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [selfPlayer?.id, selfPlayer?.stage, previewMode]);
+  }, [previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage]);
 
   useEffect(() => {
     if (!selfPlayer) return;
@@ -398,6 +426,11 @@ export default function GameShell() {
       return Array.from(map.values());
     });
   }, [selfPlayer]);
+
+  useEffect(() => {
+    if (!activeMember) return;
+    socketRef.current?.emit("player:balance", { coins: Number(activeMember.coins) || 0 });
+  }, [activeMember?.coins]);
 
   const moveSelf = useCallback(
     (x, y) => {
@@ -593,10 +626,9 @@ export default function GameShell() {
   }, []);
 
   const handleNpcInteract = useCallback(() => {
-    if (!pendingNpc) return;
-    setNpcVisit(pendingNpc);
-    setPendingNpc(null);
-  }, [pendingNpc]);
+    if (!doorNpc || doorNpcPhase === "exiting") return;
+    setNpcVisit(doorNpc);
+  }, [doorNpc, doorNpcPhase]);
 
   const handleCooldownReduction = useCallback((milliseconds) => {
     if (!milliseconds) return;
@@ -710,7 +742,7 @@ export default function GameShell() {
           selfId={selfPlayer?.id}
           onOpenProfile={(player) => handleOpenProfile(player.id, player)}
         />
-        <NpcDoorVisitor npc={pendingNpc} onInteract={handleNpcInteract} />
+        <NpcDoorVisitor npc={doorNpc} phase={doorNpcPhase} onInteract={handleNpcInteract} />
         <RoomClock cycleInfo={cycleInfo} />
       </section>
       {profilePlayer && <ProfileModal player={profilePlayer} onClose={() => setProfilePlayer(null)} />}

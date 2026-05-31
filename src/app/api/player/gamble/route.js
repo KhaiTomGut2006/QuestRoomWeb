@@ -5,7 +5,7 @@ import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import { normalizeMember } from "@/lib/player";
 
-const MIN_BET = 100;
+const MIN_BET = 1;
 const MAX_BET = 10000;
 
 // POST /api/player/gamble  body: { betAmount }

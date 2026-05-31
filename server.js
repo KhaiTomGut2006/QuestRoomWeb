@@ -17,6 +17,7 @@ const handle = app.getRequestHandler();
 const rooms = new Map();
 const playerStages = new Map();   // playerId → current stage (cross-socket tracking)
 const socketToPlayer = new Map(); // socketId → playerId
+const socketPlayerCoins = new Map(); // socketId → last client-synced balance for NPC offer sizing
 const playerNpcQuest = new Map(); // playerId → bool (has active NPC quest)
 
 // ─── NPC Cycle Timer ────────────────────────────────────────────────
@@ -45,9 +46,10 @@ function pickWeightedNpc() {
 }
 
 // Attach dynamic data to certain NPC types before emitting
-function enrichNpc(npc) {
+function enrichNpc(npc, availableCoins = 0) {
   if (npc.type === "gambling") {
-    return { ...npc, betAmount: Math.floor(Math.random() * 9901) + 100 };
+    const maxBet = Math.min(10000, Math.max(0, Math.floor(Number(availableCoins) || 0)));
+    return { ...npc, betAmount: maxBet > 0 ? Math.floor(Math.random() * maxBet) + 1 : 0 };
   }
   if (npc.type === "shop") {
     const catalog = ["quest-scroll", "asset-ticket", "cooldown-minute", "limit-break"];
@@ -173,7 +175,7 @@ app.prepare().then(() => {
     for (const [, s] of io.sockets.sockets) {
       const pid = socketToPlayer.get(s.id);
       if (pid && playerNpcQuest.get(pid)) continue;
-      s.emit("npc:visit", enrichNpc(pickWeightedNpc()));
+      s.emit("npc:visit", enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(s.id)));
     }
     cycleStartedAt = Date.now();
     io.emit("timer:sync", { cycleStartedAt, cycleDurationMs: effectiveDuration() });
@@ -215,6 +217,7 @@ app.prepare().then(() => {
 
       // Track socket → player mapping
       socketToPlayer.set(socket.id, player.id);
+      socketPlayerCoins.set(socket.id, Math.max(0, Number(payload.coins) || 0));
       // Restore active quest state if client reports it
       if (payload.hasNpcQuest !== undefined) {
         playerNpcQuest.set(player.id, Boolean(payload.hasNpcQuest));
@@ -273,6 +276,10 @@ app.prepare().then(() => {
       const pid = socketToPlayer.get(socket.id);
       if (pid) playerNpcQuest.set(pid, Boolean(isActive));
     });
+
+    socket.on("player:balance", (payload = {}) => {
+      socketPlayerCoins.set(socket.id, Math.max(0, Number(payload.coins) || 0));
+    });
     // ─────────────────────────────────────────────────────────────
 
     // ─── Dev controls ────────────────────────────────────────────
@@ -280,7 +287,7 @@ app.prepare().then(() => {
       const specific = payload.npcId
         ? NPC_POOL.find((e) => e.npc.id === payload.npcId)?.npc
         : null;
-      socket.emit("npc:visit", enrichNpc(specific || pickWeightedNpc()));
+      socket.emit("npc:visit", enrichNpc(specific || pickWeightedNpc(), socketPlayerCoins.get(socket.id)));
     });
 
     socket.on("dev:skip", () => {
@@ -310,6 +317,7 @@ app.prepare().then(() => {
 
     socket.on("disconnect", () => {
       socketToPlayer.delete(socket.id);
+      socketPlayerCoins.delete(socket.id);
       detachPlayer();
     });
   });

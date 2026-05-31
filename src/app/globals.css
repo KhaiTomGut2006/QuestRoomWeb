@@ -1079,7 +1079,15 @@ button {
   background: transparent;
   cursor: pointer;
   transform: translate(-50%, -100%);
+}
+
+.npc-door-visitor--entering {
   animation: npc-walk-to-door 1.45s cubic-bezier(0.18, 0.72, 0.28, 1) both;
+}
+
+.npc-door-visitor--exiting {
+  pointer-events: none;
+  animation: npc-leave-door 720ms cubic-bezier(0.55, 0.05, 0.8, 0.45) both;
 }
 
 .npc-door-visitor img {
@@ -1095,18 +1103,6 @@ button {
 
 .npc-door-visitor--chest img {
   height: clamp(58px, 6vw, 108px);
-}
-
-.npc-door-visitor-name {
-  position: relative;
-  z-index: 3;
-  margin-top: 1px;
-  color: #1b1b1b;
-  font-size: clamp(11px, 0.78vw, 15px);
-  font-weight: 950;
-  line-height: 1;
-  text-align: center;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .npc-door-visitor-shadow {
@@ -1166,6 +1162,21 @@ button {
   }
   100% {
     transform: translate(-50%, -100%) scale(1);
+  }
+}
+
+@keyframes npc-leave-door {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+  40% {
+    opacity: 1;
+    transform: translate(-78%, -94%) scale(0.96);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-245%, -77%) scale(0.78);
   }
 }
 
@@ -2157,6 +2168,12 @@ button {
 .npc-interact-choice-btn:hover {
   background: #ffe779;
   transform: translateY(-1px);
+}
+
+.npc-interact-choice-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
 }
 
 .npc-interact-betamount {

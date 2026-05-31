@@ -84,7 +84,8 @@ function InteractDialog({ npcId, npcName, intro, children }) {
 
 // ── Gambling dialog (Begger) ─────────────────────────────────────────────────
 function GamblingDialog({ npc, result, onGamble, onClose }) {
-  const betAmount = npc.betAmount || 500;
+  const betAmount = Number(npc.betAmount) || 0;
+  const canGamble = betAmount > 0;
   return (
     <InteractDialog npcId="begger" npcName="Begger" intro="ขอเสนอวิธีการเงินง่ายๆ กับผม">
       {result ? (
@@ -104,8 +105,13 @@ function GamblingDialog({ npc, result, onGamble, onClose }) {
             <img src={withBasePath("/assets/Coin.png")} alt="coin" />
             <span>×{betAmount.toLocaleString()}</span>
           </div>
-          <button className="npc-interact-choice-btn" type="button" onClick={() => onGamble(betAmount)}>
-            ร่วมลงทุน {betAmount.toLocaleString()} Coins
+          <button
+            className="npc-interact-choice-btn"
+            type="button"
+            onClick={() => onGamble(betAmount)}
+            disabled={!canGamble}
+          >
+            {canGamble ? `ร่วมลงทุน ${betAmount.toLocaleString()} Coins` : "Coins ไม่พอสำหรับลงทุน"}
           </button>
           <button className="npc-quest-decline-btn" type="button" onClick={onClose}>อย่ามาแตะตัวกู!</button>
         </>
@@ -200,7 +206,7 @@ function ShopDialog({ npc, purchases, loadingItem, onBuy, onClose }) {
           );
         })}
       </div>
-      <button className="npc-quest-decline-btn" type="button" onClick={onClose}>ฉันไม่ต้องการ!</button>
+      <button className="npc-quest-decline-btn" type="button" onClick={onClose}>เรียบร้อยแล้ว</button>
     </InteractDialog>
   );
 }
