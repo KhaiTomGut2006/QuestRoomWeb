@@ -32,42 +32,45 @@ const SHOP_ITEMS = {
     name: "Quest (Normal)",
     description: "รับเควสระดับ Easy ทันที",
     cost: 50,
-    image: "quest_normal.png",
+    image: "quest.png",
     rarity: "normal",
   },
   "quest-scroll-rare": {
     name: "Quest (Rare)",
-    description: "รับเควสระดับ Normal ทันที",
+    description: "รับเควสระดับ Medium ทันที",
     cost: 100,
-    image: "quest_rare.png",
+    image: "quest.png",
     rarity: "rare",
   },
   "quest-scroll-epic": {
     name: "Quest (Epic)",
     description: "รับเควสระดับ Hard ทันที",
     cost: 400,
-    image: "quest_epic.png",
+    image: "quest.png",
     rarity: "epic",
   },
   "chest-small": {
     name: "Chests (x10-100 Coins)",
     description: "เปิดหีบสุ่มรับ 10-100 Coins",
     cost: 50,
-    image: "chest_small.png",
+    image: "chest_close.png",
+    imageFolder: "NPC",
     rarity: "normal",
   },
   "chest-medium": {
     name: "Chests (x50-200 Coins)",
     description: "เปิดหีบสุ่มรับ 50-200 Coins",
     cost: 100,
-    image: "chest_medium.png",
+    image: "chest_close.png",
+    imageFolder: "NPC",
     rarity: "rare",
   },
   "chest-large": {
     name: "Chests (x200-500 Coins)",
     description: "เปิดหีบสุ่มรับ 200-500 Coins",
     cost: 350,
-    image: "chest_large.png",
+    image: "chest_close.png",
+    imageFolder: "NPC",
     rarity: "epic",
   },
   "cooldown-minute": {
@@ -234,15 +237,18 @@ function getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, 
     if (!hasLimitBreak) return "locked";
     if (t2Count >= 10) return "maxed";
   }
-  if (itemId === "limit-break" && hasLimitBreak) return "owned";
+  if (itemId === "limit-break") {
+    if (hasLimitBreak) return "owned";
+    if (t1Count < 10) return "locked_t1";
+  }
   return "available";
 }
 
 const STOCK_LABEL = {
-  bought:       "Out of Stock",
   maxed:        "ซื้อครบแล้ว",
   owned:        "มีแล้ว",
   locked:       "🔒 ต้องการ Limit Break",
+  locked_t1:    "🔒 ซื้อนาฬิกา Lv1 ครบ 10 ครั้งก่อน",
   quest_active: "มีเควสอยู่แล้ว",
 };
 
@@ -251,9 +257,9 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
     ? npc.offers
     : DEFAULT_SHOP_OFFERS;
 
-  const t1Count       = memberShop?.cooldownT1 ?? 0;
-  const t2Count       = memberShop?.cooldownT2 ?? 0;
-  const hasLimitBreak = memberShop?.limitBreak ?? false;
+  const t1Count        = memberShop?.cooldownT1 ?? 0;
+  const t2Count        = memberShop?.cooldownT2 ?? 0;
+  const hasLimitBreak  = memberShop?.limitBreak ?? false;
   const hasActiveQuest = memberShop?.hasActiveQuest ?? false;
 
   return (
@@ -263,29 +269,45 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
           const item = SHOP_ITEMS[itemId];
           if (!item) return null;
           const status      = getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, hasActiveQuest);
+          const isBought    = status === "bought";
           const unavailable = status !== "available";
+          const isQuestScroll = itemId.startsWith("quest-scroll-");
+          const imgFolder   = item.imageFolder || "Item";
+          const imgSrc      = withBasePath(`/assets/${imgFolder}/${item.image}`);
+          const descLabel   = isBought
+            ? (purchases[itemId] || "ซื้อแล้ว")
+            : (STOCK_LABEL[status] ?? item.description);
           return (
             <button
               key={itemId}
-              className={`npc-shop-item${unavailable ? " npc-shop-item--unavailable" : ""}${item.rarity ? ` npc-shop-item--${item.rarity}` : ""}`}
+              className={`npc-shop-item${isBought ? " npc-shop-item--bought" : unavailable ? " npc-shop-item--unavailable" : ""}`}
               type="button"
               onClick={() => onBuy(itemId)}
               disabled={Boolean(loadingItem) || unavailable}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withBasePath(`/assets/Item/${item.image}`)} alt="" />
+              {isQuestScroll ? (
+                <div className={`npc-shop-item-icon npc-shop-item-icon--${item.rarity}`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={imgSrc} alt="" />
+                </div>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={imgSrc} alt="" />
+              )}
               <span className="npc-shop-item-copy">
                 <strong>{item.name}</strong>
-                <small>{STOCK_LABEL[status] ?? item.description}</small>
-                {itemId === "cooldown-minute" && !purchases[itemId] && (
+                <small>{descLabel}</small>
+                {itemId === "cooldown-minute" && !isBought && (
                   <small className="npc-shop-item-counter">{t1Count} / 10</small>
                 )}
-                {itemId === "cooldown-minute-lv2" && hasLimitBreak && !purchases[itemId] && (
+                {itemId === "cooldown-minute-lv2" && hasLimitBreak && !isBought && (
                   <small className="npc-shop-item-counter">{t2Count} / 10</small>
                 )}
               </span>
               <span className="npc-shop-price">
-                {unavailable ? (
+                {isBought ? (
+                  <span className="npc-shop-bought-mark">✓</span>
+                ) : unavailable ? (
                   <span className="npc-shop-out-of-stock">✕</span>
                 ) : (
                   <>
@@ -509,16 +531,18 @@ export default function NpcVisitModal({
       }
       onMemberUpdate?.(data.member);
       onCooldownReduction?.(data.cooldownReductionMs);
+
+      // Determine per-item purchase message for feedback in the shop
+      let purchaseMsg = "ซื้อสำเร็จ";
       if (data.assignedQuest) {
         onQuestScrollBought?.(data.assignedQuest, data.member);
-        return;
-      }
-      if (data.chestCoins > 0) {
+        purchaseMsg = "รับเควสแล้ว!";
+      } else if (data.chestCoins > 0) {
         onChestClaim?.(data.chestCoins, { dismissNpc: false });
-        onClose?.();
-        return;
+        purchaseMsg = `+${data.chestCoins.toLocaleString()} Coins!`;
       }
-      setShopPurchases((current) => ({ ...current, [itemId]: "ซื้อสำเร็จ" }));
+      // Mark as bought — shop stays open, item becomes unavailable for this visit
+      setShopPurchases((current) => ({ ...current, [itemId]: purchaseMsg }));
     } finally {
       setLoadingShopItem("");
     }

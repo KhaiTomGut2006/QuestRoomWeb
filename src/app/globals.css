@@ -2522,6 +2522,51 @@ button {
   background: #fff;
 }
 
+/* Quest scroll icon — rarity-colored background wrapper */
+.npc-shop-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border: 2px solid #2c2925;
+  border-radius: 10px;
+}
+.npc-shop-item-icon img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35));
+}
+.npc-shop-item-icon--normal {
+  background: linear-gradient(135deg, #4ade80 0%, #16a34a 100%);
+}
+.npc-shop-item-icon--rare {
+  background: linear-gradient(135deg, #60a5fa 0%, #1d4ed8 100%);
+}
+.npc-shop-item-icon--epic {
+  background: linear-gradient(135deg, #c084fc 0%, #7c3aed 100%);
+}
+
+/* Bought item — subtle green tint, still visible */
+.npc-shop-item--bought {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  cursor: default;
+  opacity: 0.85;
+}
+.npc-shop-item--bought:hover {
+  border-color: #bbf7d0;
+  transform: none;
+}
+.npc-shop-bought-mark {
+  color: #16a34a;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .npc-shop-item-copy {
   display: grid;
   flex: 1;
