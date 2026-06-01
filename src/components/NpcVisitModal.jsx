@@ -702,6 +702,7 @@ export default function NpcVisitModal({
         purchaseMsg = `Ticket x${Number(data.member?.shopAssetTickets || 0).toLocaleString()}`;
       }
       // Mark as bought — shop stays open, item becomes unavailable for this visit
+      try { new Audio(withBasePath("/assets/Sound/usemoney.mp3")).play().catch(() => {}); } catch {}
       playSfx(data.chestReward ? "chest_open" : "buy");
       onShopPurchase?.(itemId, purchaseMsg);
     } finally {

@@ -1487,6 +1487,7 @@ export default function GameShell() {
         applyMember(data.member);
         setHintResult({ title: data.hintTitle, content: data.hintContent });
         setHintBought(true);
+        try { new Audio(withBasePath("/assets/Sound/usemoney.mp3")).play().catch(() => {}); } catch {}
       } else if (data.error === "not_enough_coins") {
         handleNpcCoinsNeeded(data.cost);
       }
