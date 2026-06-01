@@ -659,11 +659,19 @@ export default function GameShell() {
     const interval = window.setInterval(() => {
       fetch(withBasePath("/api/player/me"))
         .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-        .then((data) => applyMember(data.member))
+        .then((data) => {
+          // Preserve local position to avoid snap-back caused by stale DB data
+          setMember((current) => ({ ...data.member, position: current?.position ?? data.member.position }));
+          const nextReward = data.member?.reward;
+          if (nextReward?.id && !nextReward.seenAt && !shownRewardIdsRef.current.has(nextReward.id)) {
+            shownRewardIdsRef.current.add(nextReward.id);
+            setReward(nextReward);
+          }
+        })
         .catch(() => {});
     }, 3000);
     return () => window.clearInterval(interval);
-  }, [applyMember, isAuthed]);
+  }, [isAuthed]);
 
   useEffect(() => {
     if (!actualStage) return;
