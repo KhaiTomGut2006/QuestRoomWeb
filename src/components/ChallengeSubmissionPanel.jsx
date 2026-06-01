@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ImageUp, MessageSquare, Zap } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImageUp, MessageSquare, Zap } from "lucide-react";
 
 const MAX_EVIDENCE_BYTES = 100 * 1024 * 1024;
 
@@ -11,6 +11,7 @@ export default function ChallengeSubmissionPanel({ challenge, onSubmit }) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
   const hasSubmission = Boolean(challenge?.evidence?.url && challenge?.submittedAt);
 
   if (!challenge) return null;
@@ -51,11 +52,15 @@ export default function ChallengeSubmissionPanel({ challenge, onSubmit }) {
   };
 
   return (
-    <aside className="aqp challenge-submission-panel" aria-label="Challenge submission">
-      <div className="aqp-header">
+    <aside className={`aqp challenge-submission-panel${collapsed ? " aqp--collapsed" : ""}`} aria-label="Challenge submission">
+      <div className="aqp-header" onClick={() => setCollapsed((c) => !c)}>
         <Zap size={18} fill="currentColor" />
         <span className="aqp-header-title">Challenge Submission</span>
+        <span className="aqp-header-chevron">
+          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </span>
       </div>
+      {!collapsed && (
       <div className="aqp-body">
         <p className="aqp-quest-title">{challenge.taskName || "Challenge"}</p>
         <p className="aqp-quest-desc">
@@ -118,6 +123,7 @@ export default function ChallengeSubmissionPanel({ challenge, onSubmit }) {
           {submitting ? "Uploading..." : hasSubmission ? "Update submission" : "Submit challenge"}
         </button>
       </div>
+      )}
     </aside>
   );
 }
