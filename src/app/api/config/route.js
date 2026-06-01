@@ -9,6 +9,6 @@ export async function GET() {
     dbConfigured: Boolean(process.env.MONGODB_URI),
     devToolsEnabled: isDevToolsEnabled(),
     devToolsRequireAuth: process.env.NODE_ENV === "production",
-    devCycleToolsEnabled: process.env.NODE_ENV !== "production"
+    devCycleToolsEnabled: isDevToolsEnabled()
   });
 }

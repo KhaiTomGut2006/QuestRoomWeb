@@ -106,6 +106,7 @@ const NpcQuestSchema = new mongoose.Schema(
     npcName:      String,
     npcCharacter: String,
     acceptedAt:   Date,
+    cancelAvailableAt: Date,
   },
   { _id: false }
 );

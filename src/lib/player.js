@@ -228,6 +228,7 @@ export function normalizeMember(member) {
           npcName:      member.npcQuest.npcName || "",
           npcCharacter: member.npcQuest.npcCharacter || null,
           acceptedAt:   member.npcQuest.acceptedAt || null,
+          cancelAvailableAt: member.npcQuest.cancelAvailableAt || null,
         }
       : null,
     npcQuestSubmissions: (member.npcQuestSubmissions || []).map(normalizeNpcQuestSubmission),
@@ -296,7 +297,7 @@ export async function upsertMemberFromDiscord(profile) {
         },
         tutorial: {
           status: "active",
-          step: "quest-intro",
+          step: "welcome-1",
           startedAt: new Date(),
           updatedAt: new Date()
         },
@@ -691,16 +692,34 @@ export async function cancelNpcQuest(discordId) {
   const member = await Member.findOne({ discord_id: String(discordId || "") });
   if (!member) return null;
 
+  const questSource = member.npcQuest?.source || "";
+  if (questSource === "tutorial-first-quest") throw new Error("tutorial_quest_cannot_cancel");
+  if (
+    questSource === "tutorial-role"
+    && new Date(member.npcQuest?.cancelAvailableAt || 0).getTime() > Date.now()
+  ) {
+    throw new Error("tutorial_role_cancel_locked");
+  }
+
   const currentCoins = Math.max(0, Number.parseInt(member.coin || "0", 10) || 0);
   const storedPenalty = Number(member.npcQuest?.cancelPenalty) || 0;
   const fallbackPenalty = member.npcQuest?.reward
     ? Math.max(1, Math.round(Number(member.npcQuest.reward) * 0.25))
     : 0;
-  const penalty = member.npcQuest
+  const penalty = member.npcQuest && questSource !== "tutorial-role"
     ? Math.min(currentCoins, Math.max(0, storedPenalty || fallbackPenalty))
     : 0;
   member.coin = String(currentCoins - penalty);
   member.npcQuest = null;
+  if (questSource === "tutorial-role") {
+    member.tutorial = {
+      ...(member.tutorial?.toObject?.() || member.tutorial || {}),
+      status: "active",
+      step: "finish-chat",
+      updatedAt: new Date()
+    };
+    member.markModified("tutorial");
+  }
   await member.save();
   return { member: normalizeMember(member), penalty };
 }
@@ -713,6 +732,7 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
   if (!member.npcQuest) throw new Error("active_quest_not_found");
 
   const normalizedEvidence = normalizeNpcQuestEvidence(discordId, evidence);
+  const questSource = member.npcQuest.source || "";
 
   const currentCoins = Math.max(0, Number.parseInt(member.coin || "0", 10) || 0);
   const reward = Math.max(0, Number(member.npcQuest.reward) || 0);
@@ -736,6 +756,46 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
   });
   member.coin = String(currentCoins + reward);
   member.npcQuest = null;
+  if (!Array.isArray(member.profileAchievements)) member.profileAchievements = [];
+  if (questSource === "tutorial-first-quest") {
+    if (!member.profileAchievements.some((badge) => badge.id === "tutorial-time-to-begin")) {
+      member.profileAchievements.push({
+        id: "tutorial-time-to-begin",
+        label: "Time To Begin",
+        sublabel: "Tutorial Mode",
+        kind: "silver",
+        icon: "/assets/Rank/Silver.png",
+        awardedAt: submittedAt
+      });
+    }
+    member.tutorial = {
+      ...(member.tutorial?.toObject?.() || member.tutorial || {}),
+      status: "active",
+      step: "after-first-quest",
+      updatedAt: submittedAt
+    };
+  }
+  if (questSource === "tutorial-role") {
+    if (!member.profileAchievements.some((badge) => badge.id === "tutorial-challenge-role")) {
+      member.profileAchievements.push({
+        id: "tutorial-challenge-role",
+        label: "Challenge Role",
+        sublabel: "Tutorial Mode",
+        kind: "gold",
+        icon: "/assets/Rank/Gold.png",
+        awardedAt: submittedAt
+      });
+    }
+    member.rank = "Challenge Role";
+    member.tutorial = {
+      ...(member.tutorial?.toObject?.() || member.tutorial || {}),
+      status: "active",
+      step: "finish-chat",
+      updatedAt: submittedAt
+    };
+  }
+  member.markModified("tutorial");
+  member.markModified("profileAchievements");
   await member.save();
   return { member: normalizeMember(member), reward, submission: normalizeNpcQuestSubmission(member.npcQuestSubmissions.at(-1)) };
 }

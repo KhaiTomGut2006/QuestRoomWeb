@@ -4,35 +4,10 @@ import Member from "@/models/Member";
 
 const ROLE_QUEST_COST = 50;
 const ROLE_QUEST_REWARD = 100;
-const ROLE_NPC_WAIT_MS = 2 * 60 * 1000;
-
-const TUTORIAL_QUEST_BADGE = {
-  id: "tutorial-first-quest",
-  label: "First Quest",
-  sublabel: "Tutorial Mode",
-  kind: "silver",
-  icon: "/assets/Rank/Silver.png"
-};
-
-const TUTORIAL_ROLE_BADGE = {
-  id: "tutorial-challenge-role",
-  label: "Challenge Role",
-  sublabel: "Tutorial Mode",
-  kind: "gold",
-  icon: "/assets/Rank/Gold.png"
-};
+const ROLE_QUEST_CANCEL_WAIT_MS = 2 * 60 * 1000;
 
 function currentCoins(member) {
   return Math.max(0, Number.parseInt(member.coin || "0", 10) || 0);
-}
-
-function addBadge(member, badge) {
-  if (!Array.isArray(member.profileAchievements)) member.profileAchievements = [];
-  if (member.profileAchievements.some((item) => item.id === badge.id)) return;
-  member.profileAchievements.push({
-    ...badge,
-    awardedAt: new Date()
-  });
 }
 
 function assertTutorialStep(member, ...steps) {
@@ -63,46 +38,67 @@ export async function advanceTutorial(discordId, action) {
   let reward = null;
   const now = new Date();
 
-  if (action === "complete-quest") {
-    assertTutorialStep(member, "quest-intro");
-    member.coin = String(currentCoins(member) + 50);
-    addBadge(member, TUTORIAL_QUEST_BADGE);
-    updateStep(member, "chest-intro");
-    reward = { kind: "coins", coins: 50, title: "Tutorial Quest สำเร็จ" };
+  if (action === "continue-welcome") {
+    assertTutorialStep(member, "welcome-1");
+    updateStep(member, "welcome-2");
+  } else if (action === "start-first-quest") {
+    assertTutorialStep(member, "welcome-2");
+    updateStep(member, "quest-arrival");
+  } else if (action === "accept-first-quest") {
+    assertTutorialStep(member, "quest-arrival");
+    if (member.npcQuest) throw new Error("active_quest_exists");
+    member.npcQuest = {
+      difficulty: "easy",
+      title: "วาดรูปอะไรก็ได้",
+      description: "ลองวาดรูปง่าย ๆ หรือสร้างผลงานอะไรก็ได้หนึ่งชิ้น แล้วอัปโหลดมาให้ฉันดู",
+      reward: 50,
+      cancelPenalty: 0,
+      source: "tutorial-first-quest",
+      npcType: "quest-easy",
+      npcName: "near",
+      npcCharacter: "near",
+      acceptedAt: now
+    };
+    updateStep(member, "quest-active");
+  } else if (action === "spawn-chest") {
+    assertTutorialStep(member, "after-first-quest");
+    updateStep(member, "chest-arrival");
   } else if (action === "open-chest") {
-    assertTutorialStep(member, "chest-intro");
-    const coins = 20 + Math.floor(Math.random() * 81);
-    member.coin = String(currentCoins(member) + coins);
-    updateStep(member, "shop-intro");
-    reward = { kind: "coins", coins, title: "ทดลองเปิด Chest สำเร็จ" };
+    assertTutorialStep(member, "chest-arrival");
+    member.coin = String(currentCoins(member) + 100);
+    updateStep(member, "after-chest");
+    reward = { kind: "coins", coins: 100, title: "Tutorial Chest" };
+  } else if (action === "spawn-shop") {
+    assertTutorialStep(member, "after-chest");
+    updateStep(member, "shop-arrival");
   } else if (action === "buy-role-quest") {
-    assertTutorialStep(member, "shop-intro");
+    assertTutorialStep(member, "shop-arrival");
     const coins = currentCoins(member);
     if (coins < ROLE_QUEST_COST) throw new Error("not_enough_coins");
     member.coin = String(coins - ROLE_QUEST_COST);
-    updateStep(member, "role-quest-offer", { roleNpcAvailableAt: now });
-  } else if (action === "defer-role-test") {
-    assertTutorialStep(member, "role-quest-offer", "role-quest-waiting");
-    updateStep(member, "role-quest-waiting", {
-      roleNpcAvailableAt: new Date(now.getTime() + ROLE_NPC_WAIT_MS)
-    });
-  } else if (action === "accept-role-test") {
-    assertTutorialStep(member, "role-quest-offer", "role-quest-waiting");
-    const availableAt = new Date(member.tutorial.roleNpcAvailableAt || 0).getTime();
-    if (availableAt > now.getTime()) throw new Error("tutorial_role_npc_not_ready");
+    member.npcQuest = {
+      difficulty: "role",
+      title: "Quest : Challenge Role",
+      description: "ให้ส่งผลงานอะไรก็ได้ที่แสดงให้เห็นถึงสิ่งที่น้องถนัดที่สุดในการทำโปรเจค",
+      reward: ROLE_QUEST_REWARD,
+      cancelPenalty: 0,
+      source: "tutorial-role",
+      npcType: "quest-role",
+      npcName: "fact",
+      npcCharacter: "fact",
+      acceptedAt: now,
+      cancelAvailableAt: new Date(now.getTime() + ROLE_QUEST_CANCEL_WAIT_MS)
+    };
     updateStep(member, "role-quest-active");
-  } else if (action === "complete-role-test") {
-    assertTutorialStep(member, "role-quest-active");
-    member.coin = String(currentCoins(member) + ROLE_QUEST_REWARD);
-    member.rank = "Challenge Role";
-    addBadge(member, TUTORIAL_ROLE_BADGE);
+  } else if (action === "finish-tutorial") {
+    assertTutorialStep(member, "finish-chat");
     updateStep(member, "completed", { completedAt: now });
-    reward = { kind: "coins", coins: ROLE_QUEST_REWARD, title: "Challenge Role สำเร็จ" };
   } else {
     throw new Error("invalid_tutorial_action");
   }
 
   member.markModified("tutorial");
+  member.markModified("npcQuest");
   member.markModified("profileAchievements");
   await member.save({ validateModifiedOnly: true });
 

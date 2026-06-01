@@ -199,7 +199,7 @@ function getChestRewardIcon(reward) {
   return "/assets/Coin.png";
 }
 
-function playerFromMember(member) {
+function playerFromMember(member, stageOverride = "") {
   return {
     id: member.discordId || "demo-local",
     name: member.name || member.username || "Player",
@@ -208,7 +208,7 @@ function playerFromMember(member) {
     rank: member.rank || "Game Tester",
     achievements: member.achievements || [],
     equippedAccessory: member.equippedAccessory || "",
-    stage: member.stage || "game-demo-1",
+    stage: stageOverride || member.stage || "game-demo-1",
     x: Number(member.position?.x || 56),
     y: Number(member.position?.y || 72),
     action: "idle",
@@ -269,7 +269,49 @@ function npcFromActiveQuest(quest) {
   };
 }
 
-function DevPanel({ socketRef, cycleInfo, cycleToolsEnabled, selfDiscordId, onMemberUpdate }) {
+const TUTORIAL_FIRST_QUEST = {
+  difficulty: "easy",
+  title: "วาดรูปอะไรก็ได้",
+  description: "ลองวาดรูปง่าย ๆ หรือสร้างผลงานอะไรก็ได้หนึ่งชิ้น แล้วอัปโหลดมาให้ฉันดู",
+  reward: 50,
+  cancelPenalty: 0,
+  source: "tutorial-first-quest",
+  npcCharacter: "near"
+};
+
+function npcFromTutorialStep(step) {
+  if (step === "quest-arrival") {
+    return {
+      id: "quest-easy",
+      type: "quest",
+      name: "Quest (Tutorial)",
+      npcId: "near",
+      tutorialAction: "accept-first-quest"
+    };
+  }
+  if (step === "chest-arrival") {
+    return {
+      id: "chest",
+      type: "chest",
+      name: "Treasure Chest",
+      npcId: "chest",
+      tutorialAction: "open-chest"
+    };
+  }
+  if (step === "shop-arrival") {
+    return {
+      id: "shop",
+      type: "shop",
+      name: "Shop",
+      npcId: "milt",
+      offers: ["tutorial-role-quest"],
+      tutorialAction: "buy-role-quest"
+    };
+  }
+  return null;
+}
+
+function DevPanel({ socketRef, cycleInfo, cycleToolsEnabled, devToken, selfDiscordId, onMemberUpdate }) {
   const [open, setOpen] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [npcId, setNpcId] = useState("");
@@ -280,11 +322,11 @@ function DevPanel({ socketRef, cycleInfo, cycleToolsEnabled, selfDiscordId, onMe
   const [userToolStatus, setUserToolStatus] = useState("");
   const [userToolBusy, setUserToolBusy] = useState(false);
 
-  const emit = (ev, data) => socketRef.current?.emit(ev, data);
+  const emit = (ev, data = {}) => socketRef.current?.emit(ev, { ...data, devToken });
 
   const handleSpeed = (val) => {
     setSpeed(val);
-    emit("dev:set-speed", val);
+    emit("dev:set-speed", { multiplier: val });
   };
 
   useEffect(() => {
@@ -501,6 +543,7 @@ export default function GameShell() {
   const [authError, setAuthError] = useState("");
   const [devRequested, setDevRequested] = useState(false);
   const [devMode, setDevMode] = useState(false);
+  const [devToken, setDevToken] = useState("");
   const [target, setTarget] = useState(null);
   const [profilePlayer, setProfilePlayer] = useState(null);
   const [reward, setReward] = useState(null);
@@ -603,22 +646,36 @@ export default function GameShell() {
   const shownRewardIdsRef = useRef(new Set());
   const doorNpcRef = useRef(null);
   const activeNpcQuestRef = useRef(null);
+  const tutorialActiveRef = useRef(false);
   const questDataKeyRef = useRef(-1); // npcKey for which quest data was last fetched
   const npcSwapTimerRef = useRef(null);
 
   const isAuthed = status === "authenticated";
   const activeMember = member || (previewMode ? demoMember : null);
-  const selfPlayer = useMemo(() => (activeMember ? playerFromMember(activeMember) : null), [activeMember]);
   const isTutorialActive = activeMember?.tutorial?.status === "active";
+  const tutorialRoomStage = isTutorialActive && activeMember
+    ? `tutorial-room-${activeMember.discordId || activeMember.id || "player"}`
+    : "";
+  const selfPlayer = useMemo(
+    () => (activeMember ? playerFromMember(activeMember, tutorialRoomStage) : null),
+    [activeMember, tutorialRoomStage]
+  );
+  const tutorialVisitor = useMemo(
+    () => npcFromTutorialStep(activeMember?.tutorial?.step),
+    [activeMember?.tutorial?.step]
+  );
   const isChallengePending = activeMember?.challenge?.status === "pending";
   const hasChallengeSubmission = Boolean(
     isChallengePending
     && activeMember?.challenge?.evidence?.url
     && activeMember?.challenge?.submittedAt
   );
-  const actualStage = activeMember?.stage || "";
+  const actualStage = tutorialRoomStage || activeMember?.stage || "";
   const activeViewedStage = viewedStage || actualStage;
   const effectiveRoomLevels = useMemo(() => {
+    if (tutorialRoomStage) {
+      return [{ stageId: tutorialRoomStage, name: "Tutorial Room", order: 0 }];
+    }
     const levels = Array.isArray(roomLevels) ? [...roomLevels] : [];
     if (actualStage && !levels.some((level) => level.stageId === actualStage)) {
       levels.push({
@@ -628,14 +685,16 @@ export default function GameShell() {
       });
     }
     return levels.sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-  }, [activeMember?.stageLabel, actualStage, roomLevels]);
+  }, [activeMember?.stageLabel, actualStage, roomLevels, tutorialRoomStage]);
   const viewedRoomIndex = effectiveRoomLevels.findIndex((level) => level.stageId === activeViewedStage);
   const isViewingOtherRoom = Boolean(actualStage && activeViewedStage && activeViewedStage !== actualStage);
   const canViewPreviousRoom = viewedRoomIndex > 0;
   const canViewNextRoom = viewedRoomIndex >= 0 && viewedRoomIndex < effectiveRoomLevels.length - 1;
   const viewedRoomLabel = effectiveRoomLevels.find((level) => level.stageId === activeViewedStage)?.name
     || stageLabel(activeViewedStage);
-  const currentRoomLabel = effectiveRoomLevels.find((level) => level.stageId === actualStage)?.name
+  const currentRoomLabel = tutorialRoomStage
+    ? "Tutorial Room"
+    : effectiveRoomLevels.find((level) => level.stageId === actualStage)?.name
     || activeMember?.stageLabel
     || stageLabel(actualStage);
 
@@ -697,18 +756,23 @@ export default function GameShell() {
           setQuestSuccess({ title: data.reward.title, reward: data.reward.coins });
         }
       }
-      if (action === "defer-role-test") setMessage("NPC ผู้ให้บททดสอบ Role จะกลับมาในอีก 2 นาที");
-      if (action === "complete-role-test") setMessage("Tutorial Mode สำเร็จแล้ว");
+      if (action === "finish-tutorial") setMessage("Tutorial Mode สำเร็จแล้ว");
+      return data;
     } catch (error) {
       const messages = {
         not_enough_coins: "Coins ไม่เพียงพอสำหรับซื้อ Quest นี้",
         tutorial_role_npc_not_ready: "NPC ผู้ให้บททดสอบ Role ยังไม่กลับมา"
       };
       setTutorialError(messages[error.message] || "ดำเนิน Tutorial ไม่สำเร็จ กรุณาลองใหม่");
+      return null;
     } finally {
       setTutorialBusy(false);
     }
   }, [applyMember, isAuthed, tutorialBusy]);
+
+  useEffect(() => {
+    tutorialActiveRef.current = isTutorialActive;
+  }, [isTutorialActive]);
 
   useEffect(() => {
     doorNpcRef.current = doorNpc;
@@ -856,9 +920,6 @@ export default function GameShell() {
           step: tutorialPreview,
           startedAt: "demo-tutorial-preview",
           updatedAt: "demo-tutorial-preview",
-          ...(tutorialPreview === "role-quest-waiting"
-            ? { roleNpcAvailableAt: new Date(Date.now() + 2 * 60 * 1000).toISOString() }
-            : {})
         }
       : null;
     demoMember.challenge = wantsDemo && wantsDev && challengePreview
@@ -891,12 +952,21 @@ export default function GameShell() {
     if (!config) return;
     if (!devRequested || !config.devToolsEnabled) {
       setDevMode(false);
+      setDevToken("");
     } else if (!config.devToolsRequireAuth) {
       setDevMode(true);
     } else {
-      fetch(withBasePath("/api/dev/users"))
-        .then((response) => setDevMode(response.ok))
-        .catch(() => setDevMode(false));
+      fetch(withBasePath("/api/dev/token"))
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Dev tools unavailable.");
+          setDevToken(data.token || "");
+          setDevMode(true);
+        })
+        .catch(() => {
+          setDevToken("");
+          setDevMode(false);
+        });
     }
 
     if (demoRequested && config.demoGuestsEnabled) {
@@ -1026,6 +1096,7 @@ export default function GameShell() {
     });
     socket.on("timer:sync", (data) => setCycleInfo(data));
     socket.on("npc:visit", (npc) => {
+      if (tutorialActiveRef.current) return;
       queueDoorNpc(npc);
       setNpcVisit(null);
     });
@@ -1170,6 +1241,11 @@ export default function GameShell() {
 
   // Fetch quest template when a quest-type NPC visits
   useEffect(() => {
+    if (npcVisit?.tutorialAction === "accept-first-quest") {
+      setNpcQuestData(TUTORIAL_FIRST_QUEST);
+      return;
+    }
+
     if (npcVisit?.activeQuest && activeMember?.npcQuest) {
       setNpcQuestData(activeMember.npcQuest);
       return;
@@ -1237,6 +1313,16 @@ export default function GameShell() {
 
   const handleNpcQuestAccept = useCallback(async () => {
     if (!isAuthed || !npcQuestData || !npcVisit) return;
+    if (npcVisit.tutorialAction === "accept-first-quest") {
+      const data = await handleTutorialAction("accept-first-quest");
+      if (data?.member) {
+        activeNpcQuestRef.current = data.member.npcQuest;
+        socketRef.current?.emit("quest:active", true);
+      }
+      setNpcVisit(null);
+      setNpcQuestData(null);
+      return;
+    }
     try {
       const res = await fetch(withBasePath("/api/player/npc-quest"), {
         method: "POST",
@@ -1264,7 +1350,7 @@ export default function GameShell() {
     } catch {}
     setNpcVisit(null);
     setNpcQuestData(null);
-  }, [applyMember, isAuthed, npcQuestData, npcVisit]);
+  }, [applyMember, handleTutorialAction, isAuthed, npcQuestData, npcVisit]);
 
   const handleQuestScrollBought = useCallback((assignedQuest, updatedMember) => {
     // Quest is assigned directly to the player — no quest NPC spawned at the door.
@@ -1389,9 +1475,22 @@ export default function GameShell() {
     setNpcVisit(doorNpc);
   }, [doorNpc, doorNpcPhase, isTutorialActive]);
 
+  const handleTutorialNpcInteract = useCallback(() => {
+    if (!tutorialVisitor) return;
+    try { new Audio(withBasePath("/assets/Sound/openmenu.mp3")).play().catch(() => {}); } catch {}
+    if (tutorialVisitor.tutorialAction === "accept-first-quest") {
+      setNpcQuestData(TUTORIAL_FIRST_QUEST);
+    }
+    setNpcVisit(tutorialVisitor);
+  }, [tutorialVisitor]);
+
   const handleQuestSidebarOpen = useCallback(() => {
     if (!activeMember?.npcQuest) return;
     setNpcQuestData(activeMember.npcQuest);
+    if (activeMember.npcQuest.source === "tutorial-first-quest") {
+      setNpcVisit({ id: "quest-easy", type: "quest", name: "Quest (Tutorial)", npcId: "near", activeQuest: true });
+      return;
+    }
     const isShopQuest = activeMember.npcQuest.source === "shop";
     setNpcVisit(
       isShopQuest
@@ -1584,7 +1683,7 @@ export default function GameShell() {
         className="nav-arrow nav-left"
         type="button"
         aria-label="View previous room"
-        disabled={!canViewPreviousRoom}
+        disabled={isTutorialActive || !canViewPreviousRoom}
         onClick={() => navigateViewedRoom(-1)}
       >
         <ChevronLeft size={96} strokeWidth={3} />
@@ -1593,7 +1692,7 @@ export default function GameShell() {
         className="nav-arrow nav-right"
         type="button"
         aria-label="View next room"
-        disabled={!canViewNextRoom}
+        disabled={isTutorialActive || !canViewNextRoom}
         onClick={() => navigateViewedRoom(1)}
       >
         <ChevronRight size={96} strokeWidth={3} />
@@ -1616,6 +1715,14 @@ export default function GameShell() {
           onSelectReaction={handlePlayerReaction}
           onReactionEnd={handlePlayerReactionEnd}
         />
+        {!isViewingOtherRoom && isTutorialActive && tutorialVisitor && (
+          <NpcDoorVisitor
+            key={`tutorial-${activeMember?.tutorial?.step}`}
+            npc={tutorialVisitor}
+            phase="entering"
+            onInteract={handleTutorialNpcInteract}
+          />
+        )}
         {!isViewingOtherRoom && !isTutorialActive && (
           <>
             <NpcDoorVisitor key={npcKey} npc={doorNpc} phase={doorNpcPhase} onInteract={handleNpcInteract} />
@@ -1625,6 +1732,7 @@ export default function GameShell() {
       </section>
       <TutorialMode
         tutorial={activeMember?.tutorial}
+        activeQuest={activeMember?.npcQuest}
         busy={tutorialBusy}
         error={tutorialError}
         onAction={handleTutorialAction}
@@ -1671,6 +1779,7 @@ export default function GameShell() {
           onNeedCoins={handleNpcCoinsNeeded}
           onChestClaim={handleChestClaim}
           onQuestScrollBought={handleQuestScrollBought}
+          onTutorialAction={handleTutorialAction}
           onClose={handleNpcQuestClose}
         />
       )}
@@ -1697,6 +1806,7 @@ export default function GameShell() {
           socketRef={socketRef}
           cycleInfo={cycleInfo}
           cycleToolsEnabled={config?.devCycleToolsEnabled}
+          devToken={devToken}
           selfDiscordId={activeMember?.discordId}
           onMemberUpdate={applyMember}
         />

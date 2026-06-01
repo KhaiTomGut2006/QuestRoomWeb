@@ -1,60 +1,48 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, Clock3, Coins, ShieldCheck, Sparkles, X } from "lucide-react";
+import { ChevronRight, Clock3, Sparkles } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 
-const TUTORIAL_STEPS = {
-  "quest-intro": {
-    index: 1,
-    title: "Quest ระดับง่ายมาก",
-    npcName: "Near",
-    npcImage: "Near.png",
-    description: "เริ่มจาก Quest แรกที่ออกแบบให้ผ่านได้แน่นอน เพื่อรู้จักการรับภารกิจและรางวัล",
-    reward: "+50 Coins และ First Quest Badge",
-    action: "complete-quest",
-    actionLabel: "รับ Quest และผ่านด่าน"
+const CHAT_STEPS = {
+  "welcome-1": {
+    text: "สวัสดี นายพึ่งเข้ามาใหม่งั้นหรอ?",
+    action: "continue-welcome",
+    actionLabel: "ต่อไป"
   },
-  "chest-intro": {
-    index: 2,
-    title: "ทดลองเปิด Chest",
-    npcName: "Treasure Chest",
-    npcImage: "chest_close.png",
-    description: "Chest ให้รางวัลแบบสุ่ม ครั้งนี้ลองเปิดหนึ่งครั้งเพื่อรู้จักระบบสมบัติ",
-    reward: "+20-100 Coins",
-    action: "open-chest",
-    actionLabel: "เปิด Chest"
+  "welcome-2": {
+    text: "งั้นเดี๋ยวเรามาสอนนายให้เข้าใจโลกนี้ก็ซักหน่อยดีกว่า",
+    action: "start-first-quest",
+    actionLabel: "เริ่มฝึกรับเควส"
   },
-  "shop-intro": {
-    index: 3,
-    title: "ทดลองใช้ Shop",
-    npcName: "Milt",
-    npcImage: "Milt.png",
-    description: "ใช้ Coins ซื้อ Quest พิเศษหนึ่งชิ้น จากนั้น NPC ผู้ให้บททดสอบ Role จะมาหาเธอ",
-    reward: "Quest : Challenge Role ราคา 50 Coins",
-    action: "buy-role-quest",
-    actionLabel: "ซื้อ Quest : Challenge Role"
+  "after-first-quest": {
+    text: "ดีมาก! งั้นต่อไปเรามาพานายรู้จักไอเท็มอื่นๆกันดีกว่า",
+    action: "spawn-chest",
+    actionLabel: "ทดลองเปิดกล่อง"
   },
-  "role-quest-offer": {
-    index: 4,
-    title: "Challenge Role",
-    npcName: "Fact",
-    npcImage: "Fact.png",
-    description: "ฉันคือผู้ให้บททดสอบ Role พร้อมเมื่อไรก็เริ่มได้เลย หากยังไม่พร้อม ฉันจะกลับมาใหม่ในอีก 2 นาที",
-    reward: "+100 Coins, Challenge Role และ Badge",
-    action: "accept-role-test",
-    actionLabel: "เริ่มบททดสอบ Role"
+  "after-chest": {
+    text: "ดูเหมือนจะเริ่มมีเงินแล้วนี้!! งั้นลองซื้อของหน่อยไหม",
+    action: "spawn-shop",
+    actionLabel: "เรียกร้านค้า"
   },
-  "role-quest-active": {
-    index: 4,
-    title: "บททดสอบ Role",
-    npcName: "Fact",
-    npcImage: "Fact.png",
-    description: "บททดสอบแรกตั้งใจให้ผ่านได้แน่นอน ขอเพียงยืนยันว่าเข้าใจการรับ Quest, เปิด Chest และซื้อของจาก Shop แล้ว",
-    reward: "+100 Coins, Challenge Role และ Badge",
-    action: "complete-role-test",
-    actionLabel: "ฉันเข้าใจแล้ว จบบททดสอบ"
+  "finish-chat": {
+    text: "ยินดีด้วย! ตอนนี้นายเข้าใจพื้นฐานของโลกนี้แล้ว ต่อไปลองออกไปผจญภัยในด่านแรกได้เลย",
+    action: "finish-tutorial",
+    actionLabel: "เข้าสู่เกมจริง"
   }
+};
+
+const STEP_META = {
+  "welcome-1": { progress: 1, title: "ทำความรู้จัก Tutorial Room" },
+  "welcome-2": { progress: 1, title: "ทำความรู้จัก Tutorial Room" },
+  "quest-arrival": { progress: 1, title: "กดคุยกับ Near แล้วรับเควสแรก" },
+  "quest-active": { progress: 1, title: "ทำผลงานง่าย ๆ แล้วส่งเควสแรก" },
+  "after-first-quest": { progress: 2, title: "เตรียมทดลองเปิด Chest" },
+  "chest-arrival": { progress: 2, title: "กดเปิด Chest ที่หน้าประตู" },
+  "after-chest": { progress: 3, title: "เตรียมทดลองซื้อ Quest จาก Shop" },
+  "shop-arrival": { progress: 3, title: "กดคุยกับ Milt แล้วซื้อ Quest : Challenge Role" },
+  "role-quest-active": { progress: 4, title: "ส่ง Role Quest หรือรอเพื่อยกเลิก" },
+  "finish-chat": { progress: 4, title: "Tutorial สำเร็จแล้ว" }
 };
 
 function formatCountdown(milliseconds) {
@@ -62,89 +50,55 @@ function formatCountdown(milliseconds) {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export default function TutorialMode({ tutorial, busy, error, onAction }) {
-  const [open, setOpen] = useState(true);
+export default function TutorialMode({ tutorial, activeQuest, busy, error, onAction }) {
   const [now, setNow] = useState(() => Date.now());
-  const waitingUntil = tutorial?.step === "role-quest-waiting"
-    ? new Date(tutorial.roleNpcAvailableAt || 0).getTime()
+  const chat = CHAT_STEPS[tutorial?.step];
+  const meta = STEP_META[tutorial?.step] || STEP_META["welcome-1"];
+  const cancelAvailableAt = tutorial?.step === "role-quest-active"
+    ? new Date(activeQuest?.cancelAvailableAt || 0).getTime()
     : 0;
-  const waitingMs = Math.max(0, waitingUntil - now);
-  const roleNpcReady = tutorial?.step === "role-quest-waiting" && waitingMs <= 0;
-  const effectiveStep = roleNpcReady ? "role-quest-offer" : tutorial?.step;
-  const step = TUTORIAL_STEPS[effectiveStep];
+  const cancelWaitMs = Math.max(0, cancelAvailableAt - now);
 
   useEffect(() => {
-    setOpen(tutorial?.step !== "role-quest-waiting");
-  }, [tutorial?.step]);
-
-  useEffect(() => {
-    if (tutorial?.step !== "role-quest-waiting" || roleNpcReady) return;
+    if (!cancelWaitMs) return undefined;
     const interval = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(interval);
-  }, [roleNpcReady, tutorial?.step]);
+  }, [cancelWaitMs]);
 
-  useEffect(() => {
-    if (roleNpcReady) setOpen(true);
-  }, [roleNpcReady]);
-
-  const progress = useMemo(() => Math.min(4, step?.index || 4), [step?.index]);
+  const progress = useMemo(() => Math.min(4, meta.progress || 1), [meta.progress]);
 
   if (!tutorial || tutorial.status !== "active") return null;
 
   return (
     <>
       <aside className="tutorial-hud" aria-label="Tutorial Mode progress">
-        <p className="tutorial-hud-eyebrow"><Sparkles size={15} /> Tutorial Mode</p>
-        <strong>{roleNpcReady ? "NPC ผู้ให้บททดสอบ Role กลับมาแล้ว" : step?.title || "รอ NPC ผู้ให้บททดสอบ Role"}</strong>
+        <p className="tutorial-hud-eyebrow"><Sparkles size={15} /> Tutorial Room</p>
+        <strong>{meta.title}</strong>
         <div className="tutorial-progress" aria-label={`Tutorial step ${progress} of 4`}>
           {[1, 2, 3, 4].map((number) => (
             <span className={number <= progress ? "is-active" : ""} key={number} />
           ))}
         </div>
-        {tutorial.step === "role-quest-waiting" && !roleNpcReady ? (
-          <p className="tutorial-wait"><Clock3 size={15} /> NPC จะกลับมาใน {formatCountdown(waitingMs)}</p>
-        ) : (
-          <button type="button" onClick={() => setOpen(true)}>
-            เปิดคำแนะนำ <ChevronRight size={17} />
-          </button>
+        {cancelWaitMs > 0 && (
+          <p className="tutorial-wait"><Clock3 size={15} /> ยกเลิก Role Quest ได้ใน {formatCountdown(cancelWaitMs)}</p>
         )}
+        {error && <p className="tutorial-error">{error}</p>}
       </aside>
 
-      {open && step && (
-        <div className="tutorial-backdrop" role="presentation">
-          <section className="tutorial-card" role="dialog" aria-modal="true" aria-label="Tutorial Mode">
-            <button className="tutorial-close" type="button" aria-label="Close tutorial guide" onClick={() => setOpen(false)}>
-              <X size={23} strokeWidth={3} />
-            </button>
-            <div className="tutorial-npc">
+      {chat && (
+        <div className="tutorial-chat-wrap" role="presentation">
+          <section className="tutorial-chat-box" role="dialog" aria-modal="true" aria-label="Tutorial NPC chat">
+            <div className="tutorial-chat-npc">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withBasePath(`/assets/NPC/${step.npcImage}`)} alt={step.npcName} />
-              <strong>{step.npcName}</strong>
+              <img src={withBasePath("/assets/NPC/Witch.png")} alt="Tutorial Guide" />
             </div>
-            <div className="tutorial-copy">
-              <p className="tutorial-kicker">Tutorial Mode · Step {step.index}/4</p>
-              <h2>{step.title}</h2>
-              <p>{step.description}</p>
-              {step.index === 1 && (
-                <p className="tutorial-note">
-                  ระหว่างเล่นสามารถคลิกพื้นเพื่อเดิน, คลิกผู้เล่นเพื่อดู Profile และใช้ Social เพื่อดูผลงานที่เผยแพร่แล้วได้
-                </p>
-              )}
-              <div className="tutorial-reward">
-                {step.index === 4 ? <ShieldCheck size={19} /> : <Coins size={19} />}
-                <span>{step.reward}</span>
-              </div>
-              {error && <p className="tutorial-error">{error}</p>}
-              <div className="tutorial-actions">
-                <button className="tutorial-primary" type="button" disabled={busy} onClick={() => onAction(step.action)}>
-                  {busy ? "กำลังดำเนินการ..." : step.actionLabel}
-                </button>
-                {effectiveStep === "role-quest-offer" && (
-                  <button className="tutorial-secondary" type="button" disabled={busy} onClick={() => onAction("defer-role-test")}>
-                    ยังไม่พร้อม รอ 2 นาที
-                  </button>
-                )}
-              </div>
+            <div className="tutorial-chat-copy">
+              <p className="tutorial-chat-name">Tutorial Guide</p>
+              <p>{chat.text}</p>
+              <button type="button" disabled={busy} onClick={() => onAction(chat.action)}>
+                {busy ? "กำลังดำเนินการ..." : chat.actionLabel}
+                <ChevronRight size={19} />
+              </button>
             </div>
           </section>
         </div>

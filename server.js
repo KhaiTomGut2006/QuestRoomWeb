@@ -4,11 +4,13 @@ const { loadEnvConfig } = require("@next/env");
 const next = require("next");
 const { Server } = require("socket.io");
 const mongoose = require("mongoose");
+const { createHmac, timingSafeEqual } = require("node:crypto");
 
 loadEnvConfig(process.cwd());
 
 const dev = process.env.NODE_ENV !== "production";
-const devCycleToolsEnabled = dev;
+const productionDevToolsEnabled = process.env.ENABLE_DEV_TOOLS === "true"
+  && String(process.env.DEV_TOOL_DISCORD_IDS || "").split(",").some((value) => value.trim());
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
@@ -35,6 +37,27 @@ const socketFrozenMs = new Map();
 const socketPermanentReductionMs = new Map();
 const ACCESSORY_IDS = new Set(["accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-ppuk"]);
 const PLAYER_REACTIONS = new Set(["🥰", "😂", "😭", "🤓", "🖕🏿"]);
+
+function canUseDevCycleTools(payload = {}) {
+  if (dev) return true;
+  if (!productionDevToolsEnabled) return false;
+
+  const [encodedPayload, signature] = String(payload.devToken || "").split(".");
+  if (!encodedPayload || !signature) return false;
+  const expected = createHmac("sha256", String(process.env.NEXTAUTH_SECRET || ""))
+    .update(encodedPayload)
+    .digest("base64url");
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length || !timingSafeEqual(actualBuffer, expectedBuffer)) return false;
+
+  try {
+    const token = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
+    return Boolean(token.discordId) && Number(token.expiresAt) > Date.now();
+  } catch {
+    return false;
+  }
+}
 
 // Weighted NPC pool — weights sum to 100
 const NPC_POOL = [
@@ -525,6 +548,11 @@ app.prepare().then(() => {
 
       socket.emit("room:state", Array.from(room.values()).map(publicPlayer));
       socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
+      if (activeStage.startsWith("tutorial-room-")) {
+        clearPersonalTimer(socket.id);
+        socketFrozenMs.delete(socket.id);
+        return;
+      }
       try {
         await restorePersistedCycle(socket);
       } catch (error) {
@@ -626,7 +654,7 @@ app.prepare().then(() => {
 
     // ─── Dev controls ────────────────────────────────────────────
     socket.on("dev:trigger", (payload = {}) => {
-      if (!devCycleToolsEnabled) return;
+      if (!canUseDevCycleTools(payload)) return;
       const pid = socketToPlayer.get(socket.id);
       if (pid && playerNpcQuest.get(pid)) return;
       const specific = payload.npcId
@@ -641,8 +669,8 @@ app.prepare().then(() => {
       });
     });
 
-    socket.on("dev:skip", () => {
-      if (!devCycleToolsEnabled) return;
+    socket.on("dev:skip", (payload = {}) => {
+      if (!canUseDevCycleTools(payload)) return;
       const pid = socketToPlayer.get(socket.id);
       if (!pid || !playerNpcQuest.get(pid)) {
         const npc = enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id));
@@ -657,17 +685,17 @@ app.prepare().then(() => {
       });
     });
 
-    socket.on("dev:reset", () => {
-      if (!devCycleToolsEnabled) return;
+    socket.on("dev:reset", (payload = {}) => {
+      if (!canUseDevCycleTools(payload)) return;
       const pendingNpc = socketPersonalTimer.get(socket.id)?.pendingNpc || null;
       void schedulePersistedCycle(socket, undefined, pendingNpc).catch((error) => {
         console.error("Failed to reset NPC cycle:", error.message);
       });
     });
 
-    socket.on("dev:set-speed", (multiplier) => {
-      if (!devCycleToolsEnabled) return;
-      cycleSpeedMultiplier = Math.max(1, Number(multiplier) || 1);
+    socket.on("dev:set-speed", (payload = {}) => {
+      if (!canUseDevCycleTools(payload)) return;
+      cycleSpeedMultiplier = Math.max(1, Number(payload.multiplier) || 1);
       // Restart personal cycle with new speed for this socket
       const frozen = socketFrozenMs.get(socket.id);
       if (frozen !== undefined) {

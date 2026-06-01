@@ -108,7 +108,7 @@ export async function PATCH(request) {
           shopAssetTickets: 0,
           ownedAccessories: [],
           equippedAccessory: "",
-          tutorial: { status: "active", step: "quest-intro", startedAt: now, updatedAt: now },
+          tutorial: { status: "active", step: "welcome-1", startedAt: now, updatedAt: now },
           profileAchievements: []
         },
         $unset: {

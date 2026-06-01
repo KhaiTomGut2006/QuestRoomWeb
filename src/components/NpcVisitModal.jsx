@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 import { ACCESSORY_LIST } from "@/lib/accessories";
@@ -29,6 +29,13 @@ const TYPE_META = {
 };
 
 const SHOP_ITEMS = {
+  "tutorial-role-quest": {
+    name: "Quest : Challenge Role",
+    description: "บททดสอบ Role สำหรับค้นหาสิ่งที่ถนัดที่สุดในการทำโปรเจค",
+    cost: 50,
+    image: "quest.png",
+    rarity: "normal",
+  },
   "asset-ticket": {
     name: "Select 1 Asset on HamStore",
     description: "Ticket can be stacked and exchanged for 1 asset on HamStore",
@@ -426,6 +433,7 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
   const [showPostText, setShowPostText] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [submitError, setSubmitError] = useState("");
+  const [now, setNow] = useState(() => Date.now());
   const standaloneQuest = Boolean(npc.standaloneQuest);
   const charKey = questData.npcCharacter || npc.npcId || npc.id;
   const imgFile = NPC_IMAGE[charKey] || "Witch.png";
@@ -433,8 +441,23 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
   const charName = charKey
     ? charKey.charAt(0).toUpperCase() + charKey.slice(1)
     : npc.name;
-  const cancelPenalty = Number(questData.cancelPenalty)
-    || Math.max(1, Math.round((Number(questData.reward) || 0) * 0.25));
+  const cancelPenalty = questData.source === "tutorial-role"
+    ? 0
+    : Number(questData.cancelPenalty)
+      || Math.max(1, Math.round((Number(questData.reward) || 0) * 0.25));
+  const cancelAvailableAt = new Date(questData.cancelAvailableAt || 0).getTime();
+  const cancelWaitMs = Math.max(0, cancelAvailableAt - now);
+  const cancelLocked = Boolean(cancelAvailableAt && cancelWaitMs > 0);
+  const cancelDisabled = questData.source === "tutorial-first-quest" || cancelLocked;
+
+  useEffect(() => {
+    if (!cancelLocked) return undefined;
+    const interval = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(interval);
+  }, [cancelLocked]);
+
+  const cancelWaitSeconds = Math.max(0, Math.ceil(cancelWaitMs / 1000));
+  const cancelCountdown = `${String(Math.floor(cancelWaitSeconds / 60)).padStart(2, "0")}:${String(cancelWaitSeconds % 60).padStart(2, "0")}`;
 
   const handleConfirm = async () => {
     if (!confirmAction || submitting) return;
@@ -534,8 +557,17 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
               <button className="npc-quest-decline-btn" type="button" onClick={onClose}>
                 ปิดบทสนทนา
               </button>
-              <button className="npc-quest-cancel-btn" type="button" onClick={() => setConfirmAction("cancel")}>
-                ยกเลิกเควส
+              <button
+                className="npc-quest-cancel-btn"
+                type="button"
+                disabled={cancelDisabled}
+                onClick={() => setConfirmAction("cancel")}
+              >
+                {questData.source === "tutorial-first-quest"
+                  ? "เควสฝึกหัดยกเลิกไม่ได้"
+                  : cancelLocked
+                    ? `ยกเลิกได้ใน ${cancelCountdown}`
+                    : "ยกเลิกเควส"}
               </button>
             </div>
           </div>
@@ -596,6 +628,7 @@ export default function NpcVisitModal({
   memberShop,
   shopPurchases, onShopPurchase,
   onMemberUpdate, onCooldownReduction, onNeedCoins, onChestClaim, onQuestScrollBought,
+  onTutorialAction,
   onClose,
 }) {
   const [chestResult, setChestResult] = useState(null);
@@ -617,6 +650,11 @@ export default function NpcVisitModal({
   const handleChestClaim = async () => {
     setClaimingChest(true);
     try {
+      if (npc.tutorialAction) {
+        await onTutorialAction?.(npc.tutorialAction);
+        onClose?.();
+        return;
+      }
       const response = await fetch(withBasePath("/api/player/npc-reward"), { method: "POST" });
       const data = await response.json();
       if (!response.ok) return;
@@ -633,6 +671,12 @@ export default function NpcVisitModal({
   const handleShopBuy = async (itemId) => {
     setLoadingShopItem(itemId);
     try {
+      if (npc.tutorialAction && itemId === "tutorial-role-quest") {
+        await onTutorialAction?.(npc.tutorialAction);
+        onShopPurchase?.(itemId, "รับ Quest : Challenge Role แล้ว!");
+        onClose?.();
+        return;
+      }
       const response = await fetch(withBasePath("/api/player/npc-shop"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
