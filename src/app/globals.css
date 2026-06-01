@@ -441,8 +441,17 @@ button {
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, 7px) scale(0.94);
-  transition: opacity 140ms ease, transform 140ms ease, visibility 140ms ease;
+  transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
   visibility: hidden;
+}
+
+.player-reaction-picker::after {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: 18px;
+  content: "";
 }
 
 .player-token.is-self:hover .player-reaction-picker,
