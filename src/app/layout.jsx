@@ -3,7 +3,10 @@ import Providers from "@/components/Providers";
 
 export const metadata = {
   title: "Quest Room",
-  description: "Cozy multiplayer quest room"
+  description: "Cozy multiplayer quest room",
+  icons: {
+    icon: "/favicon.png"
+  }
 };
 
 export default function RootLayout({ children }) {

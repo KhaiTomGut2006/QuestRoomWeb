@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { ScrollText, Sparkles } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 
 const DISPLAY_MS = 3200;
 
 export default function QuestReceivedPopup({ quest, onDone }) {
+  const onDoneRef = useRef(onDone);
+  useEffect(() => { onDoneRef.current = onDone; });
+
   useEffect(() => {
-    const timeout = window.setTimeout(() => onDone?.(), DISPLAY_MS);
+    const timeout = window.setTimeout(() => onDoneRef.current?.(), DISPLAY_MS);
     return () => window.clearTimeout(timeout);
-  }, [onDone, quest?.acceptedAt]);
+  }, [quest?.acceptedAt]);
 
   if (!quest) return null;
 
