@@ -113,6 +113,17 @@ function normalizeNpcQuestSubmission(submission) {
   };
 }
 
+function isGlobalQuestSubmissionVisible(member, submission) {
+  if (submission?.source !== "challenge") return true;
+
+  const challenge = member?.questChallenge;
+  return Boolean(
+    challenge
+    && challenge.submissionId === submission.id
+    && (challenge.approvedAt || challenge.status === "approved")
+  );
+}
+
 function normalizeNpcQuestEvidence(discordId, evidence) {
   const url = String(evidence?.url || "").trim();
   const pathname = String(evidence?.pathname || "").trim();
@@ -742,25 +753,27 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId) {
   return members
     .flatMap((member) => {
       const author = normalizeMember(member);
-      return (member.npcQuestSubmissions || []).map((submission) => {
-        const normalized = normalizeNpcQuestSubmission(submission);
-        const likes = Array.isArray(submission.likes) ? submission.likes.map(String) : [];
-        const dislikes = Array.isArray(submission.dislikes) ? submission.dislikes.map(String) : [];
-        return {
-          ...normalized,
-          author: {
-            id: author.discordId,
-            name: author.name,
-            username: author.username,
-            avatar: author.avatar
-          },
-          viewerReaction: likes.includes(String(viewerDiscordId || ""))
-            ? "like"
-            : dislikes.includes(String(viewerDiscordId || ""))
-              ? "dislike"
-              : ""
-        };
-      });
+      return (member.npcQuestSubmissions || [])
+        .filter((submission) => isGlobalQuestSubmissionVisible(member, submission))
+        .map((submission) => {
+          const normalized = normalizeNpcQuestSubmission(submission);
+          const likes = Array.isArray(submission.likes) ? submission.likes.map(String) : [];
+          const dislikes = Array.isArray(submission.dislikes) ? submission.dislikes.map(String) : [];
+          return {
+            ...normalized,
+            author: {
+              id: author.discordId,
+              name: author.name,
+              username: author.username,
+              avatar: author.avatar
+            },
+            viewerReaction: likes.includes(String(viewerDiscordId || ""))
+              ? "like"
+              : dislikes.includes(String(viewerDiscordId || ""))
+                ? "dislike"
+                : ""
+          };
+        });
     })
     .filter((submission) => submission.evidence?.url)
     .sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
@@ -777,7 +790,7 @@ export async function reactToGlobalQuestPost(discordId, postId, reaction) {
   if (!member) return null;
 
   const submission = member.npcQuestSubmissions.find((item) => item.id === String(postId || ""));
-  if (!submission) return null;
+  if (!submission || !isGlobalQuestSubmissionVisible(member, submission)) return null;
 
   const viewerId = String(discordId || "");
   submission.likes = (submission.likes || []).map(String).filter((id) => id !== viewerId);
