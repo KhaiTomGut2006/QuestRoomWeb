@@ -379,11 +379,14 @@ export default function GameShell() {
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [showChallengeSubmission, setShowChallengeSubmission] = useState(false);
   const [challengeAnnouncement, setChallengeAnnouncement] = useState(null);
+  const [playerReactions, setPlayerReactions] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.5);
   const audioRef = useRef(null);
   const settingsPanelRef = useRef(null);
+  const reactionSequenceRef = useRef(0);
+  const lastReactionAtRef = useRef(0);
 
   useEffect(() => {
     const audio = new Audio(withBasePath("/assets/bgmusic.mp3"));
@@ -492,6 +495,32 @@ export default function GameShell() {
       shownRewardIdsRef.current.add(nextReward.id);
       setReward(nextReward);
     }
+  }, []);
+
+  const showPlayerReaction = useCallback(({ playerId, emoji }) => {
+    if (!playerId || !emoji) return;
+    reactionSequenceRef.current += 1;
+    setPlayerReactions((current) => [
+      ...current.slice(-19),
+      {
+        id: `${Date.now()}-${reactionSequenceRef.current}`,
+        playerId,
+        emoji
+      }
+    ]);
+  }, []);
+
+  const handlePlayerReaction = useCallback((emoji) => {
+    if (!selfPlayer?.id || isViewingOtherRoom) return;
+    const now = Date.now();
+    if (now - lastReactionAtRef.current < 300) return;
+    lastReactionAtRef.current = now;
+    showPlayerReaction({ playerId: selfPlayer.id, emoji });
+    socketRef.current?.emit("player:reaction", { emoji });
+  }, [isViewingOtherRoom, selfPlayer?.id, showPlayerReaction]);
+
+  const handlePlayerReactionEnd = useCallback((reactionId) => {
+    setPlayerReactions((current) => current.filter((reaction) => reaction.id !== reactionId));
   }, []);
 
   useEffect(() => {
@@ -795,6 +824,7 @@ export default function GameShell() {
     socket.on("challenge:announce", (data) => {
       setChallengeAnnouncement(data);
     });
+    socket.on("player:reaction", showPlayerReaction);
     socket.on("connect", () => {
       socket.emit("player:join", selfPlayer);
     });
@@ -807,7 +837,7 @@ export default function GameShell() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage]);
+  }, [previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction]);
 
   useEffect(() => {
     if (!isViewingOtherRoom || !activeViewedStage) return;
@@ -1368,7 +1398,10 @@ export default function GameShell() {
         <PlayerLayer
           players={visiblePlayers}
           selfId={isViewingOtherRoom ? undefined : selfPlayer?.id}
+          reactions={playerReactions}
           onOpenProfile={(player) => handleOpenProfile(player.id, player)}
+          onSelectReaction={handlePlayerReaction}
+          onReactionEnd={handlePlayerReactionEnd}
         />
         {!isViewingOtherRoom && (
           <>

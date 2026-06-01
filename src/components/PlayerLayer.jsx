@@ -6,6 +6,7 @@ import { getAccessoryImagePath } from "@/lib/accessories";
 
 const LONG_PRESS_MS = 600;
 const MOVE_THRESHOLD = 10;
+const PLAYER_REACTIONS = ["🥰", "😂", "😭", "🤓", "🖕🏿"];
 
 function initials(name) {
   return String(name || "P")
@@ -17,12 +18,13 @@ function initials(name) {
     .toUpperCase();
 }
 
-function PlayerToken({ player, selfId, onOpenProfile }) {
+function PlayerToken({ player, selfId, reactions, onOpenProfile, onSelectReaction, onReactionEnd }) {
   const longPressTimerRef = useRef(null);
   const pointerStartRef = useRef(null);
   const suppressClickRef = useRef(false);
   const lastPointerTypeRef = useRef("");
   const accessoryImagePath = getAccessoryImagePath(player.equippedAccessory);
+  const isSelf = player.id === selfId;
 
   const clearLongPress = useCallback(() => {
     window.clearTimeout(longPressTimerRef.current);
@@ -73,40 +75,80 @@ function PlayerToken({ player, selfId, onOpenProfile }) {
 
   return (
     <div
-      className={`player-token ${player.id === selfId ? "is-self" : ""}`}
+      className={`player-token ${isSelf ? "is-self" : ""}`}
       style={{ left: `${player.x}%`, top: `${player.y}%` }}
-      aria-label={`${player.name} is ${player.online ? "online" : "offline"}`}
-      role="button"
-      tabIndex={0}
-      title="Click or press and hold to view profile"
-      onClick={handleClick}
-      onContextMenu={(event) => event.preventDefault()}
-      onKeyDown={handleKeyDown}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={clearLongPress}
-      onPointerCancel={clearLongPress}
     >
-      <div className="player-avatar">
-        {accessoryImagePath && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img className="player-accessory" src={withBasePath(accessoryImagePath)} alt="" />
-        )}
-        {player.avatar ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={player.avatar} alt="" />
-        ) : (
-          <span>{initials(player.name)}</span>
-        )}
-        {player.online && <span className="player-online-dot" aria-hidden="true" />}
+      {isSelf && (
+        <div className="player-reaction-picker" aria-label="Choose a reaction">
+          {PLAYER_REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              aria-label={`React with ${emoji}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelectReaction?.(emoji);
+              }}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
+      <div
+        className="player-profile-trigger"
+        aria-label={`${player.name} is ${player.online ? "online" : "offline"}`}
+        role="button"
+        tabIndex={0}
+        title="Click or press and hold to view profile"
+        onClick={handleClick}
+        onContextMenu={(event) => event.preventDefault()}
+        onKeyDown={handleKeyDown}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={clearLongPress}
+        onPointerCancel={clearLongPress}
+      >
+        <div className="player-avatar">
+          {accessoryImagePath && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="player-accessory" src={withBasePath(accessoryImagePath)} alt="" />
+          )}
+          {player.avatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={player.avatar} alt="" />
+          ) : (
+            <span>{initials(player.name)}</span>
+          )}
+          {player.online && <span className="player-online-dot" aria-hidden="true" />}
+        </div>
+        <div className="player-name">{player.name}</div>
+        <div className="player-shadow" />
       </div>
-      <div className="player-name">{player.name}</div>
-      <div className="player-shadow" />
+      {reactions.map((reaction, index) => (
+        <span
+          className="player-reaction-bubble"
+          key={reaction.id}
+          style={{ "--reaction-offset-x": `${(index % 3 - 1) * 16}px` }}
+          aria-hidden="true"
+          onAnimationEnd={() => onReactionEnd?.(reaction.id)}
+        >
+          {reaction.emoji}
+        </span>
+      ))}
     </div>
   );
 }
 
-export default function PlayerLayer({ players, selfId, onOpenProfile }) {
+export default function PlayerLayer({
+  players,
+  selfId,
+  reactions = [],
+  onOpenProfile,
+  onSelectReaction,
+  onReactionEnd
+}) {
   return (
     <div className="player-layer" aria-label="Players in this stage">
       {players.map((player) => (
@@ -114,7 +156,10 @@ export default function PlayerLayer({ players, selfId, onOpenProfile }) {
           key={player.id}
           player={player}
           selfId={selfId}
+          reactions={reactions.filter((reaction) => reaction.playerId === player.id)}
           onOpenProfile={onOpenProfile}
+          onSelectReaction={onSelectReaction}
+          onReactionEnd={onReactionEnd}
         />
       ))}
     </div>

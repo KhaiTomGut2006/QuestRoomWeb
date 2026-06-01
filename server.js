@@ -33,6 +33,7 @@ const socketFrozenMs = new Map();
 // socketId → permanent reduction in ms (from cooldown purchases)
 const socketPermanentReductionMs = new Map();
 const ACCESSORY_IDS = new Set(["accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-ppuk"]);
+const PLAYER_REACTIONS = new Set(["🥰", "😂", "😭", "🤓", "🖕🏿"]);
 
 // Weighted NPC pool — weights sum to 100
 const NPC_POOL = [
@@ -451,6 +452,7 @@ app.prepare().then(() => {
   io.on("connection", (socket) => {
     let activeStage = null;
     let activePlayerId = null;
+    let lastReactionAt = 0;
 
     function detachPlayer({ removeIfOffline = false } = {}) {
       if (!activeStage || !activePlayerId) return;
@@ -569,6 +571,19 @@ app.prepare().then(() => {
 
       room.set(activePlayerId, { ...current, equippedAccessory: accessoryId });
       io.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
+    });
+
+    socket.on("player:reaction", (payload = {}) => {
+      if (!activeStage || !activePlayerId) return;
+      const emoji = String(payload.emoji || "");
+      if (!PLAYER_REACTIONS.has(emoji)) return;
+      const now = Date.now();
+      if (now - lastReactionAt < 300) return;
+      lastReactionAt = now;
+      socket.to(activeStage).emit("player:reaction", {
+        playerId: activePlayerId,
+        emoji
+      });
     });
 
     // ─── NPC Quest state sync ────────────────────────────────────
