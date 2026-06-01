@@ -53,6 +53,17 @@ const BadgeSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const QuestEvidenceSchema = new mongoose.Schema(
+  {
+    url:          String,
+    pathname:     String,
+    contentType:  String,
+    size:         Number,
+    originalName: String
+  },
+  { _id: false }
+);
+
 const ChallengeSchema = new mongoose.Schema(
   {
     status: String,
@@ -62,7 +73,11 @@ const ChallengeSchema = new mongoose.Schema(
     cost: Number,
     requestedAt: Date,
     approvedAt: Date,
-    badge: BadgeSchema
+    badge: BadgeSchema,
+    submissionId: String,
+    evidence: QuestEvidenceSchema,
+    postText: { type: String, default: "" },
+    submittedAt: Date
   },
   { _id: false }
 );
@@ -95,17 +110,6 @@ const NpcQuestSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const NpcQuestEvidenceSchema = new mongoose.Schema(
-  {
-    url:          String,
-    pathname:     String,
-    contentType:  String,
-    size:         Number,
-    originalName: String
-  },
-  { _id: false }
-);
-
 const NpcQuestSubmissionSchema = new mongoose.Schema(
   {
     id:           String,
@@ -116,7 +120,8 @@ const NpcQuestSubmissionSchema = new mongoose.Schema(
     npcType:      String,
     npcName:      String,
     npcCharacter: String,
-    evidence:     NpcQuestEvidenceSchema,
+    source:       { type: String, default: "npc-quest" },
+    evidence:     QuestEvidenceSchema,
     postText:     { type: String, default: "" },
     likes:        { type: [String], default: [] },
     dislikes:     { type: [String], default: [] },
@@ -152,7 +157,7 @@ const MemberSchema = new mongoose.Schema(
     lineVerifiedVia: String,
     lastAuthentication: Date,
     email: String,
-    coin: { type: String, default: "1080" },
+    coin: { type: String, default: "0" },
     code: String,
     member_id: String,
     username: {

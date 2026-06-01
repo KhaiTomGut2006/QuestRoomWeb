@@ -4,7 +4,6 @@ import { useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 import { ACCESSORY_LIST } from "@/lib/accessories";
-import { playSfx } from "@/lib/sfx";
 
 // npcId → image filename
 const NPC_IMAGE = {
@@ -625,7 +624,6 @@ export default function NpcVisitModal({
       onCooldownReduction?.(data.reward?.cooldownReductionMs);
       if (data.reward?.assignedQuest) onQuestScrollBought?.(data.reward.assignedQuest, data.member);
       onChestClaim?.(data.reward, { dismissNpc: true });
-      playSfx("chest_open");
       onClose?.();
     } finally {
       setClaimingChest(false);

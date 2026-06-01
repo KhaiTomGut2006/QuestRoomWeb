@@ -17,8 +17,8 @@ import FriendsModal from "@/components/FriendsModal";
 import GlobalQuestModal from "@/components/GlobalQuestModal";
 import ChallengeModal from "@/components/ChallengeModal";
 import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
+import ChallengeSubmissionPanel from "@/components/ChallengeSubmissionPanel";
 import { withBasePath } from "@/lib/basePath";
-import { playSfx, setSfxMuted, setSfxVolume } from "@/lib/sfx";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
 function safeUploadName(filename) {
@@ -112,7 +112,7 @@ const demoMember = {
   username: "demo",
   avatar: "",
   stage: "game-demo-1",
-  coins: 1080,
+  coins: 0,
   shopAssetTickets: 0,
   ownedAccessories: [],
   equippedAccessory: "",
@@ -419,7 +419,6 @@ export default function GameShell() {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
     audioRef.current.muted = nextMuted;
-    setSfxMuted(nextMuted);
   }, [isMuted]);
 
   const handleVolumeChange = useCallback((e) => {
@@ -427,15 +426,12 @@ export default function GameShell() {
     const nextVol = parseFloat(e.target.value);
     setVolume(nextVol);
     audioRef.current.volume = nextVol * 0.5; // Scale actual played volume by 50%
-    setSfxVolume(nextVol);
     if (nextVol > 0) {
       setIsMuted(false);
       audioRef.current.muted = false;
-      setSfxMuted(false);
     } else {
       setIsMuted(true);
       audioRef.current.muted = true;
-      setSfxMuted(true);
     }
   }, []);
   const socketRef = useRef(null);
@@ -751,7 +747,6 @@ export default function GameShell() {
     });
     socket.on("timer:sync", (data) => setCycleInfo(data));
     socket.on("npc:visit", (npc) => {
-      playSfx("npc_arrive");
       queueDoorNpc(npc);
       setNpcVisit(null);
     });
@@ -867,6 +862,25 @@ export default function GameShell() {
       stageName: activeMember?.stageLabel || activeMember?.stage || "",
     });
   };
+
+  const handleChallengeSubmit = useCallback(async (file, onUploadProgress, postText = "") => {
+    if (!isAuthed) throw new Error("Please log in before submitting your challenge.");
+    const evidence = await uploadNpcQuestEvidence(
+      file,
+      activeMember?.discordId || activeMember?.id,
+      onUploadProgress
+    );
+    const response = await fetch(withBasePath("/api/player/challenge"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ evidence, postText })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "challenge_submit_failed");
+    applyMember(data.member);
+    setMessage("Challenge submitted. Waiting for admin review.");
+  }, [activeMember?.discordId, activeMember?.id, applyMember, isAuthed]);
+
   // Fetch quest template when a quest-type NPC visits
   useEffect(() => {
     if (npcVisit?.activeQuest && activeMember?.npcQuest) {
@@ -944,7 +958,6 @@ export default function GameShell() {
         }),
       });
       if (res.ok) {
-        playSfx("quest_accept");
         const data = await res.json();
         applyMember(data.member);
         activeNpcQuestRef.current = data.member.npcQuest;
@@ -962,7 +975,6 @@ export default function GameShell() {
   const handleQuestScrollBought = useCallback((assignedQuest, updatedMember) => {
     // Quest is assigned directly to the player — no quest NPC spawned at the door.
     // The shop NPC (Milt) stays until its current cooldown expires.
-    playSfx("quest_accept");
     applyMember(updatedMember);
     activeNpcQuestRef.current = null;
     // Notify server so timer freezes at 1 sec when it expires
@@ -974,7 +986,6 @@ export default function GameShell() {
 
   const handleNpcQuestCancel = useCallback(async () => {
     if (!isAuthed) return;
-    playSfx("quest_cancel");
     const visitorQuest = activeMember?.npcQuest?.source !== "shop";
     try {
       const res = await fetch(withBasePath("/api/player/npc-quest"), { method: "DELETE" });
@@ -1002,7 +1013,6 @@ export default function GameShell() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "quest_submit_failed");
 
-    playSfx("quest_submit");
     applyMember(data.member);
     activeNpcQuestRef.current = null;
     socketRef.current?.emit("quest:active", false);
@@ -1013,13 +1023,11 @@ export default function GameShell() {
   }, [activeMember?.discordId, activeMember?.id, activeMember?.npcQuest?.source, applyMember, dismissDoorNpc, isAuthed]);
 
   const handleChestClaim = useCallback((chestReward, { dismissNpc = true } = {}) => {
-    playSfx("chest_open");
     if (dismissNpc) dismissDoorNpc();
     setQuestSuccess({ title: "หีบสมบัติ", chestReward, isChest: true });
   }, [dismissDoorNpc]);
 
   const handleNpcCoinsNeeded = useCallback((cost) => {
-    playSfx("error");
     setNoCoinsCost(Number(cost) || 0);
     setShowNoCoins(true);
   }, []);
@@ -1034,7 +1042,6 @@ export default function GameShell() {
       });
       const data = await res.json();
       if (res.ok) {
-        playSfx(data.won ? "gamble_win" : "gamble_lose");
         applyMember(data.member);
         setGamblingResult({ won: data.won, delta: data.delta });
         setHasGambledThisVisit(true);
@@ -1057,7 +1064,6 @@ export default function GameShell() {
       });
       const data = await res.json();
       if (res.ok) {
-        playSfx("hint_reveal");
         applyMember(data.member);
         setHintResult({ title: data.hintTitle, content: data.hintContent });
         setHintBought(true);
@@ -1075,7 +1081,6 @@ export default function GameShell() {
   }, []);
 
   const handleGamblingKickOut = useCallback(() => {
-    playSfx("kick_out");
     setNpcVisit(null);
     setNpcQuestData(null);
     setGamblingResult(null);
@@ -1085,6 +1090,7 @@ export default function GameShell() {
 
   const handleNpcInteract = useCallback(() => {
     if (!doorNpc || doorNpcPhase === "exiting") return;
+    try { new Audio(withBasePath("/assets/Sound/openmenu.mp3")).play().catch(() => {}); } catch {}
     setNpcVisit(doorNpc);
   }, [doorNpc, doorNpcPhase]);
 
@@ -1188,7 +1194,7 @@ export default function GameShell() {
         <p className="version">Ver.Demo</p>
         <div className="profile-row">
           <div className="coin-pill">
-            <span>{activeMember?.coins?.toLocaleString?.() || "1,080"}</span>
+            <span>{activeMember?.coins?.toLocaleString?.() || "0"}</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={withBasePath("/assets/Coin.png")} alt="coin" />
           </div>
@@ -1369,6 +1375,12 @@ export default function GameShell() {
         announcement={challengeAnnouncement}
         onDone={() => setChallengeAnnouncement(null)}
       />
+      {isChallengePending && !isViewingOtherRoom && (
+        <ChallengeSubmissionPanel
+          challenge={activeMember.challenge}
+          onSubmit={handleChallengeSubmit}
+        />
+      )}
       {devMode && <DevPanel socketRef={socketRef} cycleInfo={cycleInfo} />}
       {questSuccess && (
         <div className="quest-success-backdrop" onClick={() => setQuestSuccess(null)}>

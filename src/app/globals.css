@@ -4380,6 +4380,37 @@ button {
   cursor: pointer;
 }
 
+.challenge-submission-panel {
+  border-color: #f59e0b;
+}
+
+.challenge-submission-preview,
+.challenge-submission-status {
+  margin: 0;
+  color: #fde68a;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.challenge-submission-preview:hover {
+  color: #fff;
+}
+
+.challenge-submission-message {
+  display: grid;
+  gap: 5px;
+}
+
+.challenge-submission-message > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #c8b88a;
+  font-size: 10px;
+  font-weight: 700;
+}
+
 @media (max-width: 600px) {
   .aqp {
     top: auto;

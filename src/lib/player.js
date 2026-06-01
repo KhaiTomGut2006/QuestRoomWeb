@@ -7,7 +7,7 @@ import Level from "@/models/Level";
 import CourseConfig from "@/models/CourseConfig";
 
 const DEFAULT_STAGE = "game-demo-1";
-const DEFAULT_COINS = 1080;
+const DEFAULT_COINS = 0;
 
 let cachedLevels = null;
 let cachedLevelsAt = 0;
@@ -96,6 +96,7 @@ function normalizeNpcQuestSubmission(submission) {
     npcType: submission.npcType || "",
     npcName: submission.npcName || "",
     npcCharacter: submission.npcCharacter || "",
+    source: submission.source || "npc-quest",
     postText: submission.postText || "",
     likeCount: likes.length,
     dislikeCount: dislikes.length,
@@ -482,6 +483,63 @@ export async function requestChallenge(discordId) {
   return { ok: true, pending: true, cost, member: normalizeMember(member) };
 }
 
+export async function submitChallenge(discordId, evidence, postText = "") {
+  await connectDb();
+  await ensureLevels();
+  const member = await Member.findOne({ discord_id: String(discordId || "") });
+  if (!member) return null;
+  if (member.questChallenge?.status !== "pending") throw new Error("pending_challenge_not_found");
+
+  const normalizedEvidence = normalizeNpcQuestEvidence(discordId, evidence);
+  if (!String(normalizedEvidence.contentType || "").startsWith("image/")) {
+    throw new Error("challenge_image_required");
+  }
+
+  const submittedAt = new Date();
+  const submissionId = member.questChallenge.submissionId
+    || `${String(discordId || "")}-challenge-${submittedAt.getTime()}`;
+  const normalizedPostText = String(postText || "").trim().slice(0, 500);
+  const submission = {
+    id: submissionId,
+    title: member.questChallenge.taskName || getTaskName(member.questChallenge.stage),
+    description: "Challenge submission",
+    difficulty: "challenge",
+    reward: 0,
+    npcType: "challenge",
+    npcName: "",
+    npcCharacter: "",
+    source: "challenge",
+    evidence: normalizedEvidence,
+    postText: normalizedPostText,
+    likes: [],
+    dislikes: [],
+    submittedAt
+  };
+
+  if (!Array.isArray(member.npcQuestSubmissions)) member.npcQuestSubmissions = [];
+  const existingIndex = member.npcQuestSubmissions.findIndex((item) => item.id === submissionId);
+  if (existingIndex >= 0) {
+    submission.likes = member.npcQuestSubmissions[existingIndex].likes || [];
+    submission.dislikes = member.npcQuestSubmissions[existingIndex].dislikes || [];
+    member.npcQuestSubmissions[existingIndex] = submission;
+  } else {
+    member.npcQuestSubmissions.push(submission);
+  }
+
+  member.questChallenge.submissionId = submissionId;
+  member.questChallenge.evidence = normalizedEvidence;
+  member.questChallenge.postText = normalizedPostText;
+  member.questChallenge.submittedAt = submittedAt;
+  member.markModified("questChallenge");
+  member.markModified("npcQuestSubmissions");
+  await member.save({ validateModifiedOnly: true });
+
+  return {
+    member: normalizeMember(member),
+    submission: normalizeNpcQuestSubmission(submission)
+  };
+}
+
 export async function acknowledgeReward(discordId, rewardId) {
   await connectDb();
   await ensureLevels();
@@ -639,6 +697,7 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
     npcType: member.npcQuest.npcType || "",
     npcName: member.npcQuest.npcName || "",
     npcCharacter: member.npcQuest.npcCharacter || "",
+    source: "npc-quest",
     evidence: normalizedEvidence,
     postText: String(postText || "").trim().slice(0, 500),
     likes: [],
