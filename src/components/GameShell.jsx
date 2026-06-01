@@ -440,6 +440,7 @@ export default function GameShell() {
   const shownRewardIdsRef = useRef(new Set());
   const doorNpcRef = useRef(null);
   const activeNpcQuestRef = useRef(null);
+  const questDataKeyRef = useRef(-1); // npcKey for which quest data was last fetched
   const npcSwapTimerRef = useRef(null);
 
   const isAuthed = status === "authenticated";
@@ -896,21 +897,26 @@ export default function GameShell() {
     };
     const difficulty = QUEST_DIFFICULTY_MAP[npcVisit?.id];
     if (!npcVisit || !difficulty) {
-      setNpcQuestData(null);
-    } else {
-      fetch(withBasePath(`/api/quest-templates?difficulty=${difficulty}`))
-        .then((r) => r.json())
-        .then((data) => {
-          const pool = Array.isArray(data.quests) ? data.quests : [];
-          if (pool.length === 0) { setNpcQuestData(null); return; }
-          const picked = pool[Math.floor(Math.random() * pool.length)];
-          const reward = Math.round(
-            picked.rewardMin + Math.random() * (picked.rewardMax - picked.rewardMin)
-          );
-          setNpcQuestData({ ...picked, reward });
-        })
-        .catch(() => setNpcQuestData(null));
+      // Dialog closed or non-quest NPC — npcKey effect handles clearing npcQuestData
+      return;
     }
+
+    // Already fetched quest data for this NPC visit — keep the same reward
+    if (questDataKeyRef.current === npcKey) return;
+    questDataKeyRef.current = npcKey;
+
+    fetch(withBasePath(`/api/quest-templates?difficulty=${difficulty}`))
+      .then((r) => r.json())
+      .then((data) => {
+        const pool = Array.isArray(data.quests) ? data.quests : [];
+        if (pool.length === 0) { setNpcQuestData(null); return; }
+        const picked = pool[Math.floor(Math.random() * pool.length)];
+        const reward = Math.round(
+          picked.rewardMin + Math.random() * (picked.rewardMax - picked.rewardMin)
+        );
+        setNpcQuestData({ ...picked, reward });
+      })
+      .catch(() => setNpcQuestData(null));
 
     // Fetch hints when Smith appears (only if not yet loaded for this visit)
     if (npcVisit?.type === "hints") {
@@ -929,10 +935,12 @@ export default function GameShell() {
     if (npcVisit?.type !== "gambling") {
       setGamblingResult(null);
     }
-  }, [activeMember?.npcQuest, hintsData, npcVisit]);
+  }, [activeMember?.npcQuest, npcKey, npcVisit]);
 
   // Reset hint + shop state when a new NPC spawns (npcKey increments on each new arrival)
   useEffect(() => {
+    setNpcQuestData(null);         // clear so next visit fetches fresh
+    questDataKeyRef.current = -1;  // allow fetch for the new NPC
     setHintBought(false);
     setHintResult(null);
     setHintsData(null);
@@ -1075,7 +1083,7 @@ export default function GameShell() {
 
   const handleNpcQuestClose = useCallback(() => {
     setNpcVisit(null);
-    setNpcQuestData(null);
+    // npcQuestData intentionally kept — same reward shown if dialog reopened for same NPC
     setGamblingResult(null);
     setHintResult(null); // clear hint content on close; hintBought stays for the visit
   }, []);
