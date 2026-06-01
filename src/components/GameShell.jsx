@@ -269,16 +269,83 @@ function npcFromActiveQuest(quest) {
   };
 }
 
-function DevPanel({ socketRef, cycleInfo }) {
+function DevPanel({ socketRef, cycleInfo, cycleToolsEnabled, selfDiscordId, onMemberUpdate }) {
   const [open, setOpen] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [npcId, setNpcId] = useState("");
+  const [query, setQuery] = useState("");
+  const [users, setUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [grantAmount, setGrantAmount] = useState("1000");
+  const [userToolStatus, setUserToolStatus] = useState("");
+  const [userToolBusy, setUserToolBusy] = useState(false);
 
   const emit = (ev, data) => socketRef.current?.emit(ev, data);
 
   const handleSpeed = (val) => {
     setSpeed(val);
     emit("dev:set-speed", val);
+  };
+
+  useEffect(() => {
+    const trimmedQuery = query.trim();
+    if (!open || !trimmedQuery) {
+      setUsers([]);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      fetch(`${withBasePath("/api/dev/users")}?q=${encodeURIComponent(trimmedQuery)}`, {
+        signal: controller.signal
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Search failed.");
+          return data;
+        })
+        .then((data) => {
+          setUsers(data.users || []);
+          setUserToolStatus((data.users || []).length ? "" : "No users found.");
+        })
+        .catch((error) => {
+          if (error.name !== "AbortError") setUserToolStatus(error.message);
+        });
+    }, 240);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [open, query]);
+
+  const runUserAction = async (action) => {
+    if (!selectedUser) return;
+    if (action === "reset-user" && !window.confirm(`Reset game data for ${selectedUser.name || selectedUser.discordId}?`)) return;
+
+    setUserToolBusy(true);
+    setUserToolStatus("");
+    try {
+      const response = await fetch(withBasePath("/api/dev/users"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          discordId: selectedUser.discordId,
+          ...(action === "grant-coins" ? { amount: Number(grantAmount) } : {})
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Dev action failed.");
+      setSelectedUser(data.user);
+      setUsers((current) => current.map((user) => user.discordId === data.user.discordId ? data.user : user));
+      setUserToolStatus(action === "grant-coins" ? "Coins granted." : "Game data reset.");
+      if (data.user.discordId === selfDiscordId) onMemberUpdate?.(data.user);
+    } catch (error) {
+      setUserToolStatus(error.message);
+    } finally {
+      setUserToolBusy(false);
+    }
   };
 
   return (
@@ -288,55 +355,133 @@ function DevPanel({ socketRef, cycleInfo }) {
       </button>
       {open && (
         <div className="dev-panel-body">
-          <p className="dev-panel-title">NPC Cycle Controls</p>
+          {cycleToolsEnabled && (
+            <>
+              <p className="dev-panel-title">NPC Cycle Controls</p>
 
+              <div className="dev-panel-row">
+                <label>Speed</label>
+                <div className="dev-speed-btns">
+                  {[1, 5, 10, 60, 100].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`dev-speed-btn${speed === v ? " active" : ""}`}
+                      onClick={() => handleSpeed(v)}
+                    >
+                      {v === 1 ? "1×" : `${v}×`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="dev-panel-row">
+                <label>Force NPC</label>
+                <select value={npcId} onChange={(e) => setNpcId(e.target.value)} className="dev-select">
+                  <option value="">Random</option>
+                  {NPC_IDS.map((n) => (
+                    <option key={n.id} value={n.id}>{n.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="dev-panel-row">
+                <button className="dev-action-btn" type="button"
+                  onClick={() => emit("dev:trigger", { npcId: npcId || undefined })}>
+                  ▶️ Trigger NPC
+                </button>
+                <button className="dev-action-btn" type="button"
+                  onClick={() => emit("dev:skip", {})}>
+                  ⏩ Skip Cycle
+                </button>
+                <button className="dev-action-btn" type="button"
+                  onClick={() => emit("dev:reset", {})}>
+                  🔄 Reset Timer
+                </button>
+              </div>
+
+              {cycleInfo && (() => {
+                const remaining = Math.max(0, cycleInfo.cycleDurationMs - (Date.now() - cycleInfo.cycleStartedAt));
+                const mins = String(Math.floor(remaining / 60000)).padStart(2, "0");
+                const secs = String(Math.floor((remaining % 60000) / 1000)).padStart(2, "0");
+                return <p className="dev-panel-note">Cycle: {mins}:{secs} | {speed}× speed</p>;
+              })()}
+
+              <div className="dev-panel-divider" />
+            </>
+          )}
+
+          <p className="dev-panel-title">User Tools</p>
           <div className="dev-panel-row">
-            <label>Speed</label>
-            <div className="dev-speed-btns">
-              {[1, 5, 10, 60, 100].map((v) => (
+            <label htmlFor="dev-user-search">Search user</label>
+            <input
+              id="dev-user-search"
+              className="dev-input"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Discord ID or name"
+            />
+          </div>
+
+          {users.length > 0 && (
+            <div className="dev-user-results">
+              {users.map((user) => (
                 <button
-                  key={v}
+                  key={user.discordId}
                   type="button"
-                  className={`dev-speed-btn${speed === v ? " active" : ""}`}
-                  onClick={() => handleSpeed(v)}
+                  className={`dev-user-result${selectedUser?.discordId === user.discordId ? " active" : ""}`}
+                  onClick={() => {
+                    setSelectedUser(user);
+                    setUserToolStatus("");
+                  }}
                 >
-                  {v === 1 ? "1×" : `${v}×`}
+                  <strong>{user.name || user.username || "Unnamed user"}</strong>
+                  <span>{user.discordId} · {Number(user.coins || 0).toLocaleString()} coins</span>
                 </button>
               ))}
             </div>
-          </div>
+          )}
+
+          {selectedUser && (
+            <div className="dev-selected-user">
+              <strong>{selectedUser.name || selectedUser.username || "Unnamed user"}</strong>
+              <span>{selectedUser.discordId}</span>
+              <span>{Number(selectedUser.coins || 0).toLocaleString()} coins</span>
+            </div>
+          )}
 
           <div className="dev-panel-row">
-            <label>Force NPC</label>
-            <select value={npcId} onChange={(e) => setNpcId(e.target.value)} className="dev-select">
-              <option value="">Random</option>
-              {NPC_IDS.map((n) => (
-                <option key={n.id} value={n.id}>{n.label}</option>
-              ))}
-            </select>
+            <label htmlFor="dev-coin-amount">Grant coins</label>
+            <div className="dev-inline-actions">
+              <input
+                id="dev-coin-amount"
+                className="dev-input"
+                type="number"
+                min="1"
+                max="1000000000"
+                step="1"
+                value={grantAmount}
+                onChange={(event) => setGrantAmount(event.target.value)}
+              />
+              <button
+                className="dev-action-btn"
+                type="button"
+                disabled={!selectedUser || userToolBusy}
+                onClick={() => runUserAction("grant-coins")}
+              >
+                Grant
+              </button>
+            </div>
           </div>
-
-          <div className="dev-panel-row">
-            <button className="dev-action-btn" type="button"
-              onClick={() => emit("dev:trigger", { npcId: npcId || undefined })}>
-              ▶️ Trigger NPC
-            </button>
-            <button className="dev-action-btn" type="button"
-              onClick={() => emit("dev:skip", {})}>
-              ⏩ Skip Cycle
-            </button>
-            <button className="dev-action-btn" type="button"
-              onClick={() => emit("dev:reset", {})}>
-              🔄 Reset Timer
-            </button>
-          </div>
-
-          {cycleInfo && (() => {
-            const remaining = Math.max(0, cycleInfo.cycleDurationMs - (Date.now() - cycleInfo.cycleStartedAt));
-            const mins = String(Math.floor(remaining / 60000)).padStart(2, "0");
-            const secs = String(Math.floor((remaining % 60000) / 1000)).padStart(2, "0");
-            return <p className="dev-panel-note">Cycle: {mins}:{secs} | {speed}× speed</p>;
-          })()}
+          <button
+            className="dev-action-btn dev-action-btn--danger"
+            type="button"
+            disabled={!selectedUser || userToolBusy}
+            onClick={() => runUserAction("reset-user")}
+          >
+            Reset selected user game data
+          </button>
+          {userToolStatus && <p className="dev-panel-note">{userToolStatus}</p>}
         </div>
       )}
     </div>
@@ -354,6 +499,7 @@ export default function GameShell() {
   const [previewMode, setPreviewMode] = useState(false);
   const [demoRequested, setDemoRequested] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [devRequested, setDevRequested] = useState(false);
   const [devMode, setDevMode] = useState(false);
   const [target, setTarget] = useState(null);
   const [profilePlayer, setProfilePlayer] = useState(null);
@@ -733,16 +879,25 @@ export default function GameShell() {
         }
       : null;
     setDemoRequested(wantsDemo);
-    setDevMode(wantsDev);
+    setDevRequested(wantsDev);
     setAuthError(params.get("error") || "");
     fetch(withBasePath("/api/config"))
       .then((res) => res.json())
       .then(setConfig)
-      .catch(() => setConfig({ authConfigured: false, demoGuestsEnabled: true }));
+      .catch(() => setConfig({ authConfigured: false, demoGuestsEnabled: true, devToolsEnabled: false }));
   }, []);
 
   useEffect(() => {
     if (!config) return;
+    if (!devRequested || !config.devToolsEnabled) {
+      setDevMode(false);
+    } else if (!config.devToolsRequireAuth) {
+      setDevMode(true);
+    } else {
+      fetch(withBasePath("/api/dev/users"))
+        .then((response) => setDevMode(response.ok))
+        .catch(() => setDevMode(false));
+    }
 
     if (demoRequested && config.demoGuestsEnabled) {
       setPreviewMode(true);
@@ -760,7 +915,7 @@ export default function GameShell() {
       autoLoginStartedRef.current = true;
       signIn("discord", { callbackUrl: withBasePath("/") });
     }
-  }, [authError, config, demoRequested, status]);
+  }, [authError, config, demoRequested, devRequested, status]);
 
   useEffect(() => {
     if (!isAuthed) return;
@@ -1537,7 +1692,15 @@ export default function GameShell() {
           onClose={() => setShowChallengeSubmission(false)}
         />
       )}
-      {devMode && <DevPanel socketRef={socketRef} cycleInfo={cycleInfo} />}
+      {devMode && (
+        <DevPanel
+          socketRef={socketRef}
+          cycleInfo={cycleInfo}
+          cycleToolsEnabled={config?.devCycleToolsEnabled}
+          selfDiscordId={activeMember?.discordId}
+          onMemberUpdate={applyMember}
+        />
+      )}
       {questSuccess && (
         <div className="quest-success-backdrop" onClick={() => setQuestSuccess(null)}>
           <section className="quest-success-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>

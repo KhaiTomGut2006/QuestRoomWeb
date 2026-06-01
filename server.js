@@ -8,6 +8,7 @@ const mongoose = require("mongoose");
 loadEnvConfig(process.cwd());
 
 const dev = process.env.NODE_ENV !== "production";
+const devCycleToolsEnabled = dev;
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
@@ -625,6 +626,7 @@ app.prepare().then(() => {
 
     // ─── Dev controls ────────────────────────────────────────────
     socket.on("dev:trigger", (payload = {}) => {
+      if (!devCycleToolsEnabled) return;
       const pid = socketToPlayer.get(socket.id);
       if (pid && playerNpcQuest.get(pid)) return;
       const specific = payload.npcId
@@ -640,6 +642,7 @@ app.prepare().then(() => {
     });
 
     socket.on("dev:skip", () => {
+      if (!devCycleToolsEnabled) return;
       const pid = socketToPlayer.get(socket.id);
       if (!pid || !playerNpcQuest.get(pid)) {
         const npc = enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id));
@@ -655,6 +658,7 @@ app.prepare().then(() => {
     });
 
     socket.on("dev:reset", () => {
+      if (!devCycleToolsEnabled) return;
       const pendingNpc = socketPersonalTimer.get(socket.id)?.pendingNpc || null;
       void schedulePersistedCycle(socket, undefined, pendingNpc).catch((error) => {
         console.error("Failed to reset NPC cycle:", error.message);
@@ -662,6 +666,7 @@ app.prepare().then(() => {
     });
 
     socket.on("dev:set-speed", (multiplier) => {
+      if (!devCycleToolsEnabled) return;
       cycleSpeedMultiplier = Math.max(1, Number(multiplier) || 1);
       // Restart personal cycle with new speed for this socket
       const frozen = socketFrozenMs.get(socket.id);
