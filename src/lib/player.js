@@ -10,18 +10,35 @@ const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 1080;
 
 let cachedLevels = null;
+let cachedLevelsAt = 0;
+let pendingLevelsLoad = null;
+const LEVEL_CACHE_TTL_MS = 15_000;
 
-async function ensureLevels() {
-  if (!cachedLevels) {
-    try {
+async function ensureLevels({ force = false } = {}) {
+  const cacheIsFresh =
+    cachedLevels &&
+    Date.now() - cachedLevelsAt < LEVEL_CACHE_TTL_MS;
+
+  if (!force && cacheIsFresh) return cachedLevels;
+
+  if (!pendingLevelsLoad) {
+    pendingLevelsLoad = (async () => {
       await connectDb();
-      const levels = await Level.find().sort({ order: 1 });
+      const levels = await Level.find().sort({ order: 1 }).lean();
       cachedLevels = levels.map(l => ({ stageId: l.stageId, name: l.name, order: l.order }));
-    } catch (err) {
+      cachedLevelsAt = Date.now();
+      return cachedLevels;
+    })().catch((err) => {
       console.error("Failed to load levels in player.js", err);
-      cachedLevels = [];
-    }
+      cachedLevels ||= [];
+      cachedLevelsAt = Date.now();
+      return cachedLevels;
+    }).finally(() => {
+      pendingLevelsLoad = null;
+    });
   }
+
+  return pendingLevelsLoad;
 }
 
 function toRoman(number) {
@@ -481,7 +498,7 @@ export async function acknowledgeReward(discordId, rewardId) {
 
 export async function getAvailableLevels() {
   await connectDb();
-  await ensureLevels();
+  await ensureLevels({ force: true });
   return cachedLevels || [];
 }
 

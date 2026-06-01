@@ -469,6 +469,9 @@ export default function GameShell() {
   const canViewNextRoom = viewedRoomIndex >= 0 && viewedRoomIndex < effectiveRoomLevels.length - 1;
   const viewedRoomLabel = effectiveRoomLevels.find((level) => level.stageId === activeViewedStage)?.name
     || stageLabel(activeViewedStage);
+  const currentRoomLabel = effectiveRoomLevels.find((level) => level.stageId === actualStage)?.name
+    || activeMember?.stageLabel
+    || stageLabel(actualStage);
 
   const applyMember = useCallback((nextMember) => {
     setMember(nextMember);
@@ -673,10 +676,15 @@ export default function GameShell() {
 
   useEffect(() => {
     if (!isAuthed) return;
-    fetch(withBasePath("/api/player/rooms"))
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then(({ levels }) => setRoomLevels(Array.isArray(levels) ? levels : []))
-      .catch(() => {});
+    const loadRoomLevels = () => {
+      fetch(withBasePath("/api/player/rooms"))
+        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+        .then(({ levels }) => setRoomLevels(Array.isArray(levels) ? levels : []))
+        .catch(() => {});
+    };
+    loadRoomLevels();
+    const interval = window.setInterval(loadRoomLevels, 15_000);
+    return () => window.clearInterval(interval);
   }, [isAuthed]);
 
   useEffect(() => {
@@ -1133,7 +1141,7 @@ export default function GameShell() {
   return (
     <main className="game-shell">
       <section className="top-left hud-cluster">
-        <h1>{activeMember?.stageLabel || stageLabel(activeMember?.stage)}</h1>
+        <h1>{currentRoomLabel}</h1>
         <div className="action-row">
           <button className="ranking-button" type="button" aria-label="Ranking" onClick={() => setShowRanking(true)}>
             <Trophy size={38} fill="currentColor" />
