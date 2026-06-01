@@ -627,7 +627,9 @@ export default function GameShell() {
     btnSfxRef.current = sfx;
 
     function handleClick(e) {
-      if (!e.target.closest("button")) return;
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      if (btn.classList.contains("npc-door-visitor")) return;
       const audio = btnSfxRef.current;
       if (!audio) return;
       audio.currentTime = 0;

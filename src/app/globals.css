@@ -1508,7 +1508,7 @@ button {
 
 .npc-door-visitor-click-icon {
   position: absolute;
-  bottom: calc(100% + 10px);
+  top: 8px;
   left: 50%;
   z-index: 5;
   display: grid;
@@ -1567,7 +1567,7 @@ button {
 
 .npc-door-visitor-prompt {
   position: absolute;
-  bottom: calc(100% + 56px);
+  bottom: calc(100% + 18px);
   left: 50%;
   z-index: 4;
   width: max-content;
