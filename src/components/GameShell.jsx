@@ -18,6 +18,7 @@ import GlobalQuestModal from "@/components/GlobalQuestModal";
 import ChallengeModal from "@/components/ChallengeModal";
 import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
 import ChallengeSubmissionPanel from "@/components/ChallengeSubmissionPanel";
+import TutorialMode from "@/components/TutorialMode";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -123,6 +124,7 @@ const demoMember = {
     cooldownUntil: new Date(Date.now() + 30 * 60 * 1000).toISOString()
   },
   npcQuest: null,
+  tutorial: null,
   position: { x: 56, y: 72 }
 };
 
@@ -380,6 +382,8 @@ export default function GameShell() {
   const [showChallengeSubmission, setShowChallengeSubmission] = useState(false);
   const [challengeAnnouncement, setChallengeAnnouncement] = useState(null);
   const [playerReactions, setPlayerReactions] = useState([]);
+  const [tutorialBusy, setTutorialBusy] = useState(false);
+  const [tutorialError, setTutorialError] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.5);
@@ -459,6 +463,7 @@ export default function GameShell() {
   const isAuthed = status === "authenticated";
   const activeMember = member || (previewMode ? demoMember : null);
   const selfPlayer = useMemo(() => (activeMember ? playerFromMember(activeMember) : null), [activeMember]);
+  const isTutorialActive = activeMember?.tutorial?.status === "active";
   const isChallengePending = activeMember?.challenge?.status === "pending";
   const hasChallengeSubmission = Boolean(
     isChallengePending
@@ -522,6 +527,42 @@ export default function GameShell() {
   const handlePlayerReactionEnd = useCallback((reactionId) => {
     setPlayerReactions((current) => current.filter((reaction) => reaction.id !== reactionId));
   }, []);
+
+  const handleTutorialAction = useCallback(async (action) => {
+    if (!isAuthed || tutorialBusy) {
+      if (!isAuthed) setTutorialError("กรุณาเข้าสู่ระบบเพื่อดำเนิน Tutorial");
+      return;
+    }
+    setTutorialBusy(true);
+    setTutorialError("");
+    try {
+      const response = await fetch(withBasePath("/api/player/tutorial"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "tutorial_action_failed");
+      applyMember(data.member);
+      if (data.reward?.coins) {
+        if (action === "open-chest") {
+          setQuestSuccess({ title: data.reward.title, chestReward: data.reward, isChest: true });
+        } else {
+          setQuestSuccess({ title: data.reward.title, reward: data.reward.coins });
+        }
+      }
+      if (action === "defer-role-test") setMessage("NPC ผู้ให้บททดสอบ Role จะกลับมาในอีก 2 นาที");
+      if (action === "complete-role-test") setMessage("Tutorial Mode สำเร็จแล้ว");
+    } catch (error) {
+      const messages = {
+        not_enough_coins: "Coins ไม่เพียงพอสำหรับซื้อ Quest นี้",
+        tutorial_role_npc_not_ready: "NPC ผู้ให้บททดสอบ Role ยังไม่กลับมา"
+      };
+      setTutorialError(messages[error.message] || "ดำเนิน Tutorial ไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setTutorialBusy(false);
+    }
+  }, [applyMember, isAuthed, tutorialBusy]);
 
   useEffect(() => {
     doorNpcRef.current = doorNpc;
@@ -659,8 +700,20 @@ export default function GameShell() {
     const wantsDemo = params.get("demo") === "1";
     const wantsDev = params.get("dev") === "1";
     const challengePreview = params.get("challengePreview");
+    const tutorialPreview = params.get("tutorialPreview");
     demoMember.npcQuest = wantsDemo && wantsDev && params.get("questPreview") === "1"
       ? demoNpcQuest
+      : null;
+    demoMember.tutorial = wantsDemo && wantsDev && tutorialPreview
+      ? {
+          status: "active",
+          step: tutorialPreview,
+          startedAt: "demo-tutorial-preview",
+          updatedAt: "demo-tutorial-preview",
+          ...(tutorialPreview === "role-quest-waiting"
+            ? { roleNpcAvailableAt: new Date(Date.now() + 2 * 60 * 1000).toISOString() }
+            : {})
+        }
       : null;
     demoMember.challenge = wantsDemo && wantsDev && challengePreview
       ? {
@@ -907,6 +960,10 @@ export default function GameShell() {
 
   const handleChallenge = () => {
     if (isViewingOtherRoom) return;
+    if (isTutorialActive) {
+      setMessage("ทำ Tutorial Mode ให้เสร็จก่อนเริ่ม Challenge");
+      return;
+    }
     if (isChallengePending) {
       setShowChallengeSubmission(true);
       return;
@@ -1171,10 +1228,11 @@ export default function GameShell() {
   }, [dismissDoorNpc]);
 
   const handleNpcInteract = useCallback(() => {
+    if (isTutorialActive) return;
     if (!doorNpc || doorNpcPhase === "exiting") return;
     try { new Audio(withBasePath("/assets/Sound/openmenu.mp3")).play().catch(() => {}); } catch {}
     setNpcVisit(doorNpc);
-  }, [doorNpc, doorNpcPhase]);
+  }, [doorNpc, doorNpcPhase, isTutorialActive]);
 
   const handleQuestSidebarOpen = useCallback(() => {
     if (!activeMember?.npcQuest) return;
@@ -1238,7 +1296,7 @@ export default function GameShell() {
             className={`challenge-button${isChallengePending ? " is-pending" : ""}${hasChallengeSubmission ? " is-submitted" : ""}`}
             type="button"
             onClick={handleChallenge}
-            disabled={isViewingOtherRoom}
+            disabled={isViewingOtherRoom || isTutorialActive}
           >
             <Zap size={23} fill="currentColor" />
             <span>
@@ -1403,13 +1461,19 @@ export default function GameShell() {
           onSelectReaction={handlePlayerReaction}
           onReactionEnd={handlePlayerReactionEnd}
         />
-        {!isViewingOtherRoom && (
+        {!isViewingOtherRoom && !isTutorialActive && (
           <>
             <NpcDoorVisitor key={npcKey} npc={doorNpc} phase={doorNpcPhase} onInteract={handleNpcInteract} />
             <RoomClock cycleInfo={cycleInfo} />
           </>
         )}
       </section>
+      <TutorialMode
+        tutorial={activeMember?.tutorial}
+        busy={tutorialBusy}
+        error={tutorialError}
+        onAction={handleTutorialAction}
+      />
       {profilePlayer && (
         <ProfileModal
           player={profilePlayer}

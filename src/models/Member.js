@@ -140,6 +140,18 @@ const NpcCycleSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const TutorialSchema = new mongoose.Schema(
+  {
+    status: String,
+    step: String,
+    startedAt: Date,
+    updatedAt: Date,
+    roleNpcAvailableAt: Date,
+    completedAt: Date
+  },
+  { _id: false }
+);
+
 const MemberSchema = new mongoose.Schema(
   {
     id: String,
@@ -209,6 +221,7 @@ const MemberSchema = new mongoose.Schema(
     npcQuest: { type: NpcQuestSchema, default: null },
     npcQuestSubmissions: { type: [NpcQuestSubmissionSchema], default: [] },
     npcCycle: { type: NpcCycleSchema, default: null },
+    tutorial: { type: TutorialSchema, default: null },
     roomPosition: { type: PositionSchema, default: () => ({}) },
     shopCooldownT1: { type: Number, default: 0 },
     shopCooldownT2: { type: Number, default: 0 },

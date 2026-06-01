@@ -113,6 +113,18 @@ function normalizeNpcQuestSubmission(submission) {
   };
 }
 
+function normalizeTutorial(tutorial) {
+  if (!tutorial?.status) return null;
+  return {
+    status: tutorial.status,
+    step: tutorial.step || "",
+    startedAt: tutorial.startedAt || null,
+    updatedAt: tutorial.updatedAt || null,
+    roleNpcAvailableAt: tutorial.roleNpcAvailableAt || null,
+    completedAt: tutorial.completedAt || null
+  };
+}
+
 function isGlobalQuestSubmissionVisible(member, submission) {
   if (submission?.source !== "challenge") return true;
 
@@ -219,6 +231,7 @@ export function normalizeMember(member) {
         }
       : null,
     npcQuestSubmissions: (member.npcQuestSubmissions || []).map(normalizeNpcQuestSubmission),
+    tutorial: normalizeTutorial(member.tutorial),
     challenge: member.questChallenge || null,
     reward: member.questReward
       ? {
@@ -280,6 +293,12 @@ export async function upsertMemberFromDiscord(profile) {
           current: "Find the quiet corner",
           status: "active",
           completed: []
+        },
+        tutorial: {
+          status: "active",
+          step: "quest-intro",
+          startedAt: new Date(),
+          updatedAt: new Date()
         },
         roomPosition: initialPosition
       }
