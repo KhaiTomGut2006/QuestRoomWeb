@@ -310,6 +310,7 @@ button {
 .player-layer {
   position: absolute;
   inset: 0;
+  z-index: 40;
   pointer-events: none;
 }
 
