@@ -6,7 +6,7 @@
   --gold: #ffdb52;
   --gold-deep: #c77a16;
   --shadow: rgba(52, 38, 22, 0.18);
-  --stage-w: min(64vw, 1280px, calc((100dvh - 220px) * 1.778));
+  --stage-w: min(74vw, 1480px, calc((100dvh - 170px) * 1.778));
   --stage-ratio: 2049 / 1152;
 }
 
@@ -311,8 +311,8 @@ button {
 
 .player-token {
   position: absolute;
-  width: clamp(52px, 4vw, 76px);
-  height: clamp(68px, 5vw, 94px);
+  width: clamp(42px, 3.2vw, 60px);
+  height: clamp(56px, 4vw, 76px);
   transform: translate(-50%, -50%);
   display: grid;
   justify-items: center;
@@ -336,11 +336,11 @@ button {
 }
 
 .player-name {
-  max-width: 112px;
+  max-width: 90px;
   margin-top: 3px;
   overflow: hidden;
   color: #1b1b1b;
-  font-size: clamp(11px, 0.78vw, 14px);
+  font-size: clamp(10px, 0.65vw, 12px);
   font-weight: 950;
   line-height: 1.05;
   text-align: center;
@@ -353,14 +353,14 @@ button {
   position: relative;
   z-index: 2;
   display: grid;
-  width: clamp(50px, 3.6vw, 68px);
-  height: clamp(50px, 3.6vw, 68px);
+  width: clamp(40px, 2.9vw, 54px);
+  height: clamp(40px, 2.9vw, 54px);
   place-items: center;
   border: 3px solid #1d1c1b;
   border-radius: 999px;
   background: linear-gradient(145deg, #24212a, #6c5d7b);
   color: #fff;
-  font-size: clamp(16px, 1.2vw, 22px);
+  font-size: clamp(14px, 0.95vw, 18px);
   font-weight: 950;
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
@@ -377,8 +377,8 @@ button {
   z-index: 4;
   bottom: 72%;
   left: 50%;
-  width: clamp(40px, 3.1vw, 58px);
-  height: clamp(40px, 3.1vw, 58px);
+  width: clamp(32px, 2.5vw, 46px);
+  height: clamp(32px, 2.5vw, 46px);
   border-radius: 0;
   object-fit: contain;
   pointer-events: none;
@@ -390,8 +390,8 @@ button {
   position: absolute;
   bottom: -2px;
   left: -2px;
-  width: clamp(14px, 1vw, 18px);
-  height: clamp(14px, 1vw, 18px);
+  width: clamp(11px, 0.78vw, 14px);
+  height: clamp(11px, 0.78vw, 14px);
   border: 2px solid #fff;
   border-radius: 999px;
   background: #28c840;
@@ -414,9 +414,9 @@ button {
 }
 
 .player-shadow {
-  width: clamp(45px, 3.4vw, 64px);
-  height: 13px;
-  margin-top: -9px;
+  width: clamp(36px, 2.7vw, 51px);
+  height: 10px;
+  margin-top: -7px;
   border-radius: 999px;
   background: rgba(38, 30, 22, 0.25);
 }
@@ -1167,7 +1167,7 @@ button {
   }
 
   .game-stage {
-    width: min(138vw, 900px, calc((100dvh - 260px) * 1.778));
+    width: min(148vw, 980px, calc((100dvh - 220px) * 1.778));
     top: 55%;
   }
 
@@ -1240,7 +1240,7 @@ button {
   }
 
   .game-stage {
-    width: min(156vw, calc((100dvh - 300px) * 1.778));
+    width: min(166vw, calc((100dvh - 260px) * 1.778));
     top: 55%;
   }
 
