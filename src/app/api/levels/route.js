@@ -30,9 +30,20 @@ export async function PUT(request) {
     }
 
     const levels = body.levels.map((level, index) => ({
-      stageId: String(level?.stageId || "").trim(),
-      name: String(level?.name || "").trim(),
-      order: index,
+      stageId:  String(level?.stageId || "").trim(),
+      name:     String(level?.name || "").trim(),
+      order:    index,
+      npcShop:  Array.isArray(level?.npcShop)  ? level.npcShop.map(item => ({
+        itemType: String(item.itemType || ""),
+        itemName: String(item.itemName || ""),
+        price:    Number(item.price)  || 0,
+        maxQty:   Number(item.maxQty) || 1,
+      })) : [],
+      boxDrops: Array.isArray(level?.boxDrops) ? level.boxDrops.map(drop => ({
+        itemType: String(drop.itemType || ""),
+        itemName: String(drop.itemName || ""),
+        chance:   Number(drop.chance)  || 0,
+      })) : [],
     }));
     const stageIds = new Set(levels.map((level) => level.stageId));
 

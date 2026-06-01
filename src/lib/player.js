@@ -25,7 +25,13 @@ async function ensureLevels({ force = false } = {}) {
     pendingLevelsLoad = (async () => {
       await connectDb();
       const levels = await Level.find().sort({ order: 1 }).lean();
-      cachedLevels = levels.map(l => ({ stageId: l.stageId, name: l.name, order: l.order }));
+      cachedLevels = levels.map(l => ({
+        stageId:  l.stageId,
+        name:     l.name,
+        order:    l.order,
+        npcShop:  l.npcShop  || [],
+        boxDrops: l.boxDrops || [],
+      }));
       cachedLevelsAt = Date.now();
       return cachedLevels;
     })().catch((err) => {

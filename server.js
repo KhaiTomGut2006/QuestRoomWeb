@@ -27,7 +27,7 @@ const socketPlayerCoins = new Map(); // socketId → last client-synced balance 
 const playerNpcQuest = new Map(); // playerId → bool (has active NPC quest)
 
 // ─── NPC Cycle Timer (per-socket personal timers) ───────────────────
-const CYCLE_MS = 30 * 60 * 1000;
+const CYCLE_MS = 20 * 60 * 1000;
 
 // socketId → { timerId, startedAt, durationMs }
 const socketPersonalTimer = new Map();

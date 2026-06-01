@@ -588,6 +588,7 @@ export default function GameShell() {
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.5);
   const audioRef = useRef(null);
+  const btnSfxRef = useRef(null);
   const settingsPanelRef = useRef(null);
   const reactionSequenceRef = useRef(0);
   const lastReactionAtRef = useRef(0);
@@ -617,6 +618,24 @@ export default function GameShell() {
       document.removeEventListener("keydown", startPlay);
       document.removeEventListener("touchstart", startPlay);
     };
+  }, []);
+
+  // ── Global button-click SFX ─────────────────────────────────────────
+  useEffect(() => {
+    const sfx = new Audio(withBasePath("/assets/Sound/button-click.mp3"));
+    sfx.volume = 0.6;
+    btnSfxRef.current = sfx;
+
+    function handleClick(e) {
+      if (!e.target.closest("button")) return;
+      const audio = btnSfxRef.current;
+      if (!audio) return;
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+    }
+
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
   }, []);
 
   // Close settings panel on outside click

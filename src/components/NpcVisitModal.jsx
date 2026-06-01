@@ -89,13 +89,13 @@ const SHOP_ITEMS = {
   },
   "cooldown-minute": {
     name: "Max Cooldown -1 min",
-    description: "ลดเวลารอ NPC รอบถัดไป 1 นาที (สูงสุด 10 ครั้ง)",
+    description: "ลดเวลารอ NPC รอบถัดไป 1 นาที (สูงสุด 5 ครั้ง)",
     cost: 200,
     image: "Cooldown.png",
   },
   "cooldown-minute-lv2": {
     name: "Max Cooldown Lv2 -1 min",
-    description: "ลดเวลารอ NPC รอบถัดไป 1 นาที Tier 2 (สูงสุด 10 ครั้ง)",
+    description: "ลดเวลารอ NPC รอบถัดไป 1 นาที Tier 2 (สูงสุด 5 ครั้ง)",
     cost: 400,
     image: "Cooldown.png",
   },
@@ -311,14 +311,14 @@ function getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, 
   if (purchases[itemId]) return "bought";
   if (itemId.startsWith("accessory-") && ownedAccessories.has(itemId)) return "owned";
   if (itemId.startsWith("quest-scroll-") && hasActiveQuest) return "quest_active";
-  if (itemId === "cooldown-minute" && t1Count >= 10) return "maxed";
+  if (itemId === "cooldown-minute" && t1Count >= 5) return "maxed";
   if (itemId === "cooldown-minute-lv2") {
     if (!hasLimitBreak) return "locked";
-    if (t2Count >= 10) return "maxed";
+    if (t2Count >= 5) return "maxed";
   }
   if (itemId === "limit-break") {
     if (hasLimitBreak) return "owned";
-    if (t1Count < 10) return "locked_t1";
+    if (t1Count < 5) return "locked_t1";
   }
   return "available";
 }
@@ -327,7 +327,7 @@ const STOCK_LABEL = {
   maxed:        "ซื้อครบแล้ว",
   owned:        "มีแล้ว",
   locked:       "🔒 ต้องการ Limit Break",
-  locked_t1:    "🔒 ซื้อนาฬิกา Lv1 ครบ 10 ครั้งก่อน",
+  locked_t1:    "🔒 ซื้อนาฬิกา Lv1 ครบ 5 ครั้งก่อน",
   quest_active: "มีเควสอยู่แล้ว",
 };
 
@@ -345,7 +345,7 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
 
   // Hide limit-break and cooldown-lv2 entirely until prerequisites are met
   const visibleOffers = offers.filter((itemId) => {
-    if (itemId === "limit-break" && t1Count < 10) return false;
+    if (itemId === "limit-break" && t1Count < 5) return false;
     if (itemId === "cooldown-minute-lv2" && !hasLimitBreak) return false;
     return true;
   });

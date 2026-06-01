@@ -46,14 +46,14 @@ export const SHOP_ITEMS = {
     cost: 200,
     cooldownReductionMs: 60_000,
     cooldownTier: 1,
-    maxCount: 10,
+    maxCount: 5,
     name: "Max Cooldown -1 min"
   },
   "cooldown-minute-lv2": {
     cost: 400,
     cooldownReductionMs: 60_000,
     cooldownTier: 2,
-    maxCount: 10,
+    maxCount: 5,
     requiresLimitBreak: true,
     name: "Max Cooldown Lv2 -1 min"
   },
