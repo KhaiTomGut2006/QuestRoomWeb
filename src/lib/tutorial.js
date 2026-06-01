@@ -1,5 +1,5 @@
 import { connectDb } from "@/lib/db";
-import { normalizeMember } from "@/lib/player";
+import { getFirstConfiguredStage, normalizeMember } from "@/lib/player";
 import Member from "@/models/Member";
 
 const ROLE_QUEST_COST = 50;
@@ -90,8 +90,15 @@ export async function advanceTutorial(discordId, action) {
       cancelAvailableAt: new Date(now.getTime() + ROLE_QUEST_CANCEL_WAIT_MS)
     };
     updateStep(member, "role-quest-active");
+  } else if (action === "open-social") {
+    assertTutorialStep(member, "social-intro");
+    updateStep(member, "social-opened");
+  } else if (action === "finish-social") {
+    assertTutorialStep(member, "social-intro", "social-opened");
+    updateStep(member, "finish-chat");
   } else if (action === "finish-tutorial") {
     assertTutorialStep(member, "finish-chat");
+    member.stage = await getFirstConfiguredStage();
     updateStep(member, "completed", { completedAt: now });
   } else {
     throw new Error("invalid_tutorial_action");

@@ -19,6 +19,7 @@ import ChallengeModal from "@/components/ChallengeModal";
 import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
 import ChallengeSubmissionPanel from "@/components/ChallengeSubmissionPanel";
 import TutorialMode from "@/components/TutorialMode";
+import QuestReceivedPopup from "@/components/QuestReceivedPopup";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
@@ -298,6 +299,15 @@ function npcFromTutorialStep(step) {
       tutorialAction: "open-chest"
     };
   }
+  if (step === "quest-active") {
+    return {
+      id: "quest-easy",
+      type: "quest",
+      name: "Quest (Tutorial)",
+      npcId: "near",
+      activeQuest: true
+    };
+  }
   if (step === "shop-arrival") {
     return {
       id: "shop",
@@ -564,6 +574,7 @@ export default function GameShell() {
   const [showNoCoins, setShowNoCoins] = useState(false);
   const [noCoinsCost, setNoCoinsCost] = useState(250);
   const [questSuccess, setQuestSuccess] = useState(null); // { title, reward }
+  const [questReceived, setQuestReceived] = useState(null);
   const [showRanking, setShowRanking] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
   const [showGlobalQuest, setShowGlobalQuest] = useState(false);
@@ -749,6 +760,9 @@ export default function GameShell() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "tutorial_action_failed");
       applyMember(data.member);
+      if (action === "buy-role-quest" && data.member?.npcQuest) {
+        setQuestReceived(data.member.npcQuest);
+      }
       if (data.reward?.coins) {
         if (action === "open-chest") {
           setQuestSuccess({ title: data.reward.title, chestReward: data.reward, isChest: true });
@@ -911,6 +925,7 @@ export default function GameShell() {
     const wantsDev = params.get("dev") === "1";
     const challengePreview = params.get("challengePreview");
     const tutorialPreview = params.get("tutorialPreview");
+    const questReceivedPreview = params.get("questReceivedPreview") === "1";
     demoMember.npcQuest = wantsDemo && wantsDev && params.get("questPreview") === "1"
       ? demoNpcQuest
       : null;
@@ -939,6 +954,7 @@ export default function GameShell() {
             : {}),
         }
       : null;
+    setQuestReceived(wantsDemo && wantsDev && questReceivedPreview ? demoNpcQuest : null);
     setDemoRequested(wantsDemo);
     setDevRequested(wantsDev);
     setAuthError(params.get("error") || "");
@@ -1317,6 +1333,7 @@ export default function GameShell() {
       const data = await handleTutorialAction("accept-first-quest");
       if (data?.member) {
         activeNpcQuestRef.current = data.member.npcQuest;
+        setQuestReceived(data.member.npcQuest);
         socketRef.current?.emit("quest:active", true);
       }
       setNpcVisit(null);
@@ -1345,6 +1362,7 @@ export default function GameShell() {
         doorNpcRef.current = questNpc;
         setDoorNpc(questNpc);
         setDoorNpcPhase("idle");
+        setQuestReceived(data.member.npcQuest);
         socketRef.current?.emit("quest:active", true);
       }
     } catch {}
@@ -1356,6 +1374,7 @@ export default function GameShell() {
     // Quest is assigned directly to the player — no quest NPC spawned at the door.
     // The shop NPC (Milt) stays until its current cooldown expires.
     applyMember(updatedMember);
+    setQuestReceived(assignedQuest);
     activeNpcQuestRef.current = null;
     // Notify server so timer freezes at 1 sec when it expires
     socketRef.current?.emit("quest:active", true);
@@ -1480,9 +1499,11 @@ export default function GameShell() {
     try { new Audio(withBasePath("/assets/Sound/openmenu.mp3")).play().catch(() => {}); } catch {}
     if (tutorialVisitor.tutorialAction === "accept-first-quest") {
       setNpcQuestData(TUTORIAL_FIRST_QUEST);
+    } else if (tutorialVisitor.activeQuest && activeMember?.npcQuest) {
+      setNpcQuestData(activeMember.npcQuest);
     }
     setNpcVisit(tutorialVisitor);
-  }, [tutorialVisitor]);
+  }, [activeMember?.npcQuest, tutorialVisitor]);
 
   const handleQuestSidebarOpen = useCallback(() => {
     if (!activeMember?.npcQuest) return;
@@ -1503,6 +1524,24 @@ export default function GameShell() {
     if (!milliseconds) return;
     socketRef.current?.emit("shop:reduce-cooldown", { milliseconds });
   }, []);
+
+  const handleGlobalQuestOpen = useCallback(() => {
+    if (!activeMember || (!isAuthed && !previewMode)) {
+      signIn("discord");
+      return;
+    }
+    setShowGlobalQuest(true);
+    if (isAuthed && activeMember.tutorial?.step === "social-intro") {
+      void handleTutorialAction("open-social");
+    }
+  }, [activeMember, handleTutorialAction, isAuthed, previewMode]);
+
+  const handleGlobalQuestClose = useCallback(() => {
+    setShowGlobalQuest(false);
+    if (isAuthed && ["social-intro", "social-opened"].includes(activeMember?.tutorial?.step)) {
+      void handleTutorialAction("finish-social");
+    }
+  }, [activeMember?.tutorial?.step, handleTutorialAction, isAuthed]);
 
   const handleRewardClose = useCallback(() => {
     const rewardId = reward?.id;
@@ -1575,8 +1614,8 @@ export default function GameShell() {
         </div>
       </section>
 
-      {activeMember?.npcQuest && !isViewingOtherRoom && (
-        <div className="npc-quest-sidebar">
+      {activeMember?.npcQuest && !questReceived && !isViewingOtherRoom && (
+        <div className="npc-quest-sidebar npc-quest-sidebar--arriving">
           <span className="npc-active-quest-label">📜 เควสที่รับไว้</span>
           <span className="npc-active-quest-title">{activeMember.npcQuest.title}</span>
           <span className="npc-active-quest-reward">🪙 ×{activeMember.npcQuest.reward}</span>
@@ -1605,10 +1644,10 @@ export default function GameShell() {
           </div>
           <div className="profile-action">
             <button
-              className="circle-button global"
+              className={`circle-button global${activeMember?.tutorial?.step === "social-intro" ? " tutorial-social-target" : ""}`}
               type="button"
               aria-label={activeMember && isAuthed ? "Global Quest" : "Login with Discord"}
-              onClick={() => (activeMember && isAuthed ? setShowGlobalQuest(true) : signIn("discord"))}
+              onClick={handleGlobalQuestOpen}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={withBasePath("/assets/Global.png")} alt="" />
@@ -1736,6 +1775,7 @@ export default function GameShell() {
         busy={tutorialBusy}
         error={tutorialError}
         onAction={handleTutorialAction}
+        socialOpen={showGlobalQuest}
       />
       {profilePlayer && (
         <ProfileModal
@@ -1747,6 +1787,9 @@ export default function GameShell() {
         />
       )}
       {reward && <RewardModal reward={reward} onClose={handleRewardClose} />}
+      {questReceived && (
+        <QuestReceivedPopup quest={questReceived} onDone={() => setQuestReceived(null)} />
+      )}
       {npcVisit && (
         <NpcVisitModal
           npc={npcVisit}
@@ -1863,7 +1906,12 @@ export default function GameShell() {
           roomPlayers={players}
         />
       )}
-      {showGlobalQuest && <GlobalQuestModal onClose={() => setShowGlobalQuest(false)} />}
+      {showGlobalQuest && (
+        <GlobalQuestModal
+          tutorialMode={["social-intro", "social-opened"].includes(activeMember?.tutorial?.step)}
+          onClose={handleGlobalQuestClose}
+        />
+      )}
     </main>
   );
 }

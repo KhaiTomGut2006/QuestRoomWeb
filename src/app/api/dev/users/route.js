@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 import { canUseDevTools } from "@/lib/devTools";
-import { normalizeMember } from "@/lib/player";
+import { getFirstConfiguredStage, normalizeMember } from "@/lib/player";
 import Member from "@/models/Member";
 
 const MAX_GRANT_AMOUNT = 1_000_000_000;
@@ -91,12 +91,13 @@ export async function PATCH(request) {
 
   if (action === "reset-user") {
     const now = new Date();
+    const firstStage = await getFirstConfiguredStage();
     const user = await Member.findOneAndUpdate(
       { discord_id: targetDiscordId },
       {
         $set: {
           coin: "0",
-          stage: "game-demo-1",
+          stage: firstStage,
           quest: { current: "Find the quiet corner", status: "active", completed: [] },
           npcQuest: null,
           npcQuestSubmissions: [],

@@ -41,6 +41,16 @@ async function ensureLevels({ force = false } = {}) {
   return pendingLevelsLoad;
 }
 
+function firstConfiguredStage() {
+  return cachedLevels?.[0]?.stageId || DEFAULT_STAGE;
+}
+
+export async function getFirstConfiguredStage() {
+  await connectDb();
+  await ensureLevels();
+  return firstConfiguredStage();
+}
+
 function toRoman(number) {
   const values = [
     [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]
@@ -271,6 +281,7 @@ export async function upsertMemberFromDiscord(profile) {
     y: 68 + Math.round(Math.random() * 12),
     updatedAt: new Date()
   };
+  const initialStage = firstConfiguredStage();
 
   await Member.findOneAndUpdate(
     { discord_id: discordId },
@@ -289,7 +300,7 @@ export async function upsertMemberFromDiscord(profile) {
         fullname: globalName || username || `Discord ${discordId.slice(-4)}`,
         nick: globalName || username || "Player",
         coin: String(DEFAULT_COINS),
-        stage: DEFAULT_STAGE,
+        stage: initialStage,
         quest: {
           current: "Find the quiet corner",
           status: "active",
@@ -310,7 +321,7 @@ export async function upsertMemberFromDiscord(profile) {
   await Promise.all([
     Member.updateOne(
       { discord_id: discordId, stage: { $exists: false } },
-      { $set: { stage: DEFAULT_STAGE } }
+      { $set: { stage: initialStage } }
     ),
     Member.updateOne(
       { discord_id: discordId, quest: { $exists: false } },
@@ -346,6 +357,16 @@ export async function getMemberByDiscordId(discordId) {
 
   if (!member) {
     member = await Member.findOne({ discord_id: String(discordId || "") });
+  }
+
+  if (
+    member
+    && member.tutorial?.status !== "active"
+    && cachedLevels?.length
+    && !cachedLevels.some((level) => level.stageId === member.stage)
+  ) {
+    member.stage = firstConfiguredStage();
+    await member.save({ validateModifiedOnly: true });
   }
 
   return member ? normalizeMember(member) : null;
@@ -715,7 +736,7 @@ export async function cancelNpcQuest(discordId) {
     member.tutorial = {
       ...(member.tutorial?.toObject?.() || member.tutorial || {}),
       status: "active",
-      step: "finish-chat",
+      step: "social-intro",
       updatedAt: new Date()
     };
     member.markModified("tutorial");
@@ -790,7 +811,7 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
     member.tutorial = {
       ...(member.tutorial?.toObject?.() || member.tutorial || {}),
       status: "active",
-      step: "finish-chat",
+      step: "social-intro",
       updatedAt: submittedAt
     };
   }

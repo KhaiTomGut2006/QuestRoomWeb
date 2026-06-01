@@ -27,7 +27,7 @@ function AuthorAvatar({ author }) {
   );
 }
 
-export default function GlobalQuestModal({ onClose }) {
+export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
   const [classes, setClasses] = useState([]);
   const [posts, setPosts] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState("");
@@ -113,6 +113,12 @@ export default function GlobalQuestModal({ onClose }) {
             </div>
           </div>
         </header>
+        {tutorialMode && (
+          <div className="global-quest-tutorial-note">
+            <strong>Social</strong>
+            <span>ที่นี่รวมผลงาน Quest ของผู้เล่น สามารถดูผลงานและกด Like หรือ Dislike ให้กันได้</span>
+          </div>
+        )}
 
         <div className="global-quest-feed">
           {loading ? (

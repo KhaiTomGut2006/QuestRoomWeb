@@ -25,6 +25,11 @@ const CHAT_STEPS = {
     action: "spawn-shop",
     actionLabel: "เรียกร้านค้า"
   },
+  "social-intro": {
+    text: "ก่อนออกไป ลองกดปุ่ม Social ด้านขวาบนดูหน่อย ที่นั่นนายจะเห็นผลงาน Quest ของคนอื่น และส่งกำลังใจให้กันได้",
+    action: "",
+    actionLabel: ""
+  },
   "finish-chat": {
     text: "ยินดีด้วย! ตอนนี้นายเข้าใจพื้นฐานของโลกนี้แล้ว ต่อไปลองออกไปผจญภัยในด่านแรกได้เลย",
     action: "finish-tutorial",
@@ -42,7 +47,9 @@ const STEP_META = {
   "after-chest": { progress: 3, title: "เตรียมทดลองซื้อ Quest จาก Shop" },
   "shop-arrival": { progress: 3, title: "กดคุยกับ Milt แล้วซื้อ Quest : Challenge Role" },
   "role-quest-active": { progress: 4, title: "ส่ง Role Quest หรือรอเพื่อยกเลิก" },
-  "finish-chat": { progress: 4, title: "Tutorial สำเร็จแล้ว" }
+  "social-intro": { progress: 5, title: "กดปุ่ม Social ด้านขวาบนเพื่อดูผลงาน" },
+  "social-opened": { progress: 5, title: "ลองดูผลงานใน Social แล้วปิดหน้าต่างเมื่อพร้อม" },
+  "finish-chat": { progress: 5, title: "Tutorial สำเร็จแล้ว" }
 };
 
 function formatCountdown(milliseconds) {
@@ -50,7 +57,7 @@ function formatCountdown(milliseconds) {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export default function TutorialMode({ tutorial, activeQuest, busy, error, onAction }) {
+export default function TutorialMode({ tutorial, activeQuest, busy, error, onAction, socialOpen = false }) {
   const [now, setNow] = useState(() => Date.now());
   const chat = CHAT_STEPS[tutorial?.step];
   const meta = STEP_META[tutorial?.step] || STEP_META["welcome-1"];
@@ -65,7 +72,7 @@ export default function TutorialMode({ tutorial, activeQuest, busy, error, onAct
     return () => window.clearInterval(interval);
   }, [cancelWaitMs]);
 
-  const progress = useMemo(() => Math.min(4, meta.progress || 1), [meta.progress]);
+  const progress = useMemo(() => Math.min(5, meta.progress || 1), [meta.progress]);
 
   if (!tutorial || tutorial.status !== "active") return null;
 
@@ -74,8 +81,8 @@ export default function TutorialMode({ tutorial, activeQuest, busy, error, onAct
       <aside className="tutorial-hud" aria-label="Tutorial Mode progress">
         <p className="tutorial-hud-eyebrow"><Sparkles size={15} /> Tutorial Room</p>
         <strong>{meta.title}</strong>
-        <div className="tutorial-progress" aria-label={`Tutorial step ${progress} of 4`}>
-          {[1, 2, 3, 4].map((number) => (
+        <div className="tutorial-progress" aria-label={`Tutorial step ${progress} of 5`}>
+          {[1, 2, 3, 4, 5].map((number) => (
             <span className={number <= progress ? "is-active" : ""} key={number} />
           ))}
         </div>
@@ -85,7 +92,7 @@ export default function TutorialMode({ tutorial, activeQuest, busy, error, onAct
         {error && <p className="tutorial-error">{error}</p>}
       </aside>
 
-      {chat && (
+      {chat && !socialOpen && (
         <div className="tutorial-chat-wrap" role="presentation">
           <section className="tutorial-chat-box" role="dialog" aria-modal="true" aria-label="Tutorial NPC chat">
             <div className="tutorial-chat-npc">
@@ -95,10 +102,12 @@ export default function TutorialMode({ tutorial, activeQuest, busy, error, onAct
             <div className="tutorial-chat-copy">
               <p className="tutorial-chat-name">Tutorial Guide</p>
               <p>{chat.text}</p>
-              <button type="button" disabled={busy} onClick={() => onAction(chat.action)}>
-                {busy ? "กำลังดำเนินการ..." : chat.actionLabel}
-                <ChevronRight size={19} />
-              </button>
+              {chat.action && (
+                <button type="button" disabled={busy} onClick={() => onAction(chat.action)}>
+                  {busy ? "กำลังดำเนินการ..." : chat.actionLabel}
+                  <ChevronRight size={19} />
+                </button>
+              )}
             </div>
           </section>
         </div>

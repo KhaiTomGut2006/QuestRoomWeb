@@ -1,5 +1,6 @@
 "use client";
 
+import { MousePointerClick } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 
 const NPC_IMAGE = {
@@ -31,6 +32,9 @@ export default function NpcDoorVisitor({ npc, phase = "idle", onInteract }) {
       }}
       aria-label={`คุยกับ ${npc.name}`}
     >
+      <span className="npc-door-visitor-click-icon" aria-hidden="true">
+        <MousePointerClick size={21} strokeWidth={3} />
+      </span>
       <span className="npc-door-visitor-prompt">คลิกเพื่อพูดคุย</span>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={withBasePath(`/assets/NPC/${imgFile}`)} alt="" />

@@ -1506,6 +1506,37 @@ button {
   transform-origin: center bottom;
 }
 
+.npc-door-visitor-click-icon {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  z-index: 5;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 3px solid #201f1d;
+  border-radius: 50%;
+  background: #ffdc52;
+  color: #7d4912;
+  box-shadow: 0 4px 0 rgba(32, 31, 29, 0.24), 0 0 0 7px rgba(255, 220, 82, 0.25);
+  transform: translateX(-50%);
+  animation: npc-click-beacon 900ms ease-in-out infinite alternate;
+}
+
+.npc-door-visitor-click-icon::after {
+  position: absolute;
+  top: calc(100% - 1px);
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-right: 3px solid #201f1d;
+  border-bottom: 3px solid #201f1d;
+  background: #ffdc52;
+  content: "";
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
 .npc-door-visitor--exiting img {
   animation: none;
 }
@@ -1536,7 +1567,7 @@ button {
 
 .npc-door-visitor-prompt {
   position: absolute;
-  bottom: calc(100% + 7px);
+  bottom: calc(100% + 56px);
   left: 50%;
   z-index: 4;
   width: max-content;
@@ -1551,6 +1582,11 @@ button {
   pointer-events: none;
   transform: translate(-50%, 8px);
   transition: opacity 160ms ease, transform 160ms ease;
+}
+
+@keyframes npc-click-beacon {
+  from { transform: translate(-50%, 0) scale(1); }
+  to { transform: translate(-50%, -8px) scale(1.08); }
 }
 
 .npc-door-visitor:hover .npc-door-visitor-prompt,
@@ -3678,6 +3714,27 @@ button {
   overflow-y: auto;
 }
 
+.global-quest-tutorial-note {
+  display: grid;
+  gap: 3px;
+  margin: -8px 0 16px;
+  padding: 11px 13px;
+  border: 2px solid #d97706;
+  background: #fff6c8;
+  color: #684014;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.global-quest-tutorial-note strong {
+  color: #d97706;
+  font-size: 14px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .global-post {
   display: grid;
   gap: 10px;
@@ -4340,6 +4397,21 @@ button {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
 }
 
+.npc-quest-sidebar--arriving {
+  animation: quest-sidebar-arrive 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes quest-sidebar-arrive {
+  from {
+    opacity: 0;
+    transform: translate(-130%, -50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, -50%) scale(1);
+  }
+}
+
 /* ── Active Quest Side Panel ──────────────────────────────────────────── */
 .aqp {
   position: fixed;
@@ -4697,12 +4769,36 @@ button {
   bottom: clamp(14px, 2.4vw, 34px);
   z-index: 70;
   display: grid;
-  gap: 8px;
-  width: min(310px, calc(100vw - 28px));
-  padding: 16px;
+  gap: 9px;
+  width: min(340px, calc(100vw - 28px));
+  padding: 18px 18px 17px;
+  border: 4px solid #201f1d;
+  background:
+    radial-gradient(circle at 100% 0, rgba(255, 220, 82, 0.72), transparent 44%),
+    rgba(255, 253, 248, 0.98);
+  box-shadow:
+    0 8px 0 rgba(38, 30, 22, 0.22),
+    0 0 0 7px rgba(255, 189, 38, 0.2),
+    0 18px 34px rgba(38, 30, 22, 0.27);
+  animation: tutorial-hud-attention 1.45s ease-in-out infinite alternate;
+}
+
+.tutorial-hud::before {
+  position: absolute;
+  top: -20px;
+  left: -20px;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
   border: 3px solid #201f1d;
-  background: rgba(255, 253, 248, 0.96);
-  box-shadow: 0 7px 0 rgba(38, 30, 22, 0.18), 0 12px 26px rgba(38, 30, 22, 0.2);
+  border-radius: 50%;
+  background: #ff6268;
+  color: #fff;
+  content: "!";
+  font-size: 27px;
+  font-weight: 950;
+  box-shadow: 0 4px 0 rgba(38, 30, 22, 0.22);
 }
 
 .tutorial-hud p,
@@ -4729,8 +4825,153 @@ button {
 
 .tutorial-progress {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 5px;
+}
+
+@keyframes tutorial-hud-attention {
+  from { transform: translateY(0); }
+  to { transform: translateY(-5px); }
+}
+
+.tutorial-social-target {
+  animation: tutorial-social-target 760ms ease-in-out infinite alternate;
+}
+
+@keyframes tutorial-social-target {
+  from {
+    box-shadow: 0 0 0 0 rgba(255, 98, 104, 0.42);
+    transform: scale(1);
+  }
+  to {
+    box-shadow: 0 0 0 12px rgba(255, 98, 104, 0);
+    transform: scale(1.09);
+  }
+}
+
+/* ── Quest Received Popup ───────────────────────────────────────────── */
+.quest-received-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 255;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(34, 23, 12, 0.52);
+  backdrop-filter: blur(7px);
+  animation: quest-received-backdrop 3200ms ease both;
+}
+
+.quest-received-card {
+  position: relative;
+  display: grid;
+  width: min(560px, 100%);
+  justify-items: center;
+  gap: 9px;
+  overflow: hidden;
+  padding: 36px 30px 28px;
+  border: 5px solid #372817;
+  background:
+    radial-gradient(circle at 50% 10%, rgba(255, 220, 82, 0.86), transparent 44%),
+    #fffbe8;
+  text-align: center;
+  box-shadow: 0 16px 0 rgba(50, 36, 24, 0.28), 0 26px 60px rgba(50, 36, 24, 0.34);
+  animation: quest-received-sequence 3200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.quest-received-sparkles {
+  position: absolute;
+  inset: 14px 18px auto;
+  display: flex;
+  justify-content: space-between;
+  color: #f59e0b;
+}
+
+.quest-received-icon {
+  display: grid;
+  width: 92px;
+  height: 92px;
+  place-items: center;
+  border: 4px solid #372817;
+  border-radius: 50%;
+  background: #ffdc52;
+  color: #8a5310;
+}
+
+.quest-received-kicker,
+.quest-received-card h2,
+.quest-received-desc {
+  margin: 0;
+}
+
+.quest-received-kicker {
+  color: #d78316;
+  font-size: 14px;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.quest-received-card h2 {
+  color: #372817;
+  font-size: clamp(28px, 4vw, 43px);
+  font-weight: 950;
+  line-height: 1.05;
+}
+
+.quest-received-desc {
+  max-width: 440px;
+  color: #6d5538;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.5;
+}
+
+.quest-received-reward {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border: 2px dashed #c77a16;
+  background: rgba(255, 220, 82, 0.3);
+  color: #9b631d;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.quest-received-reward img {
+  width: 27px;
+  height: 27px;
+  object-fit: contain;
+}
+
+.quest-received-reward strong {
+  color: #c77a16;
+  font-size: 22px;
+}
+
+.quest-received-card button {
+  margin-top: 5px;
+  padding: 10px 15px 13px;
+  border: 3px solid #372817;
+  background: #ffdc52;
+  box-shadow: inset 0 -5px 0 #ff9f4a;
+  color: #372817;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+@keyframes quest-received-backdrop {
+  0%, 82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes quest-received-sequence {
+  0% { opacity: 0; transform: translateY(36px) scale(0.76); }
+  12%, 78% { opacity: 1; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-54vw, 8vh) scale(0.34); }
 }
 
 .tutorial-progress span {
