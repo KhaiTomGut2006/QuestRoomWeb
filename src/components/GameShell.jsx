@@ -139,6 +139,15 @@ const demoNpcQuest = {
   acceptedAt: "demo-quest-preview",
 };
 
+const demoChallenge = {
+  status: "pending",
+  taskId: "game-demo-1",
+  taskName: "Game Demo",
+  stage: "game-demo-1",
+  cost: 250,
+  requestedAt: "demo-challenge-preview",
+};
+
 // ─── Room Clock (personal 30-min countdown, freezes during active quest) ────
 function RoomClock({ cycleInfo }) {
   const [timeLeft, setTimeLeft] = useState(null);
@@ -368,6 +377,7 @@ export default function GameShell() {
   const [showFriends, setShowFriends] = useState(false);
   const [showGlobalQuest, setShowGlobalQuest] = useState(false);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
+  const [showChallengeSubmission, setShowChallengeSubmission] = useState(false);
   const [challengeAnnouncement, setChallengeAnnouncement] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -447,6 +457,11 @@ export default function GameShell() {
   const activeMember = member || (previewMode ? demoMember : null);
   const selfPlayer = useMemo(() => (activeMember ? playerFromMember(activeMember) : null), [activeMember]);
   const isChallengePending = activeMember?.challenge?.status === "pending";
+  const hasChallengeSubmission = Boolean(
+    isChallengePending
+    && activeMember?.challenge?.evidence?.url
+    && activeMember?.challenge?.submittedAt
+  );
   const actualStage = activeMember?.stage || "";
   const activeViewedStage = viewedStage || actualStage;
   const effectiveRoomLevels = useMemo(() => {
@@ -614,8 +629,26 @@ export default function GameShell() {
     const params = new URLSearchParams(window.location.search);
     const wantsDemo = params.get("demo") === "1";
     const wantsDev = params.get("dev") === "1";
+    const challengePreview = params.get("challengePreview");
     demoMember.npcQuest = wantsDemo && wantsDev && params.get("questPreview") === "1"
       ? demoNpcQuest
+      : null;
+    demoMember.challenge = wantsDemo && wantsDev && challengePreview
+      ? {
+          ...demoChallenge,
+          ...(challengePreview === "submitted"
+            ? {
+                evidence: {
+                  url: withBasePath("/assets/room1.png"),
+                  pathname: "demo/challenge-preview.png",
+                  contentType: "image/png",
+                  size: 0,
+                  originalName: "challenge-preview.png",
+                },
+                submittedAt: "demo-challenge-preview",
+              }
+            : {}),
+        }
       : null;
     setDemoRequested(wantsDemo);
     setDevMode(wantsDev);
@@ -844,11 +877,14 @@ export default function GameShell() {
 
   const handleChallenge = () => {
     if (isViewingOtherRoom) return;
+    if (isChallengePending) {
+      setShowChallengeSubmission(true);
+      return;
+    }
     if (!isAuthed) {
       setMessage("Preview mode");
       return;
     }
-    if (isChallengePending) return;
     setShowChallengeModal(true);
   };
 
@@ -1169,13 +1205,19 @@ export default function GameShell() {
             <Trophy size={38} fill="currentColor" />
           </button>
           <button
-            className={`challenge-button ${isChallengePending ? "is-pending" : ""}`}
+            className={`challenge-button${isChallengePending ? " is-pending" : ""}${hasChallengeSubmission ? " is-submitted" : ""}`}
             type="button"
             onClick={handleChallenge}
-            disabled={isChallengePending || isViewingOtherRoom}
+            disabled={isViewingOtherRoom}
           >
             <Zap size={23} fill="currentColor" />
-            <span>{isChallengePending ? "Pending..." : "Challenge"}</span>
+            <span>
+              {hasChallengeSubmission
+                ? "แก้ไข"
+                : isChallengePending
+                  ? "อัปโหลดไฟล์งาน"
+                  : "Challenge"}
+            </span>
           </button>
           <div className="cost-chip">
             <span>-{activeMember?.currentChallengeCost || 250}</span>
@@ -1391,10 +1433,11 @@ export default function GameShell() {
         announcement={challengeAnnouncement}
         onDone={() => setChallengeAnnouncement(null)}
       />
-      {isChallengePending && !isViewingOtherRoom && (
+      {showChallengeSubmission && isChallengePending && !isViewingOtherRoom && (
         <ChallengeSubmissionPanel
           challenge={activeMember.challenge}
           onSubmit={handleChallengeSubmit}
+          onClose={() => setShowChallengeSubmission(false)}
         />
       )}
       {devMode && <DevPanel socketRef={socketRef} cycleInfo={cycleInfo} />}
