@@ -110,6 +110,11 @@ function PlayerToken({ player, selfId, reactions, onOpenProfile, onSelectReactio
         onPointerUp={clearLongPress}
         onPointerCancel={clearLongPress}
       >
+        {player.challengeFailureCount > 0 && (
+          <span className="player-challenge-failures" aria-label={`${player.challengeFailureCount} failed challenges`}>
+            💀{player.challengeFailureCount}
+          </span>
+        )}
         <div className="player-avatar">
           {accessoryImagePath && (
             // eslint-disable-next-line @next/next/no-img-element

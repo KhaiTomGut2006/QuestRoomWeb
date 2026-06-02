@@ -101,6 +101,8 @@ export async function PATCH(request) {
           quest: { current: "Find the quiet corner", status: "active", completed: [] },
           npcQuest: null,
           npcQuestSubmissions: [],
+          challengeFailureStage: firstStage,
+          challengeFailureCount: 0,
           npcCycle: null,
           roomPosition: { x: 50, y: 70, updatedAt: now },
           shopCooldownT1: 0,
@@ -115,6 +117,7 @@ export async function PATCH(request) {
         $unset: {
           questChallengeRequestedAt: "",
           questChallenge: "",
+          challengeFailureHandledKey: "",
           questReward: ""
         }
       },

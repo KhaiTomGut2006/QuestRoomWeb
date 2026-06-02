@@ -88,6 +88,59 @@ function getTaskName(stage = DEFAULT_STAGE) {
   return `Game Demo - ${toRoman(getStageNumber(stage))}`;
 }
 
+function getSublevelLabel(stage, failureCount = 0) {
+  const label = getTaskName(stage);
+  const count = Math.max(0, Number(failureCount) || 0);
+  return count > 0 ? `${label}-${toRoman(count + 1)}` : label;
+}
+
+function challengeFailureKey(challenge) {
+  if (!challenge?.badge || challenge.approvedAt || challenge.status === "approved") return "";
+  const requestedAt = new Date(challenge.requestedAt || 0).getTime();
+  const awardedAt = new Date(challenge.badge.awardedAt || 0).getTime();
+  return [
+    challenge.stage || "",
+    requestedAt || "",
+    challenge.submissionId || "",
+    challenge.badge.id || challenge.badge.label || "",
+    awardedAt || ""
+  ].join(":");
+}
+
+async function reconcileChallengeSublevel(member) {
+  if (!member) return member;
+  const stage = member.stage || DEFAULT_STAGE;
+  let changed = false;
+
+  if (member.challengeFailureStage && member.challengeFailureStage !== stage) {
+    member.challengeFailureStage = stage;
+    member.challengeFailureCount = 0;
+    member.challengeFailureHandledKey = "";
+    changed = true;
+  }
+
+  const failureKey = challengeFailureKey(member.questChallenge);
+  if (failureKey && member.challengeFailureHandledKey !== failureKey) {
+    member.challengeFailureStage = stage;
+    member.challengeFailureCount = Math.max(0, Number(member.challengeFailureCount) || 0) + 1;
+    member.challengeFailureHandledKey = failureKey;
+    member.questChallenge.status = "failed";
+    member.quest = {
+      current: member.quest?.current || getTaskName(stage),
+      status: "active",
+      completed: member.quest?.completed || [],
+      cooldownUntil: member.quest?.cooldownUntil,
+      costMultiplier: member.quest?.costMultiplier || 1
+    };
+    member.markModified("questChallenge");
+    member.markModified("quest");
+    changed = true;
+  }
+
+  if (changed) await member.save({ validateModifiedOnly: true });
+  return member;
+}
+
 function normalizeBadge(badge) {
   if (!badge) return null;
   return {
@@ -244,6 +297,9 @@ export function normalizeMember(member) {
   
   const stage = member.stage || DEFAULT_STAGE;
   const stageNumber = getStageNumber(stage);
+  const challengeFailureCount = member.challengeFailureStage === stage
+    ? Math.max(0, Number(member.challengeFailureCount) || 0)
+    : 0;
   const costMultiplier = member.quest?.costMultiplier || 1;
   const currentChallengeCost = Math.round(250 * Math.pow(1.35, Math.max(0, stageNumber - 1))) * costMultiplier;
 
@@ -262,7 +318,8 @@ export function normalizeMember(member) {
     rank: member.rank || "Game Tester",
     achievements: (member.profileAchievements || []).map(normalizeBadge),
     stage: member.stage || DEFAULT_STAGE,
-    stageLabel: getTaskName(member.stage),
+    stageLabel: getSublevelLabel(member.stage, challengeFailureCount),
+    challengeFailureCount,
     coins: Number.isFinite(coinNumber) ? coinNumber : DEFAULT_COINS,
     quest: member.quest || {},
     npcQuest: member.npcQuest
@@ -411,7 +468,7 @@ export async function getMemberByDiscordId(discordId) {
     await member.save({ validateModifiedOnly: true });
   }
 
-  return member ? normalizeMember(member) : null;
+  return member ? normalizeMember(await reconcileChallengeSublevel(member)) : null;
 }
 
 export async function getRoomPlayers(stage = DEFAULT_STAGE) {
@@ -435,6 +492,7 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
       achievements: normalized.achievements,
       equippedAccessory: normalized.equippedAccessory,
       stage: normalized.stage,
+      challengeFailureCount: normalized.challengeFailureCount,
       x: Number(normalized.position?.x || 50),
       y: Number(normalized.position?.y || 70),
       action: "idle",

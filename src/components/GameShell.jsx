@@ -219,6 +219,7 @@ function playerFromMember(member, stageOverride = "") {
     achievements: member.achievements || [],
     equippedAccessory: member.equippedAccessory || "",
     stage: stageOverride || member.stage || "game-demo-1",
+    challengeFailureCount: Math.max(0, Number(member.challengeFailureCount) || 0),
     x: Number(member.position?.x || 56),
     y: Number(member.position?.y || 72),
     action: "idle",
@@ -740,8 +741,8 @@ export default function GameShell() {
     || stageLabel(activeViewedStage);
   const currentRoomLabel = tutorialRoomStage
     ? "Tutorial Room"
-    : effectiveRoomLevels.find((level) => level.stageId === actualStage)?.name
-    || activeMember?.stageLabel
+    : activeMember?.stageLabel
+    || effectiveRoomLevels.find((level) => level.stageId === actualStage)?.name
     || stageLabel(actualStage);
 
   const applyMember = useCallback((nextMember) => {
@@ -1202,6 +1203,13 @@ export default function GameShell() {
       socketRef.current = null;
     };
   }, [previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
+
+  useEffect(() => {
+    if (!selfPlayer?.id) return;
+    socketRef.current?.emit("player:sync", {
+      challengeFailureCount: selfPlayer.challengeFailureCount
+    });
+  }, [selfPlayer?.challengeFailureCount, selfPlayer?.id]);
 
   useEffect(() => {
     if (!isViewingOtherRoom || !activeViewedStage) return;

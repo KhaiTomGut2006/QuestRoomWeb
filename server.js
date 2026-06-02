@@ -256,6 +256,7 @@ function compactPlayer(player, online = Boolean(player?.online)) {
     achievements,
     equippedAccessory: ACCESSORY_IDS.has(String(player.equippedAccessory || "")) ? String(player.equippedAccessory) : "",
     stage: String(player.stage || "game-demo-1"),
+    challengeFailureCount: Math.max(0, Number(player.challengeFailureCount) || 0),
     x: position.x,
     y: position.y,
     action: String(player.action || "idle").slice(0, 24),
@@ -600,6 +601,21 @@ app.prepare().then(() => {
       if (accessoryId && !ACCESSORY_IDS.has(accessoryId)) return;
 
       room.set(activePlayerId, { ...current, equippedAccessory: accessoryId });
+      io.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
+    });
+
+    socket.on("player:sync", (payload = {}) => {
+      if (!activeStage || !activePlayerId) return;
+      const room = getRoom(activeStage);
+      const current = room.get(activePlayerId);
+      if (!current) return;
+      const nextPlayer = compactPlayer({
+        ...current,
+        id: activePlayerId,
+        stage: activeStage,
+        challengeFailureCount: payload.challengeFailureCount
+      });
+      room.set(activePlayerId, { ...current, ...nextPlayer });
       io.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
     });
 
