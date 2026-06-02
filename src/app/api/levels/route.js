@@ -8,6 +8,10 @@ const CORS = {
   "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
+const VALID_NPC_IDS = new Set([
+  "chest", "shop", "quest-easy", "quest-medium",
+  "hints", "quest-hard", "stupid-quest", "gambling"
+]);
 
 export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS });
@@ -44,6 +48,10 @@ export async function PUT(request) {
         itemName: String(drop.itemName || ""),
         chance:   Number(drop.chance)  || 0,
       })) : [],
+      npcSpawns: Array.isArray(level?.npcSpawns) ? level.npcSpawns.map(spawn => ({
+        npcId:  String(spawn.npcId || ""),
+        chance: Number(spawn.chance) || 0,
+      })) : [],
     }));
     const stageIds = new Set(levels.map((level) => level.stageId));
 
@@ -52,6 +60,17 @@ export async function PUT(request) {
     }
     if (stageIds.size !== levels.length) {
       return NextResponse.json({ success: false, error: "Stage ids must be unique." }, { status: 400, headers: CORS });
+    }
+    const invalidNpcSpawnLevel = levels.find((level) => (
+      level.npcSpawns.length > 0
+      && Math.abs(level.npcSpawns.reduce((sum, spawn) => sum + spawn.chance, 0) - 100) > 0.01
+    ));
+    if (invalidNpcSpawnLevel) {
+      return NextResponse.json({ success: false, error: `NPC spawn chances must total 100% in ${invalidNpcSpawnLevel.name}.` }, { status: 400, headers: CORS });
+    }
+    const invalidNpcSpawn = levels.flatMap((level) => level.npcSpawns).find((spawn) => !VALID_NPC_IDS.has(spawn.npcId));
+    if (invalidNpcSpawn) {
+      return NextResponse.json({ success: false, error: `Unknown NPC id: ${invalidNpcSpawn.npcId}.` }, { status: 400, headers: CORS });
     }
 
     await connectDb();

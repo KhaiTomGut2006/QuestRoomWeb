@@ -133,7 +133,7 @@ const demoMember = {
   ownedAccessories: [],
   equippedAccessory: "",
   quest: {
-    current: "Find the quiet corner",
+    current: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสาย) จัง",
     status: "active",
     completed: [],
     cooldownUntil: new Date(Date.now() + 30 * 60 * 1000).toISOString()

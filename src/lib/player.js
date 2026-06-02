@@ -31,6 +31,7 @@ async function ensureLevels({ force = false } = {}) {
         order:    l.order,
         npcShop:  l.npcShop  || [],
         boxDrops: l.boxDrops || [],
+        npcSpawns:l.npcSpawns || [],
       }));
       cachedLevelsAt = Date.now();
       return cachedLevels;
@@ -432,7 +433,7 @@ export async function upsertMemberFromDiscord(profile) {
         coin: String(DEFAULT_COINS),
         stage: initialStage,
         quest: {
-          current: "Find the quiet corner",
+          current: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสาย) จัง",
           status: "active",
           completed: []
         },
@@ -458,7 +459,7 @@ export async function upsertMemberFromDiscord(profile) {
       {
         $set: {
           quest: {
-            current: "Find the quiet corner",
+            current: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสย) จัง",
             status: "active",
             completed: []
           }

@@ -74,7 +74,7 @@ async function main() {
       // Stage
       stage: firstStage,
       quest: {
-        current: "Find the quiet corner",
+        current: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสาย) จัง",
         status: "active",
         completed: [],
       },

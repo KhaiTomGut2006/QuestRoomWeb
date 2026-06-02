@@ -23,7 +23,7 @@ const JourneyStageSchema = new mongoose.Schema(
 
 const QuestSchema = new mongoose.Schema(
   {
-    current: { type: String, default: "Find the quiet corner" },
+    current: { type: String, default: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสาย) จัง" },
     status: { type: String, default: "active" },
     completed: { type: [String], default: [] },
     cooldownUntil: Date,

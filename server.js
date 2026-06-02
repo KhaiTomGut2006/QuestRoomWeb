@@ -81,6 +81,35 @@ function pickWeightedNpc() {
   return NPC_POOL[NPC_POOL.length - 1].npc;
 }
 
+async function getLevelConfig(stage, projection) {
+  await getMembersCollection();
+  return mongoose.connection.collection("levels").findOne(
+    { stageId: String(stage || "") },
+    { projection }
+  );
+}
+
+async function pickWeightedNpcForStage(stage) {
+  const level = await getLevelConfig(stage, { npcSpawns: 1 });
+  const configuredPool = Array.isArray(level?.npcSpawns)
+    ? level.npcSpawns
+        .map((spawn) => ({
+          weight: Math.max(0, Number(spawn.chance) || 0),
+          npc: NPC_POOL.find((entry) => entry.npc.id === String(spawn.npcId || ""))?.npc
+        }))
+        .filter((entry) => entry.npc && entry.weight > 0)
+    : [];
+  if (!configuredPool.length) return pickWeightedNpc();
+
+  const total = configuredPool.reduce((sum, entry) => sum + entry.weight, 0);
+  let rand = Math.random() * total;
+  for (const entry of configuredPool) {
+    rand -= entry.weight;
+    if (rand <= 0) return entry.npc;
+  }
+  return configuredPool[configuredPool.length - 1].npc;
+}
+
 // Attach dynamic data to certain NPC types before emitting
 function enrichNpc(npc, availableCoins = 0, configuredShopItems = null) {
   const visitId = Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -134,11 +163,7 @@ async function getMembersCollection() {
 
 async function enrichNpcForStage(npc, availableCoins = 0, stage = "") {
   if (npc.type !== "shop") return enrichNpc(npc, availableCoins);
-  await getMembersCollection();
-  const level = await mongoose.connection.collection("levels").findOne(
-    { stageId: String(stage || "") },
-    { projection: { npcShop: 1 } }
-  );
+  const level = await getLevelConfig(stage, { npcShop: 1 });
   return enrichNpc(npc, availableCoins, level?.npcShop || null);
 }
 
@@ -324,7 +349,7 @@ app.prepare().then(() => {
         socketFrozenMs.set(socket.id, 1000);
         socket.emit("timer:sync", { cycleStartedAt: frozenStartedAt, cycleDurationMs: fullCycle, frozen: true, frozenRemainingMs: 1000 });
       } else {
-        socket.emit("npc:visit", await enrichNpcForStage(pickWeightedNpc(), socketPlayerCoins.get(socket.id), playerStages.get(pid)));
+        socket.emit("npc:visit", await enrichNpcForStage(await pickWeightedNpcForStage(playerStages.get(pid)), socketPlayerCoins.get(socket.id), playerStages.get(pid)));
         schedulePersonalCycle(socket, effectiveCycleMs(socket.id));
       }
     }, dur);
@@ -440,7 +465,7 @@ app.prepare().then(() => {
       return;
     }
 
-    const npc = await enrichNpcForStage(pickWeightedNpc(), socketPlayerCoins.get(socket.id), playerStages.get(playerId));
+    const npc = await enrichNpcForStage(await pickWeightedNpcForStage(playerStages.get(playerId)), socketPlayerCoins.get(socket.id), playerStages.get(playerId));
     socket.emit("npc:visit", npc);
     await schedulePersistedCycle(socket, undefined, npc);
   }
@@ -485,7 +510,7 @@ app.prepare().then(() => {
         return;
       }
 
-      const npc = await enrichNpcForStage(pickWeightedNpc(), socketPlayerCoins.get(socket.id), playerStages.get(playerId));
+      const npc = await enrichNpcForStage(await pickWeightedNpcForStage(playerStages.get(playerId)), socketPlayerCoins.get(socket.id), playerStages.get(playerId));
       while (deadlineMs <= Date.now()) deadlineMs += durationMs;
       const nextCycle = {
         nextResetAt: new Date(deadlineMs),
@@ -723,7 +748,7 @@ app.prepare().then(() => {
       const specific = payload.npcId
         ? NPC_POOL.find((e) => e.npc.id === payload.npcId)?.npc
         : null;
-      const npc = await enrichNpcForStage(specific || pickWeightedNpc(), socketPlayerCoins.get(socket.id), playerStages.get(pid));
+      const npc = await enrichNpcForStage(specific || await pickWeightedNpcForStage(playerStages.get(pid)), socketPlayerCoins.get(socket.id), playerStages.get(pid));
       const state = socketPersonalTimer.get(socket.id);
       if (state) state.pendingNpc = npc;
       socket.emit("npc:visit", npc);
@@ -736,7 +761,7 @@ app.prepare().then(() => {
       if (!canUseDevCycleTools(payload)) return;
       const pid = socketToPlayer.get(socket.id);
       if (!pid || !playerNpcQuest.get(pid)) {
-        const npc = await enrichNpcForStage(pickWeightedNpc(), socketPlayerCoins.get(socket.id), playerStages.get(pid));
+        const npc = await enrichNpcForStage(await pickWeightedNpcForStage(playerStages.get(pid)), socketPlayerCoins.get(socket.id), playerStages.get(pid));
         socket.emit("npc:visit", npc);
         void schedulePersistedCycle(socket, undefined, npc).catch((error) => {
           console.error("Failed to skip NPC cycle:", error.message);

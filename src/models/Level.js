@@ -13,12 +13,18 @@ const BoxDropSchema = new mongoose.Schema({
   chance:   { type: Number, default: 0 },
 }, { _id: false });
 
+const NpcSpawnSchema = new mongoose.Schema({
+  npcId:  { type: String, required: true },
+  chance: { type: Number, default: 0 },
+}, { _id: false });
+
 const LevelSchema = new mongoose.Schema({
   stageId:  { type: String, required: true, unique: true },
   name:     { type: String, required: true },
   order:    { type: Number, required: true },
   npcShop:  { type: [ShopItemSchema], default: [] },
   boxDrops: { type: [BoxDropSchema],  default: [] },
+  npcSpawns:{ type: [NpcSpawnSchema], default: [] },
 }, { collection: "levels" });
 
 export default mongoose.models.Level || mongoose.model("Level", LevelSchema);

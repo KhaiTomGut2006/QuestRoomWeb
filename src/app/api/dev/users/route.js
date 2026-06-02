@@ -98,7 +98,7 @@ export async function PATCH(request) {
         $set: {
           coin: "0",
           stage: firstStage,
-          quest: { current: "Find the quiet corner", status: "active", completed: [] },
+          quest: { current: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสาย) จัง", status: "active", completed: [] },
           npcQuest: null,
           npcQuestSubmissions: [],
           challengeFailureStage: firstStage,
