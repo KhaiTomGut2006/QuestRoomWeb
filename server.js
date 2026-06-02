@@ -771,7 +771,12 @@ app.prepare().then(() => {
         return;
       }
       broadcast(deltaProtocolRoom(activeStage), "player:move-delta", movementDelta(player));
-      broadcast(legacyProtocolRoom(activeStage), "player:upsert", publicPlayer(player));
+
+      const now = Date.now();
+      if (now - (socket.data.lastLegacyMoveBroadcast || 0) > 500) {
+        socket.data.lastLegacyMoveBroadcast = now;
+        broadcast(legacyProtocolRoom(activeStage), "player:upsert", publicPlayer(player));
+      }
     }
 
     function detachPlayer({ removeIfOffline = false, scheduleIfOffline = false } = {}) {
