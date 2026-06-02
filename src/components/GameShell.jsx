@@ -873,25 +873,17 @@ export default function GameShell() {
         ...selfPlayer,
         ...activeMember,
         id: selfPlayer.id,
+        questPosts: activeMember.socialQuestSubmissions,
         online: true
       });
-      return;
+    } else {
+      // Show any available room data immediately while the full profile loads.
+      const roomPlayer = players.find((p) => p.id === playerId);
+      if (roomPlayer || preloadedPlayer) {
+        setProfilePlayer({ ...preloadedPlayer, ...roomPlayer });
+      }
     }
 
-    // 1. Try to find in the current room players
-    const roomPlayer = players.find((p) => p.id === playerId);
-    if (roomPlayer) {
-      setProfilePlayer(roomPlayer);
-      return;
-    }
-
-    // 2. If preloadedPlayer has achievements and rank, we can use it directly
-    if (preloadedPlayer?.achievements && preloadedPlayer?.rank) {
-      setProfilePlayer(preloadedPlayer);
-      return;
-    }
-
-    // 3. Otherwise, fetch from the database
     fetch(withBasePath(`/api/player/profile?id=${encodeURIComponent(playerId)}`))
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then(({ player }) => {

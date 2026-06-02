@@ -29,6 +29,7 @@ export async function GET(request) {
       avatar: member.avatar,
       rank: member.rank,
       achievements: member.achievements,
+      questPosts: member.socialQuestSubmissions,
       ownedAccessories: member.discordId === session.user.discordId ? member.ownedAccessories : [],
       equippedAccessory: member.equippedAccessory,
       stage: member.stage,

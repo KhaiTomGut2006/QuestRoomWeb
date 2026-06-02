@@ -829,6 +829,67 @@ button {
   font-weight: 800;
 }
 
+.profile-quest-section {
+  display: grid;
+  gap: 18px;
+}
+
+.profile-quest-section h3 {
+  font-size: 28px;
+  font-weight: 950;
+}
+
+.profile-quest-list {
+  display: grid;
+  gap: 26px;
+}
+
+.profile-quest-post {
+  display: grid;
+  gap: 9px;
+}
+
+.profile-quest-media {
+  display: block;
+  width: 100%;
+  max-height: 390px;
+  border: 1px solid rgba(32, 31, 29, 0.15);
+  background: #171717;
+  object-fit: contain;
+}
+
+.profile-quest-reactions {
+  display: flex;
+  gap: 15px;
+}
+
+.profile-quest-reactions span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #201f1d;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.profile-quest-post strong,
+.profile-quest-post p {
+  color: #201f1d;
+  font-size: 13px;
+}
+
+.profile-quest-post p {
+  color: #62584f;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.profile-empty-quests {
+  color: #9a8e80;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .profile-modal-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

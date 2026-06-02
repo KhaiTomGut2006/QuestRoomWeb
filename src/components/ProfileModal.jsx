@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeftRight, Gamepad2, MessageSquare, Shirt, X } from "lucide-react";
+import { ArrowLeftRight, Gamepad2, MessageSquare, Shirt, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 import { ACCESSORY_LIST, getAccessoryImagePath } from "@/lib/accessories";
 
@@ -45,6 +45,27 @@ function AccessoryDoll({ accessoryId, className = "" }) {
   );
 }
 
+function QuestPost({ post }) {
+  const isVideo = String(post.evidence?.contentType || "").startsWith("video/");
+
+  return (
+    <article className="profile-quest-post">
+      {isVideo ? (
+        <video className="profile-quest-media" src={post.evidence.url} controls preload="metadata" />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="profile-quest-media" src={post.evidence.url} alt={post.title || "Quest submission"} />
+      )}
+      <div className="profile-quest-reactions" aria-label="Quest reactions">
+        <span><ThumbsUp size={20} /> {post.likeCount || 0}</span>
+        <span><ThumbsDown size={20} /> {post.dislikeCount || 0}</span>
+      </div>
+      <strong>{post.title || "NPC Quest"}</strong>
+      {post.postText && <p>{post.postText}</p>}
+    </article>
+  );
+}
+
 export default function ProfileModal({ player, selfId, onClose, onTrade, onEquipAccessory }) {
   const [showTrade, setShowTrade] = useState(false);
   const [tradeAmount, setTradeAmount] = useState("");
@@ -70,6 +91,7 @@ export default function ProfileModal({ player, selfId, onClose, onTrade, onEquip
   if (!player) return null;
 
   const achievements = Array.isArray(player.achievements) ? player.achievements : [];
+  const questPosts = Array.isArray(player.questPosts) ? player.questPosts : [];
   const isSelf = player.id === selfId;
   const ownedAccessories = new Set(Array.isArray(player.ownedAccessories) ? player.ownedAccessories : []);
 
@@ -192,6 +214,17 @@ export default function ProfileModal({ player, selfId, onClose, onTrade, onEquip
             </div>
           ) : (
             <p className="profile-empty-badges">No badges yet</p>
+          )}
+        </div>
+
+        <div className="profile-quest-section">
+          <h3>Quest Lists</h3>
+          {questPosts.length > 0 ? (
+            <div className="profile-quest-list">
+              {questPosts.map((post) => <QuestPost key={post.id} post={post} />)}
+            </div>
+          ) : (
+            <p className="profile-empty-quests">No quest submissions yet</p>
           )}
         </div>
 

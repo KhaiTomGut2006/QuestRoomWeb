@@ -152,6 +152,14 @@ function isGlobalQuestSubmissionVisible(member, submission) {
   );
 }
 
+function normalizeSocialQuestSubmissions(member) {
+  return (member.npcQuestSubmissions || [])
+    .filter((submission) => isGlobalQuestSubmissionVisible(member, submission))
+    .map(normalizeNpcQuestSubmission)
+    .filter((submission) => submission.evidence?.url)
+    .sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
+}
+
 function normalizeNpcQuestEvidence(discordId, evidence) {
   const url = String(evidence?.url || "").trim();
   const pathname = String(evidence?.pathname || "").trim();
@@ -248,6 +256,7 @@ export function normalizeMember(member) {
         }
       : null,
     npcQuestSubmissions: (member.npcQuestSubmissions || []).map(normalizeNpcQuestSubmission),
+    socialQuestSubmissions: normalizeSocialQuestSubmissions(member),
     tutorial: normalizeTutorial(member.tutorial),
     challenge: member.questChallenge || null,
     reward: member.questReward
