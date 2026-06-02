@@ -204,14 +204,16 @@ export default function ProfileModal({ player, selfId, onClose, onTrade, onEquip
           </div>
         )}
 
-        <div className="profile-quest-section">
-          <h3>Quest Lists</h3>
-          {questPosts.length > 0 ? (
-            <div className="profile-quest-list">
-              {questPosts.map((post) => <QuestPost key={post.id} post={post} />)}
+        <div className="profile-badge-section">
+          <h3>Badge</h3>
+          {achievements.length > 0 ? (
+            <div className="profile-badge-list">
+              {achievements.map((achievement, index) => (
+                <Badge key={achievement.id || `${achievement.label}-${index}`} achievement={achievement} />
+              ))}
             </div>
           ) : (
-            <p className="profile-empty-quests">No quest submissions yet</p>
+            <p className="profile-empty-badges">No badges yet</p>
           )}
         </div>
 
@@ -228,16 +230,14 @@ export default function ProfileModal({ player, selfId, onClose, onTrade, onEquip
           </div>
         )}
 
-        <div className="profile-badge-section">
-          <h3>Badge</h3>
-          {achievements.length > 0 ? (
-            <div className="profile-badge-list">
-              {achievements.map((achievement, index) => (
-                <Badge key={achievement.id || `${achievement.label}-${index}`} achievement={achievement} />
-              ))}
+        <div className="profile-quest-section">
+          <h3>Quest Lists</h3>
+          {questPosts.length > 0 ? (
+            <div className="profile-quest-list">
+              {questPosts.map((post) => <QuestPost key={post.id} post={post} />)}
             </div>
           ) : (
-            <p className="profile-empty-badges">No badges yet</p>
+            <p className="profile-empty-quests">No quest submissions yet</p>
           )}
         </div>
 
