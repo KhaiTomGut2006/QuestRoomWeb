@@ -204,19 +204,6 @@ export default function ProfileModal({ player, selfId, onClose, onTrade, onEquip
           </div>
         )}
 
-        <div className="profile-badge-section">
-          <h3>Badge</h3>
-          {achievements.length > 0 ? (
-            <div className="profile-badge-list">
-              {achievements.map((achievement, index) => (
-                <Badge key={achievement.id || `${achievement.label}-${index}`} achievement={achievement} />
-              ))}
-            </div>
-          ) : (
-            <p className="profile-empty-badges">No badges yet</p>
-          )}
-        </div>
-
         <div className="profile-quest-section">
           <h3>Quest Lists</h3>
           {questPosts.length > 0 ? (
@@ -228,15 +215,30 @@ export default function ProfileModal({ player, selfId, onClose, onTrade, onEquip
           )}
         </div>
 
-        <div className="profile-modal-actions">
-          <button type="button" disabled={isSelf} title={isSelf ? "ไม่สามารถส่ง Coin ให้ตัวเองได้" : "ส่ง Coin ให้เพื่อน"} onClick={() => setShowTrade(true)}>
-            <ArrowLeftRight size={24} strokeWidth={3} />
-            <span>Trade</span>
-          </button>
-          <button type="button" disabled={isSelf} title={isSelf ? "นี่คือโปรไฟล์ของคุณ" : "เปิด Discord DM"} onClick={handleOpenDiscord}>
-            <MessageSquare size={24} strokeWidth={3} />
-            <span>Chat</span>
-          </button>
+        {!isSelf && (
+          <div className="profile-modal-actions">
+            <button type="button" title="ส่ง Coin ให้เพื่อน" onClick={() => setShowTrade(true)}>
+              <ArrowLeftRight size={24} strokeWidth={3} />
+              <span>Trade</span>
+            </button>
+            <button type="button" title="เปิด Discord DM" onClick={handleOpenDiscord}>
+              <MessageSquare size={24} strokeWidth={3} />
+              <span>Chat</span>
+            </button>
+          </div>
+        )}
+
+        <div className="profile-badge-section">
+          <h3>Badge</h3>
+          {achievements.length > 0 ? (
+            <div className="profile-badge-list">
+              {achievements.map((achievement, index) => (
+                <Badge key={achievement.id || `${achievement.label}-${index}`} achievement={achievement} />
+              ))}
+            </div>
+          ) : (
+            <p className="profile-empty-badges">No badges yet</p>
+          )}
         </div>
 
         {showTrade && (
