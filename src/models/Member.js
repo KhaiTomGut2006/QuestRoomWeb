@@ -221,6 +221,7 @@ const MemberSchema = new mongoose.Schema(
     quest: { type: QuestSchema, default: () => ({}) },
     npcQuest: { type: NpcQuestSchema, default: null },
     npcQuestSubmissions: { type: [NpcQuestSubmissionSchema], default: [] },
+    socialLastSeenAt: Date,
     npcCycle: { type: NpcCycleSchema, default: null },
     tutorial: { type: TutorialSchema, default: null },
     roomPosition: { type: PositionSchema, default: () => ({}) },

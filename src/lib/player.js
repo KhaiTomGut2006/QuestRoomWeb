@@ -160,6 +160,33 @@ function normalizeSocialQuestSubmissions(member) {
     .sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
 }
 
+function socialPublishedAt(member, submission) {
+  if (submission?.source === "challenge") {
+    return member?.questChallenge?.submissionId === submission.id
+      ? member.questChallenge.approvedAt || null
+      : null;
+  }
+  return submission?.submittedAt || null;
+}
+
+function normalizeSocialNotification(member, submission) {
+  if (!isGlobalQuestSubmissionVisible(member, submission) || !submission?.evidence?.url) return null;
+  const author = normalizeMember(member);
+  const publishedAt = socialPublishedAt(member, submission);
+  if (!publishedAt) return null;
+  return {
+    id: String(submission.id || ""),
+    type: submission.source === "challenge" ? "challenge" : "npc-quest",
+    title: submission.title || (submission.source === "challenge" ? "Challenge" : "NPC Quest"),
+    publishedAt,
+    author: {
+      id: author.discordId,
+      name: author.name,
+      username: author.username
+    }
+  };
+}
+
 function normalizeNpcQuestEvidence(discordId, evidence) {
   const url = String(evidence?.url || "").trim();
   const pathname = String(evidence?.pathname || "").trim();
@@ -892,6 +919,44 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId) {
     })
     .filter((submission) => submission.evidence?.url)
     .sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
+}
+
+export async function getSocialQuestStatus(discordId, since) {
+  await connectDb();
+  await ensureLevels();
+  const viewerId = String(discordId || "");
+  const viewer = await Member.findOne({ discord_id: viewerId }).lean();
+  if (!viewer) return null;
+
+  const sinceAt = new Date(since || 0);
+  const validSinceAt = Number.isFinite(sinceAt.getTime()) ? sinceAt : new Date(0);
+  const lastSeenAt = new Date(viewer.socialLastSeenAt || 0);
+  const members = await Member.find({
+    discord_id: { $exists: true, $ne: "" },
+    "npcQuestSubmissions.0": { $exists: true }
+  }).lean();
+  const posts = members
+    .flatMap((member) => (member.npcQuestSubmissions || [])
+      .map((submission) => normalizeSocialNotification(member, submission))
+      .filter(Boolean))
+    .filter((post) => post.author.id !== viewerId)
+    .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+
+  return {
+    unreadCount: posts.filter((post) => new Date(post.publishedAt) > lastSeenAt).length,
+    notifications: posts.filter((post) => new Date(post.publishedAt) > validSinceAt).slice(0, 8),
+    checkedAt: new Date()
+  };
+}
+
+export async function markSocialQuestSeen(discordId) {
+  await connectDb();
+  const member = await Member.findOneAndUpdate(
+    { discord_id: String(discordId || "") },
+    { $set: { socialLastSeenAt: new Date() } },
+    { new: true }
+  );
+  return Boolean(member);
 }
 
 export async function reactToGlobalQuestPost(discordId, postId, reaction) {

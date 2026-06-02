@@ -30,6 +30,15 @@ function safeUploadName(filename) {
     .slice(0, 120) || "evidence";
 }
 
+function socialNotificationText(notification) {
+  const author = notification?.author || {};
+  const username = author.username ? `@${author.username}` : author.name || "Player";
+  if (notification?.type === "challenge") {
+    return `${username} ได้ผ่าน Challenge ${notification.title || "Challenge"} แล้ว!!`;
+  }
+  return `${username} เพิ่งโพสต์ผลงาน ${notification.title || "Quest"} ลงใน Social เข้าไปดูสิ`;
+}
+
 async function uploadNpcQuestEvidence(file, playerId, onProgress) {
   if (!file) throw new Error("กรุณาเลือกไฟล์หลักฐาน");
   const safePlayerId = safeUploadName(playerId || "player");
@@ -581,6 +590,8 @@ export default function GameShell() {
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [showChallengeSubmission, setShowChallengeSubmission] = useState(false);
   const [challengeAnnouncement, setChallengeAnnouncement] = useState(null);
+  const [socialUnreadCount, setSocialUnreadCount] = useState(0);
+  const [socialNotifications, setSocialNotifications] = useState([]);
   const [playerReactions, setPlayerReactions] = useState([]);
   const [tutorialBusy, setTutorialBusy] = useState(false);
   const [tutorialError, setTutorialError] = useState("");
@@ -592,6 +603,9 @@ export default function GameShell() {
   const settingsPanelRef = useRef(null);
   const reactionSequenceRef = useRef(0);
   const lastReactionAtRef = useRef(0);
+  const socialCheckedAtRef = useRef("");
+  const shownSocialNotificationIdsRef = useRef(new Set());
+  const showGlobalQuestRef = useRef(false);
 
   useEffect(() => {
     const audio = new Audio(withBasePath("/assets/bgmusic.mp3"));
@@ -752,6 +766,18 @@ export default function GameShell() {
     ]);
   }, []);
 
+  const showSocialNotification = useCallback((notification, { incrementUnread = false } = {}) => {
+    if (!notification?.id || shownSocialNotificationIdsRef.current.has(notification.id)) return;
+    shownSocialNotificationIdsRef.current.add(notification.id);
+    setSocialNotifications((current) => [...current.slice(-3), notification]);
+    if (incrementUnread && !showGlobalQuestRef.current) {
+      setSocialUnreadCount((current) => current + 1);
+    }
+    window.setTimeout(() => {
+      setSocialNotifications((current) => current.filter((item) => item.id !== notification.id));
+    }, 8000);
+  }, []);
+
   const handlePlayerReaction = useCallback((emoji) => {
     if (!selfPlayer?.id || isViewingOtherRoom) return;
     const now = Date.now();
@@ -808,6 +834,33 @@ export default function GameShell() {
   useEffect(() => {
     tutorialActiveRef.current = isTutorialActive;
   }, [isTutorialActive]);
+
+  useEffect(() => {
+    showGlobalQuestRef.current = showGlobalQuest;
+  }, [showGlobalQuest]);
+
+  useEffect(() => {
+    if (!isAuthed || !activeMember?.discordId) return;
+    socialCheckedAtRef.current = new Date().toISOString();
+
+    const fetchSocialStatus = () => {
+      const since = socialCheckedAtRef.current;
+      fetch(withBasePath(`/api/player/social-status?since=${encodeURIComponent(since)}`))
+        .then((response) => (response.ok ? response.json() : Promise.reject(response)))
+        .then((data) => {
+          setSocialUnreadCount(Number(data.unreadCount) || 0);
+          for (const notification of data.notifications || []) {
+            showSocialNotification(notification);
+          }
+          socialCheckedAtRef.current = data.checkedAt || new Date().toISOString();
+        })
+        .catch(() => {});
+    };
+
+    fetchSocialStatus();
+    const interval = window.setInterval(fetchSocialStatus, 8000);
+    return () => window.clearInterval(interval);
+  }, [activeMember?.discordId, isAuthed, showSocialNotification]);
 
   useEffect(() => {
     doorNpcRef.current = doorNpc;
@@ -1132,6 +1185,9 @@ export default function GameShell() {
     socket.on("challenge:announce", (data) => {
       setChallengeAnnouncement(data);
     });
+    socket.on("social:notification", (data) => {
+      showSocialNotification(data, { incrementUnread: true });
+    });
     socket.on("player:reaction", showPlayerReaction);
     socket.on("connect", () => {
       socket.emit("player:join", selfPlayer);
@@ -1145,7 +1201,7 @@ export default function GameShell() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction]);
+  }, [previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
 
   useEffect(() => {
     if (!isViewingOtherRoom || !activeViewedStage) return;
@@ -1432,7 +1488,14 @@ export default function GameShell() {
     setNpcQuestData(null);
     if (visitorQuest) dismissDoorNpc();
     setQuestSuccess({ title: data.submission?.title || "NPC Quest", reward: data.reward ?? 0 });
-  }, [activeMember?.discordId, activeMember?.id, activeMember?.npcQuest?.source, applyMember, dismissDoorNpc, isAuthed]);
+    socketRef.current?.emit("social:publish", {
+      id: data.submission?.id,
+      title: data.submission?.title,
+      type: "npc-quest",
+      authorName: activeMember?.name,
+      username: activeMember?.username
+    });
+  }, [activeMember?.discordId, activeMember?.id, activeMember?.name, activeMember?.npcQuest?.source, activeMember?.username, applyMember, dismissDoorNpc, isAuthed]);
 
   const handleChestClaim = useCallback((chestReward, { dismissNpc = true } = {}) => {
     if (dismissNpc) dismissDoorNpc();
@@ -1545,6 +1608,10 @@ export default function GameShell() {
       return;
     }
     setShowGlobalQuest(true);
+    setSocialUnreadCount(0);
+    if (isAuthed) {
+      fetch(withBasePath("/api/player/social-status"), { method: "POST" }).catch(() => {});
+    }
     if (isAuthed && activeMember.tutorial?.step === "social-intro") {
       void handleTutorialAction("open-social");
     }
@@ -1665,6 +1732,9 @@ export default function GameShell() {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={withBasePath("/assets/Global.png")} alt="" />
+              {socialUnreadCount > 0 && (
+                <b className="social-unread-badge">{socialUnreadCount > 99 ? "99+" : socialUnreadCount}</b>
+              )}
             </button>
             <span>Social</span>
           </div>
@@ -1731,6 +1801,16 @@ export default function GameShell() {
       </section>
 
 
+
+      {socialNotifications.length > 0 && (
+        <aside className="social-notification-list" aria-live="polite">
+          {socialNotifications.map((notification) => (
+            <p className="social-notification" key={notification.id}>
+              {socialNotificationText(notification)}
+            </p>
+          ))}
+        </aside>
+      )}
 
       <button
         className="nav-arrow nav-left"

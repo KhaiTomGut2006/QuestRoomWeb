@@ -653,6 +653,23 @@ app.prepare().then(() => {
       });
     });    // ─────────────────────────────────────────────────────────────
 
+    socket.on("social:publish", (payload = {}) => {
+      if (!activePlayerId) return;
+      const postId = String(payload.id || "").slice(0, 160);
+      if (!postId) return;
+      socket.broadcast.emit("social:notification", {
+        id: postId,
+        type: payload.type === "challenge" ? "challenge" : "npc-quest",
+        title: String(payload.title || "NPC Quest").slice(0, 96),
+        publishedAt: new Date().toISOString(),
+        author: {
+          id: activePlayerId,
+          name: String(payload.authorName || "Player").slice(0, 48),
+          username: String(payload.username || "").slice(0, 48)
+        }
+      });
+    });
+
     // ─── Dev controls ────────────────────────────────────────────
     socket.on("dev:trigger", (payload = {}) => {
       if (!canUseDevCycleTools(payload)) return;
