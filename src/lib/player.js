@@ -635,7 +635,7 @@ export async function requestChallenge(discordId) {
   const stage = member.stage || DEFAULT_STAGE;
   const stageNumber = getStageNumber(stage);
   const costMultiplier = member.quest?.costMultiplier || 1;
-  const cost = Math.round(250 * Math.pow(1.35, Math.max(0, stageNumber - 1))) * costMultiplier;
+  const cost = 100 * costMultiplier;
 
   if (currentCoins < cost) {
     return { ok: false, reason: "not_enough_coins", cost, member: normalizeMember(member) };
