@@ -680,7 +680,7 @@ export default function NpcVisitModal({
       const response = await fetch(withBasePath("/api/player/npc-shop"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId }),
+        body: JSON.stringify({ itemId, visitId: npc.visitId }),
       });
       const data = await response.json();
       if (!response.ok) {

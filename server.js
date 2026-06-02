@@ -83,16 +83,17 @@ function pickWeightedNpc() {
 
 // Attach dynamic data to certain NPC types before emitting
 function enrichNpc(npc, availableCoins = 0) {
+  const visitId = Date.now().toString(36) + Math.random().toString(36).slice(2);
   if (npc.type === "gambling") {
     const maxBet = Math.min(10000, Math.max(0, Math.floor(Number(availableCoins) || 0)));
-    return { ...npc, betAmount: maxBet > 0 ? Math.floor(Math.random() * maxBet) + 1 : 0 };
+    return { ...npc, visitId, betAmount: maxBet > 0 ? Math.floor(Math.random() * maxBet) + 1 : 0 };
   }
   if (npc.type === "shop") {
     const catalog = ["asset-ticket", "quest-scroll-normal", "quest-scroll-rare", "quest-scroll-epic", "chest-small", "chest-medium", "chest-large", "cooldown-minute", "cooldown-minute-lv2", "limit-break", "accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-ppuk"];
     const offers = [...catalog].sort(() => Math.random() - 0.5).slice(0, 4);
-    return { ...npc, offers };
+    return { ...npc, visitId, offers };
   }
-  return npc;
+  return { ...npc, visitId };
 }
 
 // ─── Per-socket personal timer helpers ──────────────────────────────

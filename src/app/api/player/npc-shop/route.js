@@ -12,13 +12,20 @@ export async function POST(request) {
   if (!discordId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {
-    const { itemId } = await request.json();
+    const { itemId, visitId } = await request.json();
     const item = SHOP_ITEMS[itemId];
     if (!item) return NextResponse.json({ error: "invalid_item" }, { status: 400 });
 
     await connectDb();
     const member = await Member.findOne({ discord_id: String(discordId) });
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
+
+    // One purchase per item per NPC visit
+    if (visitId) {
+      if (member.npcVisitId === visitId && (member.npcVisitPurchases || []).includes(itemId)) {
+        return NextResponse.json({ error: "already_purchased_this_visit" }, { status: 400 });
+      }
+    }
 
     // Quest scroll: cannot buy while a quest is active
     if (item.questDifficulty) {
@@ -59,6 +66,16 @@ export async function POST(request) {
     }
 
     member.coin = String(currentCoins - item.cost);
+
+    // Track purchase for one-per-item-per-visit enforcement
+    if (visitId) {
+      if (member.npcVisitId !== visitId) {
+        member.npcVisitId = visitId;
+        member.npcVisitPurchases = [itemId];
+      } else {
+        member.npcVisitPurchases = [...(member.npcVisitPurchases || []), itemId];
+      }
+    }
 
     let chestReward = null;
     let grantedItem = null;

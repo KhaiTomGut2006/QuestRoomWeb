@@ -1295,39 +1295,70 @@ button {
   }
 }
 
-@media (max-width: 620px) {
+@media (max-width: 820px) {
   .game-shell {
-    min-height: 760px;
+    min-height: 100dvh;
   }
 
   .top-left {
+    top: max(12px, env(safe-area-inset-top));
+    left: 12px;
     right: 12px;
   }
 
   .top-left h1 {
-    max-width: none;
-    font-size: 35px;
-    line-height: 0.92;
+    max-width: 100%;
+    overflow: hidden;
+    font-size: clamp(28px, 8.5vw, 35px);
+    line-height: 1;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .action-row {
-    width: 410px;
+    width: auto;
+    min-height: 48px;
+    gap: 6px;
+    margin-top: 10px;
+    transform: none;
   }
 
   .ranking-button {
-    width: 64px;
-    height: 64px;
+    width: 48px;
+    height: 48px;
+    border-width: 2px;
   }
 
   .challenge-button {
-    width: 190px;
+    width: auto;
+    min-width: 0;
+    max-width: 360px;
+    height: 48px;
+    flex: 1 1 0;
+    gap: 6px;
+    padding: 0 8px;
+    border-width: 2px;
+    font-size: 16px;
+  }
+
+  .challenge-button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .cost-chip {
+    height: 40px;
     min-width: 96px;
+    flex: 0 0 auto;
+    gap: 5px;
+    padding: 0 10px;
     margin-left: 0;
-    font-size: 18px;
+    font-size: 17px;
+  }
+
+  .cost-chip img {
+    height: 28px;
   }
 
   .status-text {
@@ -1335,18 +1366,69 @@ button {
   }
 
   .top-right {
-    top: 8px;
-    transform: scale(0.58);
-    transform-origin: right top;
+    top: calc(max(12px, env(safe-area-inset-top)) + 102px);
+    right: 12px;
+    left: 12px;
+    transform: none;
   }
 
   .version {
     display: none;
   }
 
+  .profile-row {
+    width: 100%;
+    gap: 6px;
+    justify-content: flex-end;
+    margin-top: 0;
+  }
+
+  .coin-pill {
+    height: 40px;
+    min-width: 82px;
+    gap: 5px;
+    padding: 0 8px;
+    font-size: 17px;
+  }
+
+  .coin-pill img {
+    height: 30px;
+  }
+
+  .ticket-pill {
+    gap: 1px;
+    margin-left: 0;
+    font-size: 14px;
+  }
+
+  .ticket-pill img {
+    width: 30px;
+    height: 30px;
+  }
+
+  .circle-button {
+    width: 42px;
+    height: 42px;
+    border-width: 2px;
+    font-size: 18px;
+  }
+
+  .profile-action {
+    gap: 2px;
+  }
+
+  .profile-action span {
+    font-size: 10px;
+  }
+
+  .settings-panel {
+    top: calc(100% + 8px);
+    width: min(236px, calc(100vw - 24px));
+  }
+
   .game-stage {
-    width: min(166vw, calc((100dvh - 260px) * 1.778));
-    top: 55%;
+    width: min(145vw, calc((100dvh - 250px) * 1.778));
+    top: 57%;
   }
 
   .profile-modal-header {

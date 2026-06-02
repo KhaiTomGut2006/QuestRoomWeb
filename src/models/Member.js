@@ -230,6 +230,8 @@ const MemberSchema = new mongoose.Schema(
     shopAssetTickets: { type: Number, default: 0 },
     ownedAccessories: { type: [String], default: [] },
     equippedAccessory: { type: String, default: "" },
+    npcVisitId: { type: String, default: "" },
+    npcVisitPurchases: { type: [String], default: [] },
   },
   { timestamps: { createdAt: "created_at", updatedAt: "updated_at" } }
 );
