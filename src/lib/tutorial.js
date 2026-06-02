@@ -49,8 +49,8 @@ export async function advanceTutorial(discordId, action) {
     if (member.npcQuest) throw new Error("active_quest_exists");
     member.npcQuest = {
       difficulty: "easy",
-      title: "วาดรูปอะไรก็ได้",
-      description: "ลองวาดรูปง่าย ๆ หรือสร้างผลงานอะไรก็ได้หนึ่งชิ้น แล้วอัปโหลดมาให้ฉันดู",
+      title: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสาย) จัง",
+      description: "ส่งรูปเดี่ยวตัวละครของเจ้าในตอนแยกสาย แล้วอัปโหลดมาให้ฉันดู",
       reward: 50,
       cancelPenalty: 0,
       source: "tutorial-first-quest",
