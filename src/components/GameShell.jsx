@@ -1419,11 +1419,15 @@ export default function GameShell() {
     const purchases = new Set(activeNpcVisitPurchases);
     setHintBought(purchases.has(NPC_VISIT_ACTIONS.hint));
     setHasGambledThisVisit(purchases.has(NPC_VISIT_ACTIONS.gamble));
-    setShopPurchases(Object.fromEntries(
-      activeNpcVisitPurchases
-        .filter((itemId) => !itemId.startsWith("__"))
-        .map((itemId) => [itemId, "ซื้อแล้ว"])
-    ));
+    setShopPurchases(activeNpcVisitPurchases
+      .filter((itemId) => !itemId.startsWith("__"))
+      .reduce((purchases, itemId) => ({
+        ...purchases,
+        [itemId]: {
+          message: "ซื้อแล้ว",
+          count: (purchases[itemId]?.count || 0) + 1,
+        }
+      }), {}));
   }, [activeNpcVisitPurchases]);
 
   const handleNpcQuestAccept = useCallback(async () => {
@@ -1941,7 +1945,10 @@ export default function GameShell() {
           } : null}
           visitPurchases={activeNpcVisitPurchases}
           shopPurchases={shopPurchases}
-          onShopPurchase={(itemId, msg) => setShopPurchases((prev) => ({ ...prev, [itemId]: msg }))}
+          onShopPurchase={(itemId, msg, stock) => setShopPurchases((prev) => ({
+            ...prev,
+            [itemId]: { message: msg, ...stock }
+          }))}
           onMemberUpdate={applyMember}
           onCooldownReduction={handleCooldownReduction}
           onNeedCoins={handleNpcCoinsNeeded}

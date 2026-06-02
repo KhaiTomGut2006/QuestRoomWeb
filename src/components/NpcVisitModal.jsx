@@ -312,8 +312,13 @@ function ChestDialog({ result, claimed, loading, onClaim, onClose }) {
   );
 }
 
-function getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, hasActiveQuest, ownedAccessories) {
-  if (purchases[itemId]) return "bought";
+function getPurchaseCount(purchase) {
+  if (!purchase) return 0;
+  return typeof purchase === "object" ? Number(purchase.count) || 0 : 1;
+}
+
+function getShopStockStatus(itemId, purchases, maxQty, t1Count, t2Count, hasLimitBreak, hasActiveQuest, ownedAccessories) {
+  if (getPurchaseCount(purchases[itemId]) >= maxQty) return "bought";
   if (itemId.startsWith("accessory-") && ownedAccessories.has(itemId)) return "owned";
   if (itemId.startsWith("quest-scroll-") && hasActiveQuest) return "quest_active";
   if (itemId === "cooldown-minute" && t1Count >= 5) return "maxed";
@@ -364,9 +369,18 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
       )}
       <div className="npc-shop-list">
         {visibleOffers.map((itemId) => {
-          const item = SHOP_ITEMS[itemId];
-          if (!item) return null;
-          const status      = getShopStockStatus(itemId, purchases, t1Count, t2Count, hasLimitBreak, hasActiveQuest, ownedAccessories);
+          const baseItem = SHOP_ITEMS[itemId];
+          if (!baseItem) return null;
+          const configuredItem = npc.offerConfig?.[itemId] || {};
+          const item = {
+            ...baseItem,
+            name: configuredItem.itemName || baseItem.name,
+            cost: Number.isFinite(Number(configuredItem.cost)) ? Number(configuredItem.cost) : baseItem.cost,
+          };
+          const maxQty      = Math.max(1, Number(configuredItem.maxQty) || 1);
+          const purchase    = purchases[itemId];
+          const purchaseCount = getPurchaseCount(purchase);
+          const status      = getShopStockStatus(itemId, purchases, maxQty, t1Count, t2Count, hasLimitBreak, hasActiveQuest, ownedAccessories);
           const isBought    = status === "bought";
           const unavailable = status !== "available";
           const isQuestScroll = itemId.startsWith("quest-scroll-");
@@ -374,7 +388,7 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
           const imgVersion  = imgFolder === "Accessories" ? "?v=3" : "";
           const imgSrc      = withBasePath(`/assets/${imgFolder}/${item.image}${imgVersion}`);
           const descLabel   = isBought
-            ? (purchases[itemId] || "ซื้อแล้ว")
+            ? (purchase?.message || purchase || "ซื้อแล้ว")
             : (STOCK_LABEL[status] ?? item.description);
           return (
             <button
@@ -405,6 +419,9 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
                 )}
                 {itemId === "asset-ticket" && !isBought && (
                   <small className="npc-shop-item-counter">Owned: {assetTickets}</small>
+                )}
+                {maxQty > 1 && (
+                  <small className="npc-shop-item-counter">Stock: {purchaseCount} / {maxQty}</small>
                 )}
               </span>
               <span className="npc-shop-price">
@@ -714,7 +731,10 @@ export default function NpcVisitModal({
       // Mark as bought — shop stays open, item becomes unavailable for this visit
       try { new Audio(withBasePath("/assets/Sound/usemoney.mp3")).play().catch(() => {}); } catch {}
       playSfx(data.chestReward ? "chest_open" : "buy");
-      onShopPurchase?.(itemId, purchaseMsg);
+      onShopPurchase?.(itemId, purchaseMsg, {
+        count: Number(data.purchaseCount) || 1,
+        maxQty: Number(data.maxQty) || 1,
+      });
     } finally {
       setLoadingShopItem("");
     }

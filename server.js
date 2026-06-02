@@ -82,7 +82,7 @@ function pickWeightedNpc() {
 }
 
 // Attach dynamic data to certain NPC types before emitting
-function enrichNpc(npc, availableCoins = 0) {
+function enrichNpc(npc, availableCoins = 0, configuredShopItems = null) {
   const visitId = Date.now().toString(36) + Math.random().toString(36).slice(2);
   if (npc.type === "gambling") {
     const maxBet = Math.min(10000, Math.max(0, Math.floor(Number(availableCoins) || 0)));
@@ -90,8 +90,23 @@ function enrichNpc(npc, availableCoins = 0) {
   }
   if (npc.type === "shop") {
     const catalog = ["asset-ticket", "quest-scroll-normal", "quest-scroll-rare", "quest-scroll-epic", "chest-small", "chest-medium", "chest-large", "cooldown-minute", "cooldown-minute-lv2", "limit-break", "accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-ppuk"];
-    const offers = [...catalog].sort(() => Math.random() - 0.5).slice(0, 4);
-    return { ...npc, visitId, offers };
+    const configured = Array.isArray(configuredShopItems) && configuredShopItems.length
+      ? configuredShopItems
+      : null;
+    const offers = configured
+      ? [...new Set(configured.map((item) => String(item.itemType || "")).filter(Boolean))]
+      : [...catalog].sort(() => Math.random() - 0.5).slice(0, 4);
+    const offerConfig = configured
+      ? Object.fromEntries(configured.map((item) => [
+          String(item.itemType || ""),
+          {
+            itemName: String(item.itemName || ""),
+            cost: Math.max(0, Number(item.price) || 0),
+            maxQty: Math.max(1, Number(item.maxQty) || 1)
+          }
+        ]))
+      : {};
+    return { ...npc, visitId, offers, offerConfig };
   }
   return { ...npc, visitId };
 }
@@ -115,6 +130,16 @@ async function getMembersCollection() {
     });
   }
   return mongoose.connection.collection("members");
+}
+
+async function enrichNpcForStage(npc, availableCoins = 0, stage = "") {
+  if (npc.type !== "shop") return enrichNpc(npc, availableCoins);
+  await getMembersCollection();
+  const level = await mongoose.connection.collection("levels").findOne(
+    { stageId: String(stage || "") },
+    { projection: { npcShop: 1 } }
+  );
+  return enrichNpc(npc, availableCoins, level?.npcShop || null);
 }
 
 async function getPersistedNpcCycle(playerId) {
@@ -290,7 +315,7 @@ app.prepare().then(() => {
     const dur = Math.max(1000, remainingMs !== undefined ? Math.floor(remainingMs / cycleSpeedMultiplier) : fullCycle);
     clearPersonalTimer(socket.id);
     const startedAt = Date.now() - (fullCycle - dur);
-    const timerId = setTimeout(() => {
+    const timerId = setTimeout(async () => {
       socketPersonalTimer.delete(socket.id);
       const pid = socketToPlayer.get(socket.id);
       if (pid && playerNpcQuest.get(pid)) {
@@ -299,7 +324,7 @@ app.prepare().then(() => {
         socketFrozenMs.set(socket.id, 1000);
         socket.emit("timer:sync", { cycleStartedAt: frozenStartedAt, cycleDurationMs: fullCycle, frozen: true, frozenRemainingMs: 1000 });
       } else {
-        socket.emit("npc:visit", enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id)));
+        socket.emit("npc:visit", await enrichNpcForStage(pickWeightedNpc(), socketPlayerCoins.get(socket.id), playerStages.get(pid)));
         schedulePersonalCycle(socket, effectiveCycleMs(socket.id));
       }
     }, dur);
@@ -415,7 +440,7 @@ app.prepare().then(() => {
       return;
     }
 
-    const npc = enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id));
+    const npc = await enrichNpcForStage(pickWeightedNpc(), socketPlayerCoins.get(socket.id), playerStages.get(playerId));
     socket.emit("npc:visit", npc);
     await schedulePersistedCycle(socket, undefined, npc);
   }
@@ -426,7 +451,7 @@ app.prepare().then(() => {
     const persisted = await getPersistedNpcCycle(playerId);
     const storedCycle = persisted?.npcCycle || null;
     if (storedCycle?.pendingNpc && !storedCycle.pendingNpc.visitId) {
-      storedCycle.pendingNpc = enrichNpc(storedCycle.pendingNpc, socketPlayerCoins.get(socket.id));
+      storedCycle.pendingNpc = await enrichNpcForStage(storedCycle.pendingNpc, socketPlayerCoins.get(socket.id), playerStages.get(playerId));
       await setPersistedNpcCycle(playerId, storedCycle);
     }
     const durationMs = Math.max(1000, Number(storedCycle?.durationMs) || currentPersistedCycleDurationMs(socket.id));
@@ -460,7 +485,7 @@ app.prepare().then(() => {
         return;
       }
 
-      const npc = enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id));
+      const npc = await enrichNpcForStage(pickWeightedNpc(), socketPlayerCoins.get(socket.id), playerStages.get(playerId));
       while (deadlineMs <= Date.now()) deadlineMs += durationMs;
       const nextCycle = {
         nextResetAt: new Date(deadlineMs),
@@ -691,14 +716,14 @@ app.prepare().then(() => {
     });
 
     // ─── Dev controls ────────────────────────────────────────────
-    socket.on("dev:trigger", (payload = {}) => {
+    socket.on("dev:trigger", async (payload = {}) => {
       if (!canUseDevCycleTools(payload)) return;
       const pid = socketToPlayer.get(socket.id);
       if (pid && playerNpcQuest.get(pid)) return;
       const specific = payload.npcId
         ? NPC_POOL.find((e) => e.npc.id === payload.npcId)?.npc
         : null;
-      const npc = enrichNpc(specific || pickWeightedNpc(), socketPlayerCoins.get(socket.id));
+      const npc = await enrichNpcForStage(specific || pickWeightedNpc(), socketPlayerCoins.get(socket.id), playerStages.get(pid));
       const state = socketPersonalTimer.get(socket.id);
       if (state) state.pendingNpc = npc;
       socket.emit("npc:visit", npc);
@@ -707,11 +732,11 @@ app.prepare().then(() => {
       });
     });
 
-    socket.on("dev:skip", (payload = {}) => {
+    socket.on("dev:skip", async (payload = {}) => {
       if (!canUseDevCycleTools(payload)) return;
       const pid = socketToPlayer.get(socket.id);
       if (!pid || !playerNpcQuest.get(pid)) {
-        const npc = enrichNpc(pickWeightedNpc(), socketPlayerCoins.get(socket.id));
+        const npc = await enrichNpcForStage(pickWeightedNpc(), socketPlayerCoins.get(socket.id), playerStages.get(pid));
         socket.emit("npc:visit", npc);
         void schedulePersistedCycle(socket, undefined, npc).catch((error) => {
           console.error("Failed to skip NPC cycle:", error.message);

@@ -1,4 +1,5 @@
 import QuestTemplate from "@/models/QuestTemplate";
+import Level from "@/models/Level";
 import { ACCESSORY_LIST } from "@/lib/accessories";
 
 export const ASSET_TICKET_ITEM_ID = "asset-ticket";
@@ -104,6 +105,51 @@ function canReceiveChestDrop(member, itemId, item) {
   return itemId === ASSET_TICKET_ITEM_ID || Boolean(item.questDifficulty);
 }
 
+function canReceiveConfiguredChestDrop(member, itemId, item) {
+  if (item.chestMin !== undefined) return true;
+  if (item.questDifficulty && member.npcQuest) return false;
+  if (item.cooldownTier === 1) return (member.shopCooldownT1 || 0) < item.maxCount;
+  if (item.cooldownTier === 2) {
+    return Boolean(member.shopLimitBreak) && (member.shopCooldownT2 || 0) < item.maxCount;
+  }
+  if (item.limitBreak) return !member.shopLimitBreak;
+  if (item.accessoryId) return !(member.ownedAccessories || []).map(String).includes(item.accessoryId);
+  return true;
+}
+
+function normalizeConfiguredShopItem(entry) {
+  const itemId = String(entry?.itemType || "");
+  const baseItem = SHOP_ITEMS[itemId];
+  if (!baseItem) return null;
+  const configuredPrice = Number(entry?.price);
+  return {
+    itemId,
+    ...baseItem,
+    name: String(entry?.itemName || baseItem.name),
+    cost: Number.isFinite(configuredPrice) ? Math.max(0, configuredPrice) : baseItem.cost,
+    maxQty: Math.max(1, Number(entry?.maxQty) || 1)
+  };
+}
+
+async function getLevelItemConfig(stage) {
+  if (!stage) return null;
+  return Level.findOne({ stageId: String(stage) }, { npcShop: 1, boxDrops: 1 }).lean();
+}
+
+export async function getNpcShopItems(stage) {
+  const level = await getLevelItemConfig(stage);
+  if (!level?.npcShop?.length) return null;
+  return level.npcShop.map(normalizeConfiguredShopItem).filter(Boolean);
+}
+
+export async function getNpcShopItem(stage, itemId) {
+  const configuredItems = await getNpcShopItems(stage);
+  if (!configuredItems) {
+    return SHOP_ITEMS[itemId] ? { itemId, ...SHOP_ITEMS[itemId], maxQty: 1 } : null;
+  }
+  return configuredItems.find((item) => item.itemId === itemId) || null;
+}
+
 async function pickQuest(difficulty) {
   const pool = await QuestTemplate.find({ difficulty }).lean();
   if (!pool.length) throw new Error("no_quest_templates");
@@ -114,8 +160,8 @@ async function pickQuest(difficulty) {
   return { ...picked, reward };
 }
 
-export async function grantShopItem(member, itemId) {
-  const item = SHOP_ITEMS[itemId];
+export async function grantShopItem(member, itemId, itemOverride = null) {
+  const item = itemOverride ? { ...SHOP_ITEMS[itemId], ...itemOverride } : SHOP_ITEMS[itemId];
   if (!item) throw new Error("invalid_item");
 
   let assignedQuest = null;
@@ -158,25 +204,45 @@ export async function grantShopItem(member, itemId) {
 }
 
 export async function openChestReward(member, { coinMin = 20, coinMax = 200 } = {}) {
-  const pool = [
-    { kind: "coins", weight: CHEST_COIN_WEIGHT }
-  ];
+  const level = await getLevelItemConfig(member.stage);
+  const configuredDrops = level?.boxDrops || [];
+  const pool = [];
 
-  for (const [itemId, item] of Object.entries(SHOP_ITEMS)) {
-    if (!canReceiveChestDrop(member, itemId, item)) continue;
-    pool.push({
-      kind: "item",
-      itemId,
-      itemName: item.name,
-      weight: getChestDropWeight(item)
-    });
+  if (configuredDrops.length) {
+    for (const drop of configuredDrops) {
+      const itemId = String(drop?.itemType || "");
+      const item = SHOP_ITEMS[itemId];
+      const weight = Number(drop?.chance);
+      if (!item || !Number.isFinite(weight) || weight <= 0) continue;
+      if (!canReceiveConfiguredChestDrop(member, itemId, item)) continue;
+      pool.push({ kind: "item", itemId, itemName: drop.itemName || item.name, weight });
+    }
+  } else {
+    pool.push({ kind: "coins", weight: CHEST_COIN_WEIGHT });
+    for (const [itemId, item] of Object.entries(SHOP_ITEMS)) {
+      if (!canReceiveChestDrop(member, itemId, item)) continue;
+      pool.push({
+        kind: "item",
+        itemId,
+        itemName: item.name,
+        weight: getChestDropWeight(item)
+      });
+    }
   }
 
+  if (!pool.length) pool.push({ kind: "coins", weight: 1 });
   const picked = pickWeighted(pool);
   if (picked.kind === "coins") {
     const coins = randomInt(coinMin, coinMax);
     member.coin = String((Number.parseInt(member.coin || "0", 10) || 0) + coins);
     return { kind: "coins", coins };
+  }
+
+  const pickedItem = SHOP_ITEMS[picked.itemId];
+  if (pickedItem.chestMin !== undefined) {
+    const coins = randomInt(pickedItem.chestMin, pickedItem.chestMax);
+    member.coin = String((Number.parseInt(member.coin || "0", 10) || 0) + coins);
+    return { kind: "coins", coins, sourceItemId: picked.itemId, sourceItemName: picked.itemName };
   }
 
   let granted = null;

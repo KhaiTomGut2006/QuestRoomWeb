@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import { normalizeMember } from "@/lib/player";
-import { grantShopItem, openChestReward, SHOP_ITEMS } from "@/lib/shop";
+import { getNpcShopItem, grantShopItem, openChestReward } from "@/lib/shop";
 import { assertActiveNpcVisit } from "@/lib/npcVisit";
 
 export async function POST(request) {
@@ -14,18 +14,19 @@ export async function POST(request) {
 
   try {
     const { itemId, visitId } = await request.json();
-    const item = SHOP_ITEMS[itemId];
-    if (!item) return NextResponse.json({ error: "invalid_item" }, { status: 400 });
-
     await connectDb();
     const member = await Member.findOne({ discord_id: String(discordId) });
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     assertActiveNpcVisit(member, visitId);
+    const item = await getNpcShopItem(member.stage, itemId);
+    if (!item) return NextResponse.json({ error: "invalid_item_for_stage" }, { status: 400 });
 
-    // One purchase per item per NPC visit
+    // Enforce the configured stock for this NPC visit.
+    const visitPurchases = member.npcVisitId === visitId ? (member.npcVisitPurchases || []) : [];
+    const purchaseCount = visitPurchases.filter((purchase) => purchase === itemId).length;
     if (visitId) {
-      if (member.npcVisitId === visitId && (member.npcVisitPurchases || []).includes(itemId)) {
-        return NextResponse.json({ error: "already_purchased_this_visit" }, { status: 400 });
+      if (purchaseCount >= item.maxQty) {
+        return NextResponse.json({ error: "item_stock_exhausted" }, { status: 400 });
       }
     }
 
@@ -69,7 +70,7 @@ export async function POST(request) {
 
     member.coin = String(currentCoins - item.cost);
 
-    // Track purchase for one-per-item-per-visit enforcement
+    // Track purchases as repeated item ids so stock survives a refresh.
     if (visitId) {
       if (member.npcVisitId !== visitId) {
         member.npcVisitId = visitId;
@@ -87,7 +88,7 @@ export async function POST(request) {
         coinMax: item.chestMax
       });
     } else {
-      grantedItem = await grantShopItem(member, itemId);
+      grantedItem = await grantShopItem(member, itemId, item);
     }
 
     await member.save({ validateModifiedOnly: true });
@@ -95,6 +96,8 @@ export async function POST(request) {
     return NextResponse.json({
       itemId,
       cost: item.cost,
+      purchaseCount: purchaseCount + 1,
+      maxQty: item.maxQty,
       cooldownReductionMs: chestReward?.cooldownReductionMs || grantedItem?.cooldownReductionMs || 0,
       assignedQuest: chestReward?.assignedQuest || grantedItem?.assignedQuest || null,
       chestReward,
