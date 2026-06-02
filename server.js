@@ -24,7 +24,7 @@ const mongoUri = process.env.MONGODB_URI;
 const mongoDbName = process.env.MONGODB_DB || undefined;
 const LEVEL_CONFIG_CACHE_TTL_MS = 60_000;
 const metricsEnabled = process.env.METRICS_ENABLED !== "false";
-const socketDeltaV2Enabled = process.env.SOCKET_DELTA_V2 === "true";
+const socketDeltaV2Enabled = process.env.SOCKET_DELTA_V2 !== "false";
 const allowLegacyCooldownSocket = process.env.ALLOW_LEGACY_COOLDOWN_SOCKET !== "false";
 const configuredPresenceGraceMs = Number(process.env.SOCKET_PRESENCE_GRACE_MS);
 const SOCKET_PRESENCE_GRACE_MS = Number.isFinite(configuredPresenceGraceMs)
@@ -476,13 +476,17 @@ function compactPlayer(player, online = Boolean(player?.online)) {
     x: position.x,
     y: position.y,
     action: String(player.action || "idle").slice(0, 24),
+    y: position.y,
+    action: String(player.action || "idle").slice(0, 24),
     online,
     updatedAt: Date.now()
   };
 }
 
 function publicPlayer(player) {
-  return compactPlayer(player, Boolean(player.socketIds?.size));
+  const { socketIds, ...safePlayer } = player;
+  safePlayer.online = Boolean(socketIds?.size);
+  return safePlayer;
 }
 
 app.prepare().then(() => {
@@ -882,7 +886,7 @@ app.prepare().then(() => {
     });
 
     socket.on("player:move", (payload = {}) => {
-      if (!allowSocketEvent("player:move", 15, 1000)) return;
+      if (!allowSocketEvent("player:move", 10, 1000)) return;
       if (!activeStage || !activePlayerId) return;
       const room = getRoom(activeStage);
       const current = room.get(activePlayerId);
@@ -890,15 +894,16 @@ app.prepare().then(() => {
       const position = getWalkablePoint(payload);
       if (!position) return;
 
-      const nextPlayer = compactPlayer({
+      const nextPlayer = {
         ...current,
         x: position.x,
         y: position.y,
-        action: payload.action || "move"
-      });
+        action: String(payload.action || "move").slice(0, 24),
+        updatedAt: Date.now()
+      };
 
-      room.set(activePlayerId, { ...current, ...nextPlayer });
-      emitMovementUpdate(room.get(activePlayerId));
+      room.set(activePlayerId, nextPlayer);
+      emitMovementUpdate(nextPlayer);
     });
 
     socket.on("player:accessory", (payload = {}) => {
