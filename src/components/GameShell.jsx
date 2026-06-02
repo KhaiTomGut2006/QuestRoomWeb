@@ -23,6 +23,11 @@ import QuestReceivedPopup from "@/components/QuestReceivedPopup";
 import { withBasePath } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
+const NPC_VISIT_ACTIONS = {
+  gamble: "__gamble__",
+  hint: "__hint__"
+};
+
 function safeUploadName(filename) {
   return String(filename || "evidence")
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
@@ -744,6 +749,11 @@ export default function GameShell() {
     : activeMember?.stageLabel
     || effectiveRoomLevels.find((level) => level.stageId === actualStage)?.name
     || stageLabel(actualStage);
+  const activeNpcVisitPurchases = useMemo(() => (
+    doorNpc?.visitId && activeMember?.npcVisitId === doorNpc.visitId
+      ? activeMember.npcVisitPurchases || []
+      : []
+  ), [activeMember?.npcVisitId, activeMember?.npcVisitPurchases, doorNpc?.visitId]);
 
   const applyMember = useCallback((nextMember) => {
     setMember(nextMember);
@@ -1373,7 +1383,9 @@ export default function GameShell() {
       })
       .catch(() => setNpcQuestData(null));
 
-    // Fetch hints when Smith appears (only if not yet loaded for this visit)
+  }, [activeMember?.npcQuest, npcKey, npcVisit]);
+
+  useEffect(() => {
     if (npcVisit?.type === "hints") {
       if (!hintsData) {
         fetch(withBasePath("/api/hint-templates"))
@@ -1386,11 +1398,10 @@ export default function GameShell() {
       setHintResult(null);
     }
 
-    // Reset gambling state when a new NPC arrives
     if (npcVisit?.type !== "gambling") {
       setGamblingResult(null);
     }
-  }, [activeMember?.npcQuest, npcKey, npcVisit]);
+  }, [hintsData, npcVisit?.type]);
 
   // Reset hint + shop state when a new NPC spawns (npcKey increments on each new arrival)
   useEffect(() => {
@@ -1403,6 +1414,17 @@ export default function GameShell() {
     setHasGambledThisVisit(false);
     setGamblingReplayBet(0);
   }, [npcKey]);
+
+  useEffect(() => {
+    const purchases = new Set(activeNpcVisitPurchases);
+    setHintBought(purchases.has(NPC_VISIT_ACTIONS.hint));
+    setHasGambledThisVisit(purchases.has(NPC_VISIT_ACTIONS.gamble));
+    setShopPurchases(Object.fromEntries(
+      activeNpcVisitPurchases
+        .filter((itemId) => !itemId.startsWith("__"))
+        .map((itemId) => [itemId, "ซื้อแล้ว"])
+    ));
+  }, [activeNpcVisitPurchases]);
 
   const handleNpcQuestAccept = useCallback(async () => {
     if (!isAuthed || !npcQuestData || !npcVisit) return;
@@ -1521,7 +1543,7 @@ export default function GameShell() {
       const res = await fetch(withBasePath("/api/player/gamble"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ betAmount }),
+        body: JSON.stringify({ betAmount, visitId: npcVisit?.visitId }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -1535,7 +1557,7 @@ export default function GameShell() {
         handleNpcCoinsNeeded(betAmount);
       }
     } catch {}
-  }, [applyMember, handleNpcCoinsNeeded, isAuthed]);
+  }, [applyMember, handleNpcCoinsNeeded, isAuthed, npcVisit?.visitId]);
 
   const handleHintBuy = useCallback(async (hintId) => {
     if (!isAuthed) return;
@@ -1543,7 +1565,7 @@ export default function GameShell() {
       const res = await fetch(withBasePath("/api/player/hint"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hintId }),
+        body: JSON.stringify({ hintId, visitId: npcVisit?.visitId }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -1555,7 +1577,7 @@ export default function GameShell() {
         handleNpcCoinsNeeded(data.cost);
       }
     } catch {}
-  }, [applyMember, handleNpcCoinsNeeded, isAuthed]);
+  }, [applyMember, handleNpcCoinsNeeded, isAuthed, npcVisit?.visitId]);
 
   const handleNpcQuestClose = useCallback(() => {
     setNpcVisit(null);
@@ -1917,6 +1939,7 @@ export default function GameShell() {
             ownedAccessories: activeMember.ownedAccessories || [],
             hasActiveQuest: Boolean(activeMember.npcQuest),
           } : null}
+          visitPurchases={activeNpcVisitPurchases}
           shopPurchases={shopPurchases}
           onShopPurchase={(itemId, msg) => setShopPurchases((prev) => ({ ...prev, [itemId]: msg }))}
           onMemberUpdate={applyMember}

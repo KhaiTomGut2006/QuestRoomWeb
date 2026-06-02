@@ -94,15 +94,44 @@ function getSublevelLabel(stage, failureCount = 0) {
   return count > 0 ? `${label}-${toRoman(count + 1)}` : label;
 }
 
-function challengeFailureKey(challenge) {
-  if (!challenge?.badge || challenge.approvedAt || challenge.status === "approved") return "";
+function getChallengeReviewBadge(member) {
+  const challenge = member?.questChallenge;
+  if (!challenge || challenge.approvedAt || challenge.status === "approved") return null;
   const requestedAt = new Date(challenge.requestedAt || 0).getTime();
-  const awardedAt = new Date(challenge.badge.awardedAt || 0).getTime();
+  const matchesAttempt = (badge, fallbackAwardedAt) => {
+    if (!badge) return false;
+    const awardedAt = new Date(badge.awardedAt || fallbackAwardedAt || 0).getTime();
+    return Boolean(awardedAt && awardedAt >= requestedAt);
+  };
+  if (challenge.badge) return challenge.badge;
+  if (
+    matchesAttempt(member.questReward?.badge, member.questReward?.awardedAt)
+    && (
+      member.questReward?.taskId === challenge.taskId
+      || member.questReward?.taskName === challenge.taskName
+      || member.questReward?.badge?.label === challenge.taskName
+    )
+  ) {
+    return member.questReward.badge;
+  }
+  return (member.profileAchievements || []).find((badge) => (
+    badge?.label === challenge.taskName && matchesAttempt(badge)
+  )) || null;
+}
+
+function challengeFailureKey(member) {
+  const challenge = member?.questChallenge;
+  const badge = getChallengeReviewBadge(member);
+  const status = String(challenge?.status || "").toLowerCase();
+  const isExplicitFailure = ["failed", "rejected", "declined"].includes(status);
+  if (!challenge || (!badge && !isExplicitFailure)) return "";
+  const requestedAt = new Date(challenge.requestedAt || 0).getTime();
+  const awardedAt = new Date(badge?.awardedAt || member.questReward?.awardedAt || 0).getTime();
   return [
     challenge.stage || "",
     requestedAt || "",
     challenge.submissionId || "",
-    challenge.badge.id || challenge.badge.label || "",
+    badge?.id || badge?.label || status,
     awardedAt || ""
   ].join(":");
 }
@@ -119,7 +148,7 @@ async function reconcileChallengeSublevel(member) {
     changed = true;
   }
 
-  const failureKey = challengeFailureKey(member.questChallenge);
+  const failureKey = challengeFailureKey(member);
   if (failureKey && member.challengeFailureHandledKey !== failureKey) {
     member.challengeFailureStage = stage;
     member.challengeFailureCount = Math.max(0, Number(member.challengeFailureCount) || 0) + 1;
@@ -362,6 +391,8 @@ export function normalizeMember(member) {
     shopAssetTickets: member.shopAssetTickets || 0,
     ownedAccessories: Array.isArray(member.ownedAccessories) ? member.ownedAccessories.map(String) : [],
     equippedAccessory: String(member.equippedAccessory || ""),
+    npcVisitId: String(member.npcVisitId || ""),
+    npcVisitPurchases: Array.isArray(member.npcVisitPurchases) ? member.npcVisitPurchases.map(String) : [],
   };
 }
 
@@ -481,6 +512,7 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
     npcCycle: { $exists: true, $ne: null }
   });
 
+  await Promise.all(members.map(reconcileChallengeSublevel));
   return members.map((member) => {
     const normalized = normalizeMember(member);
     return {

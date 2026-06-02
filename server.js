@@ -425,6 +425,10 @@ app.prepare().then(() => {
     if (!playerId) return;
     const persisted = await getPersistedNpcCycle(playerId);
     const storedCycle = persisted?.npcCycle || null;
+    if (storedCycle?.pendingNpc && !storedCycle.pendingNpc.visitId) {
+      storedCycle.pendingNpc = enrichNpc(storedCycle.pendingNpc, socketPlayerCoins.get(socket.id));
+      await setPersistedNpcCycle(playerId, storedCycle);
+    }
     const durationMs = Math.max(1000, Number(storedCycle?.durationMs) || currentPersistedCycleDurationMs(socket.id));
     const frozenRemainingMs = storedCycle?.frozenRemainingMs;
 

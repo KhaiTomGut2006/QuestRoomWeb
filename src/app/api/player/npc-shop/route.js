@@ -5,6 +5,7 @@ import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import { normalizeMember } from "@/lib/player";
 import { grantShopItem, openChestReward, SHOP_ITEMS } from "@/lib/shop";
+import { assertActiveNpcVisit } from "@/lib/npcVisit";
 
 export async function POST(request) {
   const session = await getServerSession(authOptions);
@@ -19,6 +20,7 @@ export async function POST(request) {
     await connectDb();
     const member = await Member.findOne({ discord_id: String(discordId) });
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
+    assertActiveNpcVisit(member, visitId);
 
     // One purchase per item per NPC visit
     if (visitId) {
@@ -99,6 +101,7 @@ export async function POST(request) {
       member: normalizeMember(member),
     });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 503 });
+    const status = error.message === "npc_visit_expired" ? 409 : 503;
+    return NextResponse.json({ error: error.message }, { status });
   }
 }

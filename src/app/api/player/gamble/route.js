@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import { normalizeMember } from "@/lib/player";
+import { markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
 
 const MIN_BET = 1;
 const MAX_BET = 10000;
@@ -15,7 +16,7 @@ export async function POST(request) {
   if (!discordId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {
-    const { betAmount } = await request.json();
+    const { betAmount, visitId } = await request.json();
     const bet = Math.round(Number(betAmount));
 
     if (!Number.isFinite(bet) || bet < MIN_BET || bet > MAX_BET) {
@@ -37,10 +38,12 @@ export async function POST(request) {
     const won = Math.random() < 0.5;
     const delta = won ? bet : -bet;
     member.coin = String(Math.max(0, currentCoins + delta));
+    markNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.gamble);
     await member.save({ validateModifiedOnly: true });
 
     return NextResponse.json({ won, delta, member: normalizeMember(member) });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 503 });
+    const status = error.message === "npc_visit_expired" ? 409 : 503;
+    return NextResponse.json({ error: error.message }, { status });
   }
 }

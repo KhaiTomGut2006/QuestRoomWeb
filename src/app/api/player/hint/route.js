@@ -5,6 +5,7 @@ import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import HintTemplate from "@/models/HintTemplate";
 import { normalizeMember } from "@/lib/player";
+import { hasNpcVisitAction, markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
 
 // POST /api/player/hint  body: { hintId }
 export async function POST(request) {
@@ -13,7 +14,7 @@ export async function POST(request) {
   if (!discordId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {
-    const { hintId } = await request.json();
+    const { hintId, visitId } = await request.json();
     if (!hintId) return NextResponse.json({ error: "missing_hintId" }, { status: 400 });
 
     await connectDb();
@@ -25,6 +26,9 @@ export async function POST(request) {
 
     const member = await Member.findOne({ discord_id: String(discordId) });
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
+    if (hasNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.hint)) {
+      return NextResponse.json({ error: "hint_already_bought" }, { status: 409 });
+    }
 
     const currentCoins = Number.parseInt(member.coin || "0", 10);
     if (currentCoins < cost) {
@@ -35,6 +39,7 @@ export async function POST(request) {
     }
 
     member.coin = String(currentCoins - cost);
+    markNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.hint);
     await member.save({ validateModifiedOnly: true });
 
     return NextResponse.json({
@@ -44,6 +49,7 @@ export async function POST(request) {
       member: normalizeMember(member),
     });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 503 });
+    const status = error.message === "npc_visit_expired" ? 409 : 503;
+    return NextResponse.json({ error: error.message }, { status });
   }
 }

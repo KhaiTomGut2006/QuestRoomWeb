@@ -284,10 +284,15 @@ function getChestRewardText(result) {
   return result.itemName || result.itemId || "Shop item";
 }
 
-function ChestDialog({ result, loading, onClaim, onClose }) {
+function ChestDialog({ result, claimed, loading, onClaim, onClose }) {
   return (
     <InteractDialog npcId="chest" npcName="Treasure Chest" intro="หีบสมบัติลึกลับมาหยุดอยู่หน้าประตู">
-      {result ? (
+      {claimed && !result ? (
+        <>
+          <p className="npc-quest-text">คุณเปิดหีบสมบัตินี้ไปแล้ว รอหีบใบใหม่ในรอบถัดไปนะ</p>
+          <button className="npc-quest-decline-btn" type="button" onClick={onClose}>ปิด</button>
+        </>
+      ) : result ? (
         <>
           <div className="npc-interact-result npc-interact-result--win">
             คุณได้รับ {getChestRewardText(result)}
@@ -626,6 +631,7 @@ export default function NpcVisitModal({
   hintsData, hintResult, hintBought, onHintBuy,
   gamblingResult, hasGambledThisVisit, gamblingReplayBet, onGamble, onGamblingKickOut,
   memberShop,
+  visitPurchases = [],
   shopPurchases, onShopPurchase,
   onMemberUpdate, onCooldownReduction, onNeedCoins, onChestClaim, onQuestScrollBought,
   onTutorialAction,
@@ -655,7 +661,11 @@ export default function NpcVisitModal({
         onClose?.();
         return;
       }
-      const response = await fetch(withBasePath("/api/player/npc-reward"), { method: "POST" });
+      const response = await fetch(withBasePath("/api/player/npc-reward"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visitId: npc.visitId })
+      });
       const data = await response.json();
       if (!response.ok) return;
       onMemberUpdate?.(data.member);
@@ -800,6 +810,7 @@ export default function NpcVisitModal({
         {isChestDialog && (
           <ChestDialog
             result={chestResult}
+            claimed={visitPurchases.includes("__chest__")}
             loading={claimingChest}
             onClaim={handleChestClaim}
             onClose={onClose}
