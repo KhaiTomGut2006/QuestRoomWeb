@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/db";
+import { dashboardCors, requireDashboardWrite } from "@/lib/dashboardAuth";
+import { replaceCollectionDocuments } from "@/lib/replaceCollection";
 import HintTemplate from "@/models/HintTemplate";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+const CORS = dashboardCors;
 
 export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS });
@@ -26,6 +24,9 @@ export async function GET() {
 // PUT /api/hint-templates   body: { hints: [{title, content, cost?, order?}] }
 // Replaces ALL hint templates with the given list
 export async function PUT(request) {
+  const unauthorized = requireDashboardWrite(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json();
     const incoming = Array.isArray(body?.hints) ? body.hints : [];
@@ -40,8 +41,7 @@ export async function PUT(request) {
       }));
 
     await connectDb();
-    await HintTemplate.deleteMany({});
-    if (valid.length > 0) await HintTemplate.insertMany(valid);
+    await replaceCollectionDocuments(HintTemplate, valid);
 
     const hints = await HintTemplate.find().sort({ order: 1, createdAt: 1 }).lean();
     return NextResponse.json({ hints }, { headers: CORS });

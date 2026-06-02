@@ -1,36 +1,40 @@
 import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/db";
-import { getAvailableLevels } from "@/lib/player";
+import { getAvailableLevels, invalidateLevelsCache } from "@/lib/player";
+import { invalidateLevelItemConfigCache } from "@/lib/shop";
+import runtimeEvents from "@/lib/runtimeEvents.cjs";
+import { dashboardCors, requireDashboardWrite } from "@/lib/dashboardAuth";
+import { replaceCollectionDocuments } from "@/lib/replaceCollection";
 import Level from "@/models/Level";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+const { publishLevelsRefresh } = runtimeEvents;
+
 const VALID_NPC_IDS = new Set([
   "chest", "shop", "quest-easy", "quest-medium",
   "hints", "quest-hard", "stupid-quest", "gambling"
 ]);
 
 export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: CORS });
+  return new Response(null, { status: 204, headers: dashboardCors });
 }
 
 export async function GET() {
   try {
     const levels = await getAvailableLevels();
-    return NextResponse.json({ success: true, levels }, { headers: CORS });
+    return NextResponse.json({ success: true, levels }, { headers: dashboardCors });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 503, headers: CORS });
+    return NextResponse.json({ success: false, error: error.message }, { status: 503, headers: dashboardCors });
   }
 }
 
 export async function PUT(request) {
+  const unauthorized = requireDashboardWrite(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json();
     if (!Array.isArray(body?.levels)) {
-      return NextResponse.json({ success: false, error: "Expected an array of levels." }, { status: 400, headers: CORS });
+      return NextResponse.json({ success: false, error: "Expected an array of levels." }, { status: 400, headers: dashboardCors });
     }
 
     const levels = body.levels.map((level, index) => ({
@@ -56,30 +60,32 @@ export async function PUT(request) {
     const stageIds = new Set(levels.map((level) => level.stageId));
 
     if (levels.some((level) => !level.stageId || !level.name)) {
-      return NextResponse.json({ success: false, error: "Every level needs a stage id and name." }, { status: 400, headers: CORS });
+      return NextResponse.json({ success: false, error: "Every level needs a stage id and name." }, { status: 400, headers: dashboardCors });
     }
     if (stageIds.size !== levels.length) {
-      return NextResponse.json({ success: false, error: "Stage ids must be unique." }, { status: 400, headers: CORS });
+      return NextResponse.json({ success: false, error: "Stage ids must be unique." }, { status: 400, headers: dashboardCors });
     }
     const invalidNpcSpawnLevel = levels.find((level) => (
       level.npcSpawns.length > 0
       && Math.abs(level.npcSpawns.reduce((sum, spawn) => sum + spawn.chance, 0) - 100) > 0.01
     ));
     if (invalidNpcSpawnLevel) {
-      return NextResponse.json({ success: false, error: `NPC spawn chances must total 100% in ${invalidNpcSpawnLevel.name}.` }, { status: 400, headers: CORS });
+      return NextResponse.json({ success: false, error: `NPC spawn chances must total 100% in ${invalidNpcSpawnLevel.name}.` }, { status: 400, headers: dashboardCors });
     }
     const invalidNpcSpawn = levels.flatMap((level) => level.npcSpawns).find((spawn) => !VALID_NPC_IDS.has(spawn.npcId));
     if (invalidNpcSpawn) {
-      return NextResponse.json({ success: false, error: `Unknown NPC id: ${invalidNpcSpawn.npcId}.` }, { status: 400, headers: CORS });
+      return NextResponse.json({ success: false, error: `Unknown NPC id: ${invalidNpcSpawn.npcId}.` }, { status: 400, headers: dashboardCors });
     }
 
     await connectDb();
-    await Level.deleteMany({});
-    if (levels.length > 0) await Level.insertMany(levels);
+    await replaceCollectionDocuments(Level, levels);
+    invalidateLevelsCache();
+    invalidateLevelItemConfigCache();
+    publishLevelsRefresh();
 
     const savedLevels = await getAvailableLevels();
-    return NextResponse.json({ success: true, levels: savedLevels }, { headers: CORS });
+    return NextResponse.json({ success: true, levels: savedLevels }, { headers: dashboardCors });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 503, headers: CORS });
+    return NextResponse.json({ success: false, error: error.message }, { status: 503, headers: dashboardCors });
   }
 }

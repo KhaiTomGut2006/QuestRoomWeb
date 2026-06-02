@@ -14,6 +14,19 @@ const basePath = rawBasePath
 const nextConfig = {
   reactStrictMode: true,
   basePath,
+  async headers() {
+    return [
+      {
+        source: "/assets/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800"
+          }
+        ]
+      }
+    ];
+  },
   allowedDevOrigins: ["localhost", "127.0.0.1", ...lanDevOrigins],
   turbopack: {
     root: process.cwd()

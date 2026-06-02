@@ -248,4 +248,10 @@ MemberSchema.pre("save", function syncMemberAliases(next) {
   next();
 });
 
+MemberSchema.index({ "npcQuestSubmissions.id": 1 });
+MemberSchema.index({ "profileAchievements.label": 1 });
+MemberSchema.index({ courses: 1 });
+MemberSchema.index({ stage: 1, "roomPosition.updatedAt": -1 });
+MemberSchema.set("optimisticConcurrency", true);
+
 export default mongoose.models.Member || mongoose.model("Member", MemberSchema);

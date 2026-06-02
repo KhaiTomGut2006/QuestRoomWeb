@@ -2,17 +2,29 @@ import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import { getWalkablePoint } from "@/lib/walkableArea";
 import mongoose from "mongoose";
+import runtimeEvents from "@/lib/runtimeEvents.cjs";
 
 import Level from "@/models/Level";
 import CourseConfig from "@/models/CourseConfig";
 
+const { publishMemberRefresh, publishSocialRefresh } = runtimeEvents;
+
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 0;
+const configuredOfflineRoomPlayerLimit = Number(process.env.OFFLINE_ROOM_PLAYER_LIMIT);
+const OFFLINE_ROOM_PLAYER_LIMIT = Number.isFinite(configuredOfflineRoomPlayerLimit)
+  ? Math.min(500, Math.max(1, Math.floor(configuredOfflineRoomPlayerLimit)))
+  : 100;
 
 let cachedLevels = null;
 let cachedLevelsAt = 0;
 let pendingLevelsLoad = null;
-const LEVEL_CACHE_TTL_MS = 15_000;
+const LEVEL_CACHE_TTL_MS = 60_000;
+
+export function invalidateLevelsCache() {
+  cachedLevels = null;
+  cachedLevelsAt = 0;
+}
 
 async function ensureLevels({ force = false } = {}) {
   const cacheIsFresh =
@@ -505,31 +517,59 @@ export async function getMemberByDiscordId(discordId) {
 
 export async function getRoomPlayers(stage = DEFAULT_STAGE) {
   await connectDb();
-  await ensureLevels();
   const members = await Member.find({
     stage: String(stage || DEFAULT_STAGE),
     discord_id: { $exists: true, $ne: "" },
     lastAuthentication: { $exists: true, $ne: null },
-    npcCycle: { $exists: true, $ne: null }
-  });
+    "roomPosition.updatedAt": { $exists: true, $ne: null }
+  })
+    .select({
+      discord_id: 1,
+      nick: 1,
+      nickname: 1,
+      realName: 1,
+      username: 1,
+      "discordData.username": 1,
+      "discordData.globalName": 1,
+      "discordData.avatarUrl": 1,
+      rank: 1,
+      profileAchievements: 1,
+      equippedAccessory: 1,
+      stage: 1,
+      challengeFailureStage: 1,
+      challengeFailureCount: 1,
+      roomPosition: 1
+    })
+    .sort({ "roomPosition.updatedAt": -1 })
+    .limit(OFFLINE_ROOM_PLAYER_LIMIT)
+    .lean();
 
-  await Promise.all(members.map(reconcileChallengeSublevel));
   return members.map((member) => {
-    const normalized = normalizeMember(member);
+    const discord = member.discordData || {};
+    const failureCount = member.challengeFailureStage === member.stage
+      ? Math.max(0, Number(member.challengeFailureCount) || 0)
+      : 0;
     return {
-      id: normalized.discordId,
-      name: normalized.name,
-      username: normalized.username,
-      avatar: normalized.avatar,
-      rank: normalized.rank,
-      achievements: normalized.achievements,
-      equippedAccessory: normalized.equippedAccessory,
-      stage: normalized.stage,
-      challengeFailureCount: normalized.challengeFailureCount,
-      x: Number(normalized.position?.x || 50),
-      y: Number(normalized.position?.y || 70),
+      id: member.discord_id || "",
+      name:
+        member.nick
+        || member.nickname
+        || member.realName
+        || discord.globalName
+        || discord.username
+        || "Player",
+      username: discord.username || member.username || "",
+      avatar: discord.avatarUrl || "",
+      rank: member.rank || "Game Tester",
+      achievements: (member.profileAchievements || []).map(normalizeBadge),
+      equippedAccessory: String(member.equippedAccessory || ""),
+      stage: member.stage || DEFAULT_STAGE,
+      challengeFailureCount: failureCount,
+      x: Number(member.roomPosition?.x || 50),
+      y: Number(member.roomPosition?.y || 70),
       action: "idle",
-      online: false
+      online: false,
+      lastSeenAt: member.roomPosition?.updatedAt || null
     };
   });
 }
@@ -573,9 +613,6 @@ export async function transferCoins(senderDiscordId, recipientDiscordId, amount)
   if (!senderId || !recipientId) throw new Error("player_not_found");
   if (senderId === recipientId) throw new Error("cannot_trade_self");
 
-  const recipientExists = await Member.exists({ discord_id: recipientId });
-  if (!recipientExists) throw new Error("recipient_not_found");
-
   const coinValue = {
     $convert: {
       input: { $ifNull: ["$coin", "0"] },
@@ -585,43 +622,72 @@ export async function transferCoins(senderDiscordId, recipientDiscordId, amount)
     }
   };
 
-  const sender = await Member.findOneAndUpdate(
-    {
-      discord_id: senderId,
-      $expr: { $gte: [coinValue, coinAmount] }
-    },
-    [{ $set: { coin: { $toString: { $subtract: [coinValue, coinAmount] } } } }],
-    { new: true }
-  );
+  async function executeTransfer({ session = null, compensate = false } = {}) {
+    const queryOptions = session ? { session } : {};
+    const recipientExists = await Member.exists({ discord_id: recipientId }).setOptions(queryOptions);
+    if (!recipientExists) throw new Error("recipient_not_found");
 
-  if (!sender) {
-    const senderExists = await Member.exists({ discord_id: senderId });
-    if (!senderExists) throw new Error("player_not_found");
-    throw new Error("not_enough_coins");
+    const sender = await Member.findOneAndUpdate(
+      {
+        discord_id: senderId,
+        $expr: { $gte: [coinValue, coinAmount] }
+      },
+      [{ $set: { coin: { $toString: { $subtract: [coinValue, coinAmount] } } } }],
+      { new: true, ...queryOptions }
+    );
+
+    if (!sender) {
+      const senderExists = await Member.exists({ discord_id: senderId }).setOptions(queryOptions);
+      if (!senderExists) throw new Error("player_not_found");
+      throw new Error("not_enough_coins");
+    }
+
+    try {
+      const recipient = await Member.findOneAndUpdate(
+        { discord_id: recipientId },
+        [{ $set: { coin: { $toString: { $add: [coinValue, coinAmount] } } } }],
+        { new: true, ...queryOptions }
+      );
+      if (!recipient) throw new Error("recipient_not_found");
+
+      return {
+        amount: coinAmount,
+        member: normalizeMember(sender),
+        recipient: {
+          id: recipient.discord_id || "",
+          name: normalizeMember(recipient).name
+        }
+      };
+    } catch (error) {
+      if (compensate) {
+        await Member.updateOne(
+          { discord_id: senderId },
+          [{ $set: { coin: { $toString: { $add: [coinValue, coinAmount] } } } }]
+        );
+      }
+      throw error;
+    }
   }
 
-  try {
-    const recipient = await Member.findOneAndUpdate(
-      { discord_id: recipientId },
-      [{ $set: { coin: { $toString: { $add: [coinValue, coinAmount] } } } }],
-      { new: true }
-    );
-    if (!recipient) throw new Error("recipient_not_found");
+  function transactionIsUnsupported(error) {
+    return /Transaction numbers are only allowed|replica set member|mongos/i.test(String(error?.message || ""));
+  }
 
-    return {
-      amount: coinAmount,
-      member: normalizeMember(sender),
-      recipient: {
-        id: recipient.discord_id || "",
-        name: normalizeMember(recipient).name
-      }
-    };
-  } catch (error) {
-    await Member.updateOne(
-      { discord_id: senderId },
-      [{ $set: { coin: { $toString: { $add: [coinValue, coinAmount] } } } }]
-    );
-    throw error;
+  const dbSession = await mongoose.startSession();
+  try {
+    let result = null;
+    try {
+      await dbSession.withTransaction(async () => {
+        result = await executeTransfer({ session: dbSession });
+      });
+    } catch (error) {
+      if (!transactionIsUnsupported(error)) throw error;
+      result = await executeTransfer({ compensate: true });
+    }
+    publishMemberRefresh(recipientId, "trade-received");
+    return result;
+  } finally {
+    await dbSession.endSession();
   }
 }
 
@@ -718,6 +784,7 @@ export async function submitChallenge(discordId, evidence, postText = "") {
   member.markModified("questChallenge");
   member.markModified("npcQuestSubmissions");
   await member.save({ validateModifiedOnly: true });
+  publishSocialRefresh();
 
   return {
     member: normalizeMember(member),
@@ -741,7 +808,7 @@ export async function acknowledgeReward(discordId, rewardId) {
 
 export async function getAvailableLevels() {
   await connectDb();
-  await ensureLevels({ force: true });
+  await ensureLevels();
   return cachedLevels || [];
 }
 
@@ -951,6 +1018,7 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
   member.markModified("tutorial");
   member.markModified("profileAchievements");
   await member.save();
+  publishSocialRefresh();
   return { member: normalizeMember(member), reward, submission: normalizeNpcQuestSubmission(member.npcQuestSubmissions.at(-1)) };
 }
 
@@ -1057,25 +1125,103 @@ export async function reactToGlobalQuestPost(discordId, postId, reaction) {
     throw new Error("invalid_reaction");
   }
 
-  const member = await Member.findOne({ "npcQuestSubmissions.id": String(postId || "") });
+  const normalizedPostId = String(postId || "");
+  const member = await Member.findOne(
+    { "npcQuestSubmissions.id": normalizedPostId },
+    { npcQuestSubmissions: 1, questChallenge: 1 }
+  ).lean();
   if (!member) return null;
 
-  const submission = member.npcQuestSubmissions.find((item) => item.id === String(postId || ""));
+  const submission = member.npcQuestSubmissions.find((item) => item.id === normalizedPostId);
   if (!submission || !isGlobalQuestSubmissionVisible(member, submission)) return null;
 
   const viewerId = String(discordId || "");
-  submission.likes = (submission.likes || []).map(String).filter((id) => id !== viewerId);
-  submission.dislikes = (submission.dislikes || []).map(String).filter((id) => id !== viewerId);
-  if (normalizedReaction === "like") submission.likes.push(viewerId);
-  if (normalizedReaction === "dislike") submission.dislikes.push(viewerId);
+  const updated = await Member.findOneAndUpdate(
+    { _id: member._id, "npcQuestSubmissions.id": normalizedPostId },
+    [
+      {
+        $set: {
+          npcQuestSubmissions: {
+            $map: {
+              input: "$npcQuestSubmissions",
+              as: "submission",
+              in: {
+                $cond: [
+                  { $eq: ["$$submission.id", normalizedPostId] },
+                  {
+                    $mergeObjects: [
+                      "$$submission",
+                      {
+                        likes: {
+                          $cond: [
+                            { $eq: [normalizedReaction, "like"] },
+                            {
+                              $concatArrays: [
+                                {
+                                  $filter: {
+                                    input: { $ifNull: ["$$submission.likes", []] },
+                                    as: "id",
+                                    cond: { $ne: ["$$id", viewerId] }
+                                  }
+                                },
+                                [viewerId]
+                              ]
+                            },
+                            {
+                              $filter: {
+                                input: { $ifNull: ["$$submission.likes", []] },
+                                as: "id",
+                                cond: { $ne: ["$$id", viewerId] }
+                              }
+                            }
+                          ]
+                        },
+                        dislikes: {
+                          $cond: [
+                            { $eq: [normalizedReaction, "dislike"] },
+                            {
+                              $concatArrays: [
+                                {
+                                  $filter: {
+                                    input: { $ifNull: ["$$submission.dislikes", []] },
+                                    as: "id",
+                                    cond: { $ne: ["$$id", viewerId] }
+                                  }
+                                },
+                                [viewerId]
+                              ]
+                            },
+                            {
+                              $filter: {
+                                input: { $ifNull: ["$$submission.dislikes", []] },
+                                as: "id",
+                                cond: { $ne: ["$$id", viewerId] }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "$$submission"
+                ]
+              }
+            }
+          }
+        }
+      }
+    ],
+    { new: true, projection: { npcQuestSubmissions: 1 } }
+  ).lean();
+  if (!updated) return null;
+  const updatedSubmission = updated.npcQuestSubmissions.find((item) => item.id === normalizedPostId);
+  if (!updatedSubmission) return null;
 
-  member.markModified("npcQuestSubmissions");
-  await member.save({ validateModifiedOnly: true });
   return {
-    postId: submission.id,
+    postId: updatedSubmission.id,
     viewerReaction: normalizedReaction,
-    likeCount: submission.likes.length,
-    dislikeCount: submission.dislikes.length
+    likeCount: updatedSubmission.likes?.length || 0,
+    dislikeCount: updatedSubmission.dislikes?.length || 0
   };
 }
 

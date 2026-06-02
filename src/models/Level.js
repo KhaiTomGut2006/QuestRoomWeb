@@ -27,4 +27,6 @@ const LevelSchema = new mongoose.Schema({
   npcSpawns:{ type: [NpcSpawnSchema], default: [] },
 }, { collection: "levels" });
 
+LevelSchema.index({ order: 1 });
+
 export default mongoose.models.Level || mongoose.model("Level", LevelSchema);

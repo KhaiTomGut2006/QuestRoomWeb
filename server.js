@@ -5,6 +5,9 @@ const next = require("next");
 const { Server } = require("socket.io");
 const mongoose = require("mongoose");
 const { createHmac, timingSafeEqual } = require("node:crypto");
+const runtimeMetrics = require("./src/lib/runtimeMetrics.cjs");
+const runtimeEvents = require("./src/lib/runtimeEvents.cjs");
+const { verifyCooldownToken } = require("./src/lib/cooldownToken.cjs");
 
 loadEnvConfig(process.cwd());
 
@@ -19,8 +22,17 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 const mongoUri = process.env.MONGODB_URI;
 const mongoDbName = process.env.MONGODB_DB || undefined;
+const LEVEL_CONFIG_CACHE_TTL_MS = 60_000;
+const metricsEnabled = process.env.METRICS_ENABLED !== "false";
+const socketDeltaV2Enabled = process.env.SOCKET_DELTA_V2 === "true";
+const allowLegacyCooldownSocket = process.env.ALLOW_LEGACY_COOLDOWN_SOCKET !== "false";
+const configuredPresenceGraceMs = Number(process.env.SOCKET_PRESENCE_GRACE_MS);
+const SOCKET_PRESENCE_GRACE_MS = Number.isFinite(configuredPresenceGraceMs)
+  ? Math.max(0, configuredPresenceGraceMs)
+  : 15_000;
 
 const rooms = new Map();
+const pendingPlayerRemoval = new Map();
 const playerStages = new Map();   // playerId → current stage (cross-socket tracking)
 const socketToPlayer = new Map(); // socketId → playerId
 const socketPlayerCoins = new Map(); // socketId → last client-synced balance for NPC offer sizing
@@ -35,6 +47,10 @@ const socketPersonalTimer = new Map();
 const socketFrozenMs = new Map();
 // socketId → permanent reduction in ms (from cooldown purchases)
 const socketPermanentReductionMs = new Map();
+const redeemedCooldownTokens = new Map();
+const levelConfigCache = new Map();
+const pendingLevelConfigLoads = new Map();
+let pendingMongoConnection = null;
 const ACCESSORY_IDS = new Set(["accessory-mrx", "accessory-mrx-red-eye", "accessory-mrx-glasses", "accessory-ppuk"]);
 const PLAYER_REACTIONS = new Set(["🥰", "😂", "😭", "🤓", "🖕🏿"]);
 
@@ -81,12 +97,139 @@ function pickWeightedNpc() {
   return NPC_POOL[NPC_POOL.length - 1].npc;
 }
 
+function metricsRequestIsAuthorized(req) {
+  if (dev) return true;
+  const configuredToken = String(process.env.METRICS_TOKEN || "");
+  const requestToken = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "")
+    || String(req.headers["x-metrics-token"] || "");
+  if (!configuredToken || !requestToken) return false;
+  const configuredBuffer = Buffer.from(configuredToken);
+  const requestBuffer = Buffer.from(requestToken);
+  return configuredBuffer.length === requestBuffer.length
+    && timingSafeEqual(configuredBuffer, requestBuffer);
+}
+
+function runtimeEventRequestIsAuthorized(req) {
+  const configuredToken = String(process.env.NEXTAUTH_SECRET || "");
+  const requestToken = String(req.headers["x-questroom-internal-token"] || "");
+  if (!configuredToken || !requestToken) return false;
+  const configuredBuffer = Buffer.from(configuredToken);
+  const requestBuffer = Buffer.from(requestToken);
+  return configuredBuffer.length === requestBuffer.length
+    && timingSafeEqual(configuredBuffer, requestBuffer);
+}
+
+function readJsonBody(req, maxBytes = 16 * 1024) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      raw += chunk;
+      if (Buffer.byteLength(raw) > maxBytes) reject(new Error("payload_too_large"));
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(raw || "{}"));
+      } catch {
+        reject(new Error("invalid_json"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function sendJson(res, statusCode, payload) {
+  const body = JSON.stringify(payload);
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body),
+    "Cache-Control": "no-store"
+  });
+  res.end(body);
+}
+
+function playerPresenceKey(stage, playerId) {
+  return `${String(stage || "")}\u0000${String(playerId || "")}`;
+}
+
+function clearPendingPlayerRemoval(stage, playerId) {
+  const key = playerPresenceKey(stage, playerId);
+  const timer = pendingPlayerRemoval.get(key);
+  if (timer) clearTimeout(timer);
+  pendingPlayerRemoval.delete(key);
+}
+
+function removePlayerIfOffline(stage, playerId, io) {
+  const room = rooms.get(stage);
+  const current = room?.get(playerId);
+  if (!current || current.socketIds?.size) return false;
+  clearPendingPlayerRemoval(stage, playerId);
+  room.delete(playerId);
+  if (room.size === 0) rooms.delete(stage);
+  if (playerStages.get(playerId) === stage) playerStages.delete(playerId);
+  playerNpcQuest.delete(playerId);
+  io.to(stage).emit("player:offline", playerId);
+  return true;
+}
+
+function schedulePlayerRemoval(stage, playerId, io) {
+  clearPendingPlayerRemoval(stage, playerId);
+  if (SOCKET_PRESENCE_GRACE_MS === 0) {
+    removePlayerIfOffline(stage, playerId, io);
+    return;
+  }
+  const key = playerPresenceKey(stage, playerId);
+  pendingPlayerRemoval.set(key, setTimeout(() => {
+    pendingPlayerRemoval.delete(key);
+    removePlayerIfOffline(stage, playerId, io);
+  }, SOCKET_PRESENCE_GRACE_MS));
+}
+
+function deltaProtocolRoom(stage) {
+  return `__socket-delta-v2:${String(stage || "")}`;
+}
+
+function legacyProtocolRoom(stage) {
+  return `__socket-legacy:${String(stage || "")}`;
+}
+
+function playerEventRoom(playerId) {
+  return `__player:${String(playerId || "")}`;
+}
+
+function movementDelta(player) {
+  return {
+    id: String(player.id || ""),
+    x: Number(player.x),
+    y: Number(player.y),
+    action: String(player.action || "move").slice(0, 24),
+    online: Boolean(player.socketIds?.size),
+    updatedAt: Date.now()
+  };
+}
+
 async function getLevelConfig(stage, projection) {
-  await getMembersCollection();
-  return mongoose.connection.collection("levels").findOne(
-    { stageId: String(stage || "") },
-    { projection }
-  );
+  const stageId = String(stage || "");
+  const cached = levelConfigCache.get(stageId);
+  if (cached && Date.now() - cached.loadedAt < LEVEL_CONFIG_CACHE_TTL_MS) {
+    return cached.level;
+  }
+
+  if (!pendingLevelConfigLoads.has(stageId)) {
+    const load = getMembersCollection()
+      .then(() => mongoose.connection.collection("levels").findOne(
+        { stageId },
+        { projection: { npcSpawns: 1, npcShop: 1 } }
+      ))
+      .then((level) => {
+        levelConfigCache.set(stageId, { level, loadedAt: Date.now() });
+        return level;
+      })
+      .finally(() => pendingLevelConfigLoads.delete(stageId));
+    pendingLevelConfigLoads.set(stageId, load);
+  }
+
+  return pendingLevelConfigLoads.get(stageId);
 }
 
 async function pickWeightedNpcForStage(stage) {
@@ -153,10 +296,15 @@ function clearPersonalTimer(socketId) {
 async function getMembersCollection() {
   if (!mongoUri) throw new Error("MONGODB_URI is not configured");
   if (mongoose.connection.readyState !== 1) {
-    await mongoose.connect(mongoUri, {
-      bufferCommands: false,
-      dbName: mongoDbName
-    });
+    if (!pendingMongoConnection) {
+      pendingMongoConnection = mongoose.connect(mongoUri, {
+        bufferCommands: false,
+        dbName: mongoDbName
+      }).finally(() => {
+        pendingMongoConnection = null;
+      });
+    }
+    await pendingMongoConnection;
   }
   return mongoose.connection.collection("members");
 }
@@ -190,6 +338,24 @@ async function setPersistedPendingNpc(playerId, pendingNpc) {
   await members.updateOne(
     { discord_id: String(playerId) },
     { $set: { "npcCycle.pendingNpc": pendingNpc || null } }
+  );
+}
+
+async function persistOfflineRoomPosition(playerId, stage, player) {
+  if (!playerId || !stage || !player) return;
+  const members = await getMembersCollection();
+  await members.updateOne(
+    { discord_id: String(playerId) },
+    {
+      $set: {
+        stage: String(stage),
+        roomPosition: {
+          x: Number(player.x) || 50,
+          y: Number(player.y) || 70,
+          updatedAt: new Date()
+        }
+      }
+    }
   );
 }
 
@@ -320,13 +486,48 @@ function publicPlayer(player) {
 }
 
 app.prepare().then(() => {
-  const httpServer = createServer((req, res) => handle(req, res));
+  const httpServer = createServer((req, res) => {
+    const pathname = String(req.url || "").split("?")[0];
+    if (pathname === `${basePath}/internal/health`) {
+      return sendJson(res, 200, { ok: true, uptimeSeconds: Math.round(process.uptime()) });
+    }
+    if (pathname === `${basePath}/internal/metrics`) {
+      if (!metricsEnabled) return sendJson(res, 404, { error: "metrics_disabled" });
+      if (!metricsRequestIsAuthorized(req)) return sendJson(res, 401, { error: "unauthorized" });
+      return sendJson(res, 200, runtimeMetrics.snapshot({ rooms }));
+    }
+    if (pathname === `${basePath}/internal/runtime-event`) {
+      if (req.method !== "POST") return sendJson(res, 405, { error: "method_not_allowed" });
+      if (!runtimeEventRequestIsAuthorized(req)) return sendJson(res, 401, { error: "unauthorized" });
+      return readJsonBody(req)
+        .then(({ type, payload }) => {
+          if (!runtimeEvents.deliverRuntimeEvent(type, payload)) {
+            return sendJson(res, 400, { error: "invalid_event" });
+          }
+          return sendJson(res, 202, { ok: true });
+        })
+        .catch((error) => sendJson(res, error.message === "payload_too_large" ? 413 : 400, { error: error.message }));
+    }
+    runtimeMetrics.instrumentHttp(req, res);
+    return handle(req, res);
+  });
   const io = new Server(httpServer, {
     path: `${basePath}/socket.io`,
     addTrailingSlash: false,
     cors: { origin: true },
     transports: ["websocket", "polling"]
   });
+  runtimeEvents.events.on("member:refresh", ({ discordIds = [], reason } = {}) => {
+    for (const discordId of discordIds) {
+      io.to(playerEventRoom(discordId)).emit("member:refresh", { reason });
+    }
+  });
+  runtimeEvents.events.on("levels:refresh", () => {
+    levelConfigCache.clear();
+    pendingLevelConfigLoads.clear();
+    io.emit("levels:refresh");
+  });
+  runtimeEvents.events.on("social:refresh", () => io.emit("social:refresh"));
 
   // ─── Per-socket personal NPC cycle ────────────────────────────
   // Returns the effective full-cycle duration for a socket (with permanent reductions)
@@ -530,11 +731,46 @@ app.prepare().then(() => {
   // ────────────────────────────────────────────────────────────────
 
   io.on("connection", (socket) => {
+    runtimeMetrics.instrumentSocket(socket);
     let activeStage = null;
     let activePlayerId = null;
     let lastReactionAt = 0;
+    const rateLimits = new Map();
 
-    function detachPlayer({ removeIfOffline = false } = {}) {
+    function allowSocketEvent(event, maxEvents, windowMs) {
+      const now = Date.now();
+      const state = rateLimits.get(event);
+      if (!state || now - state.startedAt >= windowMs) {
+        rateLimits.set(event, { startedAt: now, count: 1 });
+        return true;
+      }
+      if (state.count >= maxEvents) {
+        runtimeMetrics.recordSocketDrop(event);
+        return false;
+      }
+      state.count += 1;
+      return true;
+    }
+
+    function emitMovementUpdate(player) {
+      function broadcast(room, event, payload) {
+        const members = io.sockets.adapter.rooms.get(room);
+        const recipients = members
+          ? members.size - (members.has(socket.id) ? 1 : 0)
+          : 0;
+        runtimeMetrics.recordSocketBroadcast(event, payload, recipients);
+        socket.to(room).emit(event, payload);
+      }
+
+      if (!socketDeltaV2Enabled) {
+        broadcast(activeStage, "player:upsert", publicPlayer(player));
+        return;
+      }
+      broadcast(deltaProtocolRoom(activeStage), "player:move-delta", movementDelta(player));
+      broadcast(legacyProtocolRoom(activeStage), "player:upsert", publicPlayer(player));
+    }
+
+    function detachPlayer({ removeIfOffline = false, scheduleIfOffline = false } = {}) {
       if (!activeStage || !activePlayerId) return;
       const room = getRoom(activeStage);
       const current = room.get(activePlayerId);
@@ -542,23 +778,29 @@ app.prepare().then(() => {
 
       current.socketIds.delete(socket.id);
       if (removeIfOffline && current.socketIds.size === 0) {
-        room.delete(activePlayerId);
-        playerStages.delete(activePlayerId);
-        socket.to(activeStage).emit("player:leave", activePlayerId);
+        removePlayerIfOffline(activeStage, activePlayerId, io);
         return;
       }
 
       const player = publicPlayer(current);
       room.set(activePlayerId, current);
       socket.to(activeStage).emit("player:upsert", player);
+      if (scheduleIfOffline && current.socketIds.size === 0) {
+        void persistOfflineRoomPosition(activePlayerId, activeStage, current).catch((error) => {
+          console.error("Failed to persist offline room position:", error.message);
+        });
+        schedulePlayerRemoval(activeStage, activePlayerId, io);
+      }
     }
 
     socket.on("player:join", async (payload = {}) => {
+      if (!allowSocketEvent("player:join", 5, 10_000)) return;
       const player = compactPlayer(payload);
       if (!player.id) return;
 
       // Track socket → player mapping
       socketToPlayer.set(socket.id, player.id);
+      socket.join(playerEventRoom(player.id));
       socketPlayerCoins.set(socket.id, Math.max(0, Number(payload.coins) || 0));
       // Restore permanent cooldown reduction from previous purchases
       const permReduction = Math.max(0, Number(payload.permanentReductionMs) || 0);
@@ -571,9 +813,11 @@ app.prepare().then(() => {
       // Remove player from old stage if they switched stage across socket reconnections
       const trackedStage = playerStages.get(player.id);
       if (trackedStage && trackedStage !== player.stage) {
+        clearPendingPlayerRemoval(trackedStage, player.id);
         const oldRoom = getRoom(trackedStage);
         if (oldRoom.has(player.id)) {
           oldRoom.delete(player.id);
+          if (oldRoom.size === 0) rooms.delete(trackedStage);
           io.to(trackedStage).emit("player:leave", player.id);
         }
       }
@@ -582,6 +826,8 @@ app.prepare().then(() => {
       if (activeStage && (activeStage !== player.stage || activePlayerId !== player.id)) {
         detachPlayer({ removeIfOffline: true });
         socket.leave(activeStage);
+        socket.leave(deltaProtocolRoom(activeStage));
+        socket.leave(legacyProtocolRoom(activeStage));
       }
       activeStage = player.stage;
       activePlayerId = player.id;
@@ -589,6 +835,7 @@ app.prepare().then(() => {
       const room = getRoom(activeStage);
       const current = room.get(activePlayerId);
       const socketIds = current?.socketIds || new Set();
+      clearPendingPlayerRemoval(activeStage, activePlayerId);
       socketIds.add(socket.id);
 
       // Jitter spawn position to avoid stacking on top of other online players
@@ -601,6 +848,12 @@ app.prepare().then(() => {
 
       room.set(activePlayerId, { ...current, ...spawnedPlayer, socketIds });
       socket.join(activeStage);
+      socket.data.supportsSocketDeltaV2 = payload.supportsSocketDeltaV2 === true;
+      socket.join(
+        socketDeltaV2Enabled && socket.data.supportsSocketDeltaV2
+          ? deltaProtocolRoom(activeStage)
+          : legacyProtocolRoom(activeStage)
+      );
 
       socket.emit("room:state", Array.from(room.values()).map(publicPlayer));
       socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
@@ -618,6 +871,7 @@ app.prepare().then(() => {
     });
 
     socket.on("room:peek", (payload = {}) => {
+      if (!allowSocketEvent("room:peek", 2, 1000)) return;
       const stage = String(payload.stage || "").trim().slice(0, 96);
       if (!stage) return;
       const room = rooms.get(stage);
@@ -628,6 +882,7 @@ app.prepare().then(() => {
     });
 
     socket.on("player:move", (payload = {}) => {
+      if (!allowSocketEvent("player:move", 15, 1000)) return;
       if (!activeStage || !activePlayerId) return;
       const room = getRoom(activeStage);
       const current = room.get(activePlayerId);
@@ -643,7 +898,7 @@ app.prepare().then(() => {
       });
 
       room.set(activePlayerId, { ...current, ...nextPlayer });
-      socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
+      emitMovementUpdate(room.get(activePlayerId));
     });
 
     socket.on("player:accessory", (payload = {}) => {
@@ -724,6 +979,7 @@ app.prepare().then(() => {
     });    // ─────────────────────────────────────────────────────────────
 
     socket.on("social:publish", (payload = {}) => {
+      if (!allowSocketEvent("social:publish", 3, 10_000)) return;
       if (!activePlayerId) return;
       const postId = String(payload.id || "").slice(0, 160);
       if (!postId) return;
@@ -800,7 +1056,21 @@ app.prepare().then(() => {
     });
 
     socket.on("shop:reduce-cooldown", (payload = {}) => {
-      const milliseconds = Math.min(10 * 60 * 1000, Math.max(0, Number(payload.milliseconds) || 0));
+      const playerId = socketToPlayer.get(socket.id);
+      if (!playerId) return;
+
+      let milliseconds = 0;
+      if (payload.token) {
+        const token = verifyCooldownToken(payload.token, playerId);
+        if (!token || redeemedCooldownTokens.has(token.nonce)) return;
+        redeemedCooldownTokens.set(token.nonce, token.expiresAt);
+        milliseconds = token.milliseconds;
+        for (const [nonce, expiresAt] of redeemedCooldownTokens) {
+          if (expiresAt <= Date.now()) redeemedCooldownTokens.delete(nonce);
+        }
+      } else if (allowLegacyCooldownSocket) {
+        milliseconds = Math.min(10 * 60 * 1000, Math.max(0, Number(payload.milliseconds) || 0));
+      }
       if (!milliseconds) return;
       // Add to permanent reduction for this socket
       const current = socketPermanentReductionMs.get(socket.id) || 0;
@@ -830,7 +1100,7 @@ app.prepare().then(() => {
       socketPermanentReductionMs.delete(socket.id);
       socketToPlayer.delete(socket.id);
       socketPlayerCoins.delete(socket.id);
-      detachPlayer();
+      detachPlayer({ scheduleIfOffline: true });
     });
   });
 

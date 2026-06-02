@@ -5,6 +5,7 @@ import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import { normalizeMember } from "@/lib/player";
 import { markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
+import { writeErrorMessage, writeErrorStatus } from "@/lib/writeSafety";
 
 const MIN_BET = 1;
 const MAX_BET = 10000;
@@ -43,7 +44,7 @@ export async function POST(request) {
 
     return NextResponse.json({ won, delta, member: normalizeMember(member) });
   } catch (error) {
-    const status = error.message === "npc_visit_expired" ? 409 : 503;
-    return NextResponse.json({ error: error.message }, { status });
+    const status = writeErrorStatus(error, error.message === "npc_visit_expired" ? 409 : 503);
+    return NextResponse.json({ error: writeErrorMessage(error) }, { status });
   }
 }

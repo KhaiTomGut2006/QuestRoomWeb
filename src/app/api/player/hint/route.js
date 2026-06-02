@@ -6,6 +6,7 @@ import Member from "@/models/Member";
 import HintTemplate from "@/models/HintTemplate";
 import { normalizeMember } from "@/lib/player";
 import { hasNpcVisitAction, markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
+import { writeErrorMessage, writeErrorStatus } from "@/lib/writeSafety";
 
 // POST /api/player/hint  body: { hintId }
 export async function POST(request) {
@@ -49,7 +50,7 @@ export async function POST(request) {
       member: normalizeMember(member),
     });
   } catch (error) {
-    const status = error.message === "npc_visit_expired" ? 409 : 503;
-    return NextResponse.json({ error: error.message }, { status });
+    const status = writeErrorStatus(error, error.message === "npc_visit_expired" ? 409 : 503);
+    return NextResponse.json({ error: writeErrorMessage(error) }, { status });
   }
 }

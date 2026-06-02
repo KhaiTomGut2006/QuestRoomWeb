@@ -6,6 +6,10 @@ import Member from "@/models/Member";
 import { normalizeMember } from "@/lib/player";
 import { getNpcShopItem, grantShopItem, openChestReward } from "@/lib/shop";
 import { assertActiveNpcVisit } from "@/lib/npcVisit";
+import { writeErrorMessage, writeErrorStatus } from "@/lib/writeSafety";
+import cooldownTokens from "@/lib/cooldownToken.cjs";
+
+const { issueCooldownToken } = cooldownTokens;
 
 export async function POST(request) {
   const session = await getServerSession(authOptions);
@@ -93,18 +97,20 @@ export async function POST(request) {
 
     await member.save({ validateModifiedOnly: true });
 
+    const cooldownReductionMs = chestReward?.cooldownReductionMs || grantedItem?.cooldownReductionMs || 0;
     return NextResponse.json({
       itemId,
       cost: item.cost,
       purchaseCount: purchaseCount + 1,
       maxQty: item.maxQty,
-      cooldownReductionMs: chestReward?.cooldownReductionMs || grantedItem?.cooldownReductionMs || 0,
+      cooldownReductionMs,
+      cooldownToken: issueCooldownToken({ discordId, milliseconds: cooldownReductionMs }),
       assignedQuest: chestReward?.assignedQuest || grantedItem?.assignedQuest || null,
       chestReward,
       member: normalizeMember(member),
     });
   } catch (error) {
-    const status = error.message === "npc_visit_expired" ? 409 : 503;
-    return NextResponse.json({ error: error.message }, { status });
+    const status = writeErrorStatus(error, error.message === "npc_visit_expired" ? 409 : 503);
+    return NextResponse.json({ error: writeErrorMessage(error) }, { status });
   }
 }

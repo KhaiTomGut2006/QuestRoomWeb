@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { acknowledgeReward } from "@/lib/player";
+import { writeErrorMessage, writeErrorStatus } from "@/lib/writeSafety";
 
 export async function POST(request) {
   const session = await getServerSession(authOptions);
@@ -17,6 +18,6 @@ export async function POST(request) {
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     return NextResponse.json({ member });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 503 });
+    return NextResponse.json({ error: writeErrorMessage(error) }, { status: writeErrorStatus(error) });
   }
 }

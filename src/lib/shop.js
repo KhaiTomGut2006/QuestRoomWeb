@@ -76,6 +76,9 @@ export const SHOP_ITEMS = {
 };
 
 const CHEST_COIN_WEIGHT = 120;
+const LEVEL_ITEM_CONFIG_CACHE_TTL_MS = 60_000;
+const levelItemConfigCache = new Map();
+const pendingLevelItemConfigLoads = new Map();
 
 function randomInt(min, max) {
   return Math.floor(min + Math.random() * (max - min + 1));
@@ -131,9 +134,31 @@ function normalizeConfiguredShopItem(entry) {
   };
 }
 
+export function invalidateLevelItemConfigCache() {
+  levelItemConfigCache.clear();
+  pendingLevelItemConfigLoads.clear();
+}
+
 async function getLevelItemConfig(stage) {
   if (!stage) return null;
-  return Level.findOne({ stageId: String(stage) }, { npcShop: 1, boxDrops: 1 }).lean();
+  const stageId = String(stage);
+  const cached = levelItemConfigCache.get(stageId);
+  if (cached && Date.now() - cached.loadedAt < LEVEL_ITEM_CONFIG_CACHE_TTL_MS) {
+    return cached.level;
+  }
+
+  if (!pendingLevelItemConfigLoads.has(stageId)) {
+    const load = Level.findOne({ stageId }, { npcShop: 1, boxDrops: 1 })
+      .lean()
+      .then((level) => {
+        levelItemConfigCache.set(stageId, { level, loadedAt: Date.now() });
+        return level;
+      })
+      .finally(() => pendingLevelItemConfigLoads.delete(stageId));
+    pendingLevelItemConfigLoads.set(stageId, load);
+  }
+
+  return pendingLevelItemConfigLoads.get(stageId);
 }
 
 export async function getNpcShopItems(stage) {

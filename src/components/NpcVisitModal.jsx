@@ -686,7 +686,7 @@ export default function NpcVisitModal({
       const data = await response.json();
       if (!response.ok) return;
       onMemberUpdate?.(data.member);
-      onCooldownReduction?.(data.reward?.cooldownReductionMs);
+      onCooldownReduction?.(data.reward?.cooldownReductionMs, data.cooldownToken);
       if (data.reward?.assignedQuest) onQuestScrollBought?.(data.reward.assignedQuest, data.member);
       onChestClaim?.(data.reward, { dismissNpc: true });
       onClose?.();
@@ -715,7 +715,7 @@ export default function NpcVisitModal({
         return;
       }
       onMemberUpdate?.(data.member);
-      onCooldownReduction?.(data.cooldownReductionMs);
+      onCooldownReduction?.(data.cooldownReductionMs, data.cooldownToken);
 
       // Determine per-item purchase message for feedback in the shop
       let purchaseMsg = "ซื้อสำเร็จ";

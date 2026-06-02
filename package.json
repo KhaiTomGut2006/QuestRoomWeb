@@ -7,7 +7,12 @@
     "dev:next": "next dev",
     "build": "next build",
     "start": "NODE_ENV=production node server.js",
-    "check": "next build"
+    "check": "next build",
+    "db:ensure-performance-indexes": "node scripts/ensure-performance-indexes.mjs",
+    "phase0:snapshot": "node scripts/api-snapshot.mjs",
+    "phase0:load:http": "node scripts/load-http.mjs",
+    "phase0:load:socket": "node scripts/load-socket.mjs",
+    "phase2:verify:socket": "node scripts/verify-socket-phase2.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1057.0",

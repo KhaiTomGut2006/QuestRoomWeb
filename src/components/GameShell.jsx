@@ -614,12 +614,14 @@ export default function GameShell() {
   const showGlobalQuestRef = useRef(false);
 
   useEffect(() => {
-    const audio = new Audio(withBasePath("/assets/bgmusic.mp3"));
-    audio.loop = true;
-    audio.volume = 0.25; // 0.5 (default volume state) * 0.5 scale
-    audioRef.current = audio;
+    let audio = null;
 
     const startPlay = () => {
+      audio = new Audio(withBasePath("/assets/bgmusic.mp3"));
+      audio.preload = "none";
+      audio.loop = true;
+      audio.volume = 0.25; // 0.5 (default volume state) * 0.5 scale
+      audioRef.current = audio;
       audio.play().catch((err) => {
         console.log("Audio playback waiting for interaction", err);
       });
@@ -633,7 +635,7 @@ export default function GameShell() {
     document.addEventListener("touchstart", startPlay);
 
     return () => {
-      audio.pause();
+      audio?.pause();
       document.removeEventListener("click", startPlay);
       document.removeEventListener("keydown", startPlay);
       document.removeEventListener("touchstart", startPlay);
@@ -764,6 +766,32 @@ export default function GameShell() {
     }
   }, []);
 
+  const refreshMember = useCallback(() => {
+    if (!isAuthed) return;
+    fetch(withBasePath("/api/player/me"))
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        setMember((current) => ({
+          ...data.member,
+          position: current?.position ?? data.member.position
+        }));
+        const nextReward = data.member?.reward;
+        if (nextReward?.id && !nextReward.seenAt && !shownRewardIdsRef.current.has(nextReward.id)) {
+          shownRewardIdsRef.current.add(nextReward.id);
+          setReward(nextReward);
+        }
+      })
+      .catch(() => {});
+  }, [isAuthed]);
+
+  const loadRoomLevels = useCallback(() => {
+    if (!isAuthed) return;
+    fetch(withBasePath("/api/player/rooms"))
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then(({ levels }) => setRoomLevels(Array.isArray(levels) ? levels : []))
+      .catch(() => {});
+  }, [isAuthed]);
+
   const showPlayerReaction = useCallback(({ playerId, emoji }) => {
     if (!playerId || !emoji) return;
     reactionSequenceRef.current += 1;
@@ -788,6 +816,21 @@ export default function GameShell() {
       setSocialNotifications((current) => current.filter((item) => item.id !== notification.id));
     }, 8000);
   }, []);
+
+  const fetchSocialStatus = useCallback(() => {
+    if (!isAuthed || !activeMember?.discordId) return;
+    const since = socialCheckedAtRef.current || new Date().toISOString();
+    fetch(withBasePath(`/api/player/social-status?since=${encodeURIComponent(since)}`))
+      .then((response) => (response.ok ? response.json() : Promise.reject(response)))
+      .then((data) => {
+        setSocialUnreadCount(Number(data.unreadCount) || 0);
+        for (const notification of data.notifications || []) {
+          showSocialNotification(notification);
+        }
+        socialCheckedAtRef.current = data.checkedAt || new Date().toISOString();
+      })
+      .catch(() => {});
+  }, [activeMember?.discordId, isAuthed, showSocialNotification]);
 
   const handlePlayerReaction = useCallback((emoji) => {
     if (!selfPlayer?.id || isViewingOtherRoom) return;
@@ -853,25 +896,10 @@ export default function GameShell() {
   useEffect(() => {
     if (!isAuthed || !activeMember?.discordId) return;
     socialCheckedAtRef.current = new Date().toISOString();
-
-    const fetchSocialStatus = () => {
-      const since = socialCheckedAtRef.current;
-      fetch(withBasePath(`/api/player/social-status?since=${encodeURIComponent(since)}`))
-        .then((response) => (response.ok ? response.json() : Promise.reject(response)))
-        .then((data) => {
-          setSocialUnreadCount(Number(data.unreadCount) || 0);
-          for (const notification of data.notifications || []) {
-            showSocialNotification(notification);
-          }
-          socialCheckedAtRef.current = data.checkedAt || new Date().toISOString();
-        })
-        .catch(() => {});
-    };
-
     fetchSocialStatus();
-    const interval = window.setInterval(fetchSocialStatus, 8000);
+    const interval = window.setInterval(fetchSocialStatus, 60_000);
     return () => window.clearInterval(interval);
-  }, [activeMember?.discordId, isAuthed, showSocialNotification]);
+  }, [activeMember?.discordId, fetchSocialStatus, isAuthed]);
 
   useEffect(() => {
     doorNpcRef.current = doorNpc;
@@ -1090,22 +1118,9 @@ export default function GameShell() {
 
   useEffect(() => {
     if (!isAuthed) return;
-    const interval = window.setInterval(() => {
-      fetch(withBasePath("/api/player/me"))
-        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-        .then((data) => {
-          // Preserve local position to avoid snap-back caused by stale DB data
-          setMember((current) => ({ ...data.member, position: current?.position ?? data.member.position }));
-          const nextReward = data.member?.reward;
-          if (nextReward?.id && !nextReward.seenAt && !shownRewardIdsRef.current.has(nextReward.id)) {
-            shownRewardIdsRef.current.add(nextReward.id);
-            setReward(nextReward);
-          }
-        })
-        .catch(() => {});
-    }, 3000);
+    const interval = window.setInterval(refreshMember, 60_000);
     return () => window.clearInterval(interval);
-  }, [isAuthed]);
+  }, [isAuthed, refreshMember]);
 
   useEffect(() => {
     if (!actualStage) return;
@@ -1114,16 +1129,10 @@ export default function GameShell() {
 
   useEffect(() => {
     if (!isAuthed) return;
-    const loadRoomLevels = () => {
-      fetch(withBasePath("/api/player/rooms"))
-        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-        .then(({ levels }) => setRoomLevels(Array.isArray(levels) ? levels : []))
-        .catch(() => {});
-    };
     loadRoomLevels();
-    const interval = window.setInterval(loadRoomLevels, 15_000);
+    const interval = window.setInterval(loadRoomLevels, 300_000);
     return () => window.clearInterval(interval);
-  }, [isAuthed]);
+  }, [isAuthed, loadRoomLevels]);
 
   useEffect(() => {
     if (!isAuthed || !activeViewedStage) return;
@@ -1175,8 +1184,21 @@ export default function GameShell() {
         return Array.from(map.values());
       });
     });
+    socket.on("player:move-delta", (delta) => {
+      setPlayers((prev) => {
+        const map = new Map(prev.map((item) => [item.id, item]));
+        const current = map.get(delta.id);
+        if (current) map.set(delta.id, { ...current, ...delta });
+        return Array.from(map.values());
+      });
+    });
     socket.on("player:leave", (id) => {
       setPlayers((prev) => prev.filter((player) => player.id !== id));
+    });
+    socket.on("player:offline", (id) => {
+      setPlayers((prev) => prev.map((player) => (
+        player.id === id ? { ...player, online: false, action: "idle" } : player
+      )));
     });
     socket.on("room:peek-state", ({ players: roomPlayers = [] } = {}) => {
       setPlayers((prev) => {
@@ -1199,20 +1221,23 @@ export default function GameShell() {
     socket.on("social:notification", (data) => {
       showSocialNotification(data, { incrementUnread: true });
     });
+    socket.on("social:refresh", fetchSocialStatus);
+    socket.on("member:refresh", refreshMember);
+    socket.on("levels:refresh", loadRoomLevels);
     socket.on("player:reaction", showPlayerReaction);
     socket.on("connect", () => {
-      socket.emit("player:join", selfPlayer);
+      socket.emit("player:join", { ...selfPlayer, supportsSocketDeltaV2: true });
     });
 
     if (socket.connected) {
-      socket.emit("player:join", selfPlayer);
+      socket.emit("player:join", { ...selfPlayer, supportsSocketDeltaV2: true });
     }
 
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
+  }, [fetchSocialStatus, loadRoomLevels, previewMode, queueDoorNpc, refreshMember, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
 
   useEffect(() => {
     if (!selfPlayer?.id) return;
@@ -1227,7 +1252,7 @@ export default function GameShell() {
       socketRef.current?.emit("room:peek", { stage: activeViewedStage });
     };
     requestRoomSnapshot();
-    const interval = window.setInterval(requestRoomSnapshot, 3000);
+    const interval = window.setInterval(requestRoomSnapshot, 10_000);
     return () => window.clearInterval(interval);
   }, [activeViewedStage, isViewingOtherRoom]);
 
@@ -1271,7 +1296,7 @@ export default function GameShell() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ position: nextPosition })
         }).catch(() => {});
-      }, 240);
+      }, 1000);
     },
     [activeMember, isAuthed, isViewingOtherRoom, previewMode, selfPlayer]
   );
@@ -1455,6 +1480,7 @@ export default function GameShell() {
           npcType:      npcVisit.id,
           npcName:      npcVisit.npcId || "",
           npcCharacter: npcQuestData.npcCharacter || null,
+          visitId:      npcVisit.visitId,
         }),
       });
       if (res.ok) {
@@ -1631,9 +1657,9 @@ export default function GameShell() {
     );
   }, [activeMember?.npcQuest]);
 
-  const handleCooldownReduction = useCallback((milliseconds) => {
+  const handleCooldownReduction = useCallback((milliseconds, token) => {
     if (!milliseconds) return;
-    socketRef.current?.emit("shop:reduce-cooldown", { milliseconds });
+    socketRef.current?.emit("shop:reduce-cooldown", { milliseconds, token });
   }, []);
 
   const handleGlobalQuestOpen = useCallback(() => {

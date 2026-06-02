@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { requestChallenge, submitChallenge } from "@/lib/player";
+import { writeErrorMessage, writeErrorStatus } from "@/lib/writeSafety";
 
 export async function POST() {
   const session = await getServerSession(authOptions);
@@ -17,7 +18,7 @@ export async function POST() {
     if (!result.ok) return NextResponse.json(result, { status: 200 });
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 503 });
+    return NextResponse.json({ error: writeErrorMessage(error) }, { status: writeErrorStatus(error) });
   }
 }
 
@@ -35,9 +36,9 @@ export async function PATCH(request) {
     if (!result) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (error) {
-    const status = ["pending_challenge_not_found", "challenge_image_required"].includes(error.message)
+    const fallbackStatus = ["pending_challenge_not_found", "challenge_image_required"].includes(error.message)
       ? 400
       : 503;
-    return NextResponse.json({ error: error.message }, { status });
+    return NextResponse.json({ error: writeErrorMessage(error) }, { status: writeErrorStatus(error, fallbackStatus) });
   }
 }

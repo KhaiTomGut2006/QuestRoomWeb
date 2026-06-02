@@ -6,6 +6,10 @@ import Member from "@/models/Member";
 import { normalizeMember } from "@/lib/player";
 import { openChestReward } from "@/lib/shop";
 import { hasNpcVisitAction, markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
+import { writeErrorMessage, writeErrorStatus } from "@/lib/writeSafety";
+import cooldownTokens from "@/lib/cooldownToken.cjs";
+
+const { issueCooldownToken } = cooldownTokens;
 
 export async function POST(request) {
   const session = await getServerSession(authOptions);
@@ -23,9 +27,13 @@ export async function POST(request) {
     markNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.chest);
     const reward = await openChestReward(member);
     await member.save({ validateModifiedOnly: true });
-    return NextResponse.json({ reward, member: normalizeMember(member) });
+    return NextResponse.json({
+      reward,
+      cooldownToken: issueCooldownToken({ discordId, milliseconds: reward?.cooldownReductionMs }),
+      member: normalizeMember(member)
+    });
   } catch (error) {
-    const status = error.message === "npc_visit_expired" ? 409 : 503;
-    return NextResponse.json({ error: error.message }, { status });
+    const status = writeErrorStatus(error, error.message === "npc_visit_expired" ? 409 : 503);
+    return NextResponse.json({ error: writeErrorMessage(error) }, { status });
   }
 }

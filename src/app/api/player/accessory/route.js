@@ -5,6 +5,7 @@ import { connectDb } from "@/lib/db";
 import { getAccessory } from "@/lib/accessories";
 import { normalizeMember } from "@/lib/player";
 import Member from "@/models/Member";
+import { writeErrorMessage, writeErrorStatus } from "@/lib/writeSafety";
 
 export async function PATCH(request) {
   const session = await getServerSession(authOptions);
@@ -33,6 +34,6 @@ export async function PATCH(request) {
     await member.save({ validateModifiedOnly: true });
     return NextResponse.json({ member: normalizeMember(member) });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 503 });
+    return NextResponse.json({ error: writeErrorMessage(error) }, { status: writeErrorStatus(error) });
   }
 }

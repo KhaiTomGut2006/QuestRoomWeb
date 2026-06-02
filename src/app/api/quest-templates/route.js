@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/db";
+import { dashboardCors, requireDashboardWrite } from "@/lib/dashboardAuth";
+import { replaceCollectionDocuments } from "@/lib/replaceCollection";
 import QuestTemplate from "@/models/QuestTemplate";
 
 // CORS headers — dashboard (different port) calls this endpoint
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+const CORS = dashboardCors;
 
 export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS });
@@ -31,6 +29,9 @@ export async function GET(request) {
 // PUT /api/quest-templates   body: { quests: [{difficulty, title, description, rewardMin, rewardMax, npcCharacter?}] }
 // Replaces ALL quest templates with the given list
 export async function PUT(request) {
+  const unauthorized = requireDashboardWrite(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json();
     const incoming = Array.isArray(body?.quests) ? body.quests : [];
@@ -41,20 +42,17 @@ export async function PUT(request) {
     );
 
     await connectDb();
-    // Delete all existing templates and insert fresh batch
-    await QuestTemplate.deleteMany({});
-    if (valid.length > 0) {
-      await QuestTemplate.insertMany(
-        valid.map((q) => ({
-          difficulty: q.difficulty,
-          title: String(q.title).trim(),
-          description: String(q.description).trim(),
-          rewardMin: Number(q.rewardMin) || 50,
-          rewardMax: Number(q.rewardMax) || 100,
-          npcCharacter: q.npcCharacter || null,
-        }))
-      );
-    }
+    await replaceCollectionDocuments(
+      QuestTemplate,
+      valid.map((q) => ({
+        difficulty: q.difficulty,
+        title: String(q.title).trim(),
+        description: String(q.description).trim(),
+        rewardMin: Number(q.rewardMin) || 50,
+        rewardMax: Number(q.rewardMax) || 100,
+        npcCharacter: q.npcCharacter || null,
+      }))
+    );
 
     const quests = await QuestTemplate.find({}).sort({ difficulty: 1, createdAt: 1 }).lean();
     return NextResponse.json({ success: true, quests }, { headers: CORS });

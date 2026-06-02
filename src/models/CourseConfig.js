@@ -6,4 +6,6 @@ const CourseConfigSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true }
 }, { timestamps: true, collection: "discordcourseconfigs" });
 
+CourseConfigSchema.index({ isActive: 1, courseName: 1 });
+
 export default mongoose.models.DiscordCourseConfig || mongoose.model("DiscordCourseConfig", CourseConfigSchema);

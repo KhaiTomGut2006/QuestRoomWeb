@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
+import { installMongooseMetrics } from "@/lib/mongooseMetrics";
 
 const uri = process.env.MONGODB_URI;
+installMongooseMetrics(mongoose);
 
 let cached = globalThis.__questRoomMongoose;
 
