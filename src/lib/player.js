@@ -9,6 +9,7 @@ import CourseConfig from "@/models/CourseConfig";
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 0;
 const ROOM_PLAYERS_CACHE_TTL_MS = Math.max(0, Number(process.env.ROOM_PLAYERS_CACHE_TTL_MS || 5_000));
+const ROOM_PLAYERS_CACHE_MAX_STAGES = Math.max(10, Number(process.env.ROOM_PLAYERS_CACHE_MAX_STAGES || 200));
 export const MEMBER_INTERACTION_SELECT = [
   "_id",
   "discord_id",
@@ -39,6 +40,21 @@ export const MEMBER_INTERACTION_SELECT = [
   "coin",
   "tutorial"
 ].join(" ");
+const ROOM_PLAYER_SELECT = [
+  "discord_id",
+  "nick",
+  "nickname",
+  "realName",
+  "username",
+  "discordData",
+  "stage",
+  "challengeFailureStage",
+  "challengeFailureCount",
+  "roomPosition",
+  "equippedAccessory",
+  "lastAuthentication",
+  "npcCycle"
+].join(" ");
 
 let cachedLevels = null;
 let cachedLevelsAt = 0;
@@ -52,6 +68,8 @@ const MAX_SOCIAL_ACTIVITY_ITEMS = 100;
 const RANKING_CACHE_TTL_MS = Math.max(10_000, Number(process.env.RANKING_CACHE_TTL_MS || 60_000));
 const cachedStageRankings = new Map();
 const roomPlayersCache = new Map();
+const pendingRoomPlayersLoad = new Map();
+const roomPlayersCacheVersions = new Map();
 
 function cloneRoomPlayers(players) {
   return players.map((player) => ({ ...player }));
@@ -59,10 +77,60 @@ function cloneRoomPlayers(players) {
 
 function clearRoomPlayersCache(stage = "") {
   if (stage) {
-    roomPlayersCache.delete(String(stage));
+    const stageKey = String(stage);
+    roomPlayersCache.delete(stageKey);
+    roomPlayersCacheVersions.set(stageKey, (roomPlayersCacheVersions.get(stageKey) || 0) + 1);
     return;
   }
   roomPlayersCache.clear();
+  for (const stageKey of roomPlayersCacheVersions.keys()) {
+    roomPlayersCacheVersions.set(stageKey, (roomPlayersCacheVersions.get(stageKey) || 0) + 1);
+  }
+}
+
+function pruneRoomPlayersCache(now = Date.now()) {
+  if (ROOM_PLAYERS_CACHE_TTL_MS <= 0) {
+    roomPlayersCache.clear();
+    return;
+  }
+  for (const [stage, cached] of roomPlayersCache) {
+    if (!cached || now - cached.cachedAt >= ROOM_PLAYERS_CACHE_TTL_MS) {
+      roomPlayersCache.delete(stage);
+    }
+  }
+  if (roomPlayersCache.size <= ROOM_PLAYERS_CACHE_MAX_STAGES) return;
+  const overflow = roomPlayersCache.size - ROOM_PLAYERS_CACHE_MAX_STAGES;
+  const oldestStages = [...roomPlayersCache.entries()]
+    .sort(([, a], [, b]) => Number(a?.cachedAt || 0) - Number(b?.cachedAt || 0))
+    .slice(0, overflow)
+    .map(([stage]) => stage);
+  for (const stage of oldestStages) roomPlayersCache.delete(stage);
+}
+
+function roomPlayerFromMember(member) {
+  const discord = member?.discordData || {};
+  const stage = member?.stage || DEFAULT_STAGE;
+  return {
+    id: member?.discord_id || "",
+    name:
+      member?.nick ||
+      member?.nickname ||
+      member?.realName ||
+      discord.globalName ||
+      discord.username ||
+      "Player",
+    username: discord.username || member?.username || "",
+    avatar: discord.avatarUrl || "",
+    equippedAccessory: String(member?.equippedAccessory || ""),
+    stage,
+    challengeFailureCount: member?.challengeFailureStage === stage
+      ? Math.max(0, Number(member?.challengeFailureCount) || 0)
+      : 0,
+    x: Number(member?.roomPosition?.x || 50),
+    y: Number(member?.roomPosition?.y || 70),
+    action: "idle",
+    online: false
+  };
 }
 
 async function ensureLevels({ force = false } = {}) {
@@ -565,16 +633,6 @@ export async function getMemberByDiscordId(discordId, options = {}) {
     member = await query;
   }
 
-  if (
-    member
-    && member.tutorial?.status !== "active"
-    && cachedLevels?.length
-    && !cachedLevels.some((level) => level.stageId === member.stage)
-  ) {
-    member.stage = firstConfiguredStage();
-    await member.save({ validateModifiedOnly: true });
-  }
-
   if (!member) return null;
   const reconciled = await reconcileChallengeSublevel(member);
   return includeSubmissions
@@ -586,45 +644,44 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
   await connectDb();
   await ensureLevels();
   const stageKey = String(stage || DEFAULT_STAGE);
+  pruneRoomPlayersCache();
   const cached = roomPlayersCache.get(stageKey);
   if (cached && Date.now() - cached.cachedAt < ROOM_PLAYERS_CACHE_TTL_MS) {
     return cloneRoomPlayers(cached.players);
   }
 
-  const members = await Member.find({
-    stage: stageKey,
-    discord_id: { $exists: true, $ne: "" },
-    lastAuthentication: { $exists: true, $ne: null },
-    npcCycle: { $exists: true, $ne: null }
-  })
-    .select(MEMBER_INTERACTION_SELECT)
-    .sort({ lastAuthentication: -1 });
+  let pendingLoad = pendingRoomPlayersLoad.get(stageKey);
+  if (!pendingLoad) {
+    const cacheVersion = roomPlayersCacheVersions.get(stageKey) || 0;
+    pendingLoad = (async () => {
+      const members = await Member.find({
+        stage: stageKey,
+        discord_id: { $exists: true, $ne: "" },
+        lastAuthentication: { $exists: true, $ne: null },
+        npcCycle: { $exists: true, $ne: null }
+      })
+        .select(ROOM_PLAYER_SELECT)
+        .sort({ lastAuthentication: -1 })
+        .lean();
 
-  await Promise.all(members.map(reconcileChallengeSublevel));
-  const players = members.map((member) => {
-    const normalized = normalizeMemberInteraction(member);
-    return {
-      id: normalized.discordId,
-      name: normalized.name,
-      username: normalized.username,
-      avatar: normalized.avatar,
-      equippedAccessory: normalized.equippedAccessory,
-      stage: normalized.stage,
-      challengeFailureCount: normalized.challengeFailureCount,
-      x: Number(normalized.position?.x || 50),
-      y: Number(normalized.position?.y || 70),
-      action: "idle",
-      online: false
-    };
-  });
-
-  if (ROOM_PLAYERS_CACHE_TTL_MS > 0) {
-    roomPlayersCache.set(stageKey, {
-      cachedAt: Date.now(),
-      players: cloneRoomPlayers(players)
+      const players = members.map(roomPlayerFromMember).filter((player) => player.id);
+      if (
+        ROOM_PLAYERS_CACHE_TTL_MS > 0
+        && (roomPlayersCacheVersions.get(stageKey) || 0) === cacheVersion
+      ) {
+        roomPlayersCache.set(stageKey, {
+          cachedAt: Date.now(),
+          players: cloneRoomPlayers(players)
+        });
+      }
+      return players;
+    })().finally(() => {
+      pendingRoomPlayersLoad.delete(stageKey);
     });
+    pendingRoomPlayersLoad.set(stageKey, pendingLoad);
   }
-  return players;
+
+  return cloneRoomPlayers(await pendingLoad);
 }
 
 export async function updateMemberPosition(discordId, position) {
@@ -632,7 +689,7 @@ export async function updateMemberPosition(discordId, position) {
   const nextPosition = getWalkablePoint(position);
   if (!nextPosition) return null;
 
-  const result = await Member.updateOne(
+  const member = await Member.findOneAndUpdate(
     { discord_id: String(discordId || "") },
     {
       $set: {
@@ -642,11 +699,12 @@ export async function updateMemberPosition(discordId, position) {
           updatedAt: new Date()
         }
       }
-    }
+    },
+    { projection: { stage: 1 } }
   );
 
-  if (result.matchedCount) clearRoomPlayersCache();
-  return result.matchedCount ? { ok: true, position: nextPosition } : null;
+  if (member) clearRoomPlayersCache(member.stage || "");
+  return member ? { ok: true, position: nextPosition } : null;
 }
 
 export async function transferCoins(senderDiscordId, recipientDiscordId, amount) {
@@ -829,9 +887,9 @@ export async function acknowledgeReward(discordId, rewardId) {
   return normalizeMember(member);
 }
 
-export async function getAvailableLevels() {
+export async function getAvailableLevels({ force = false } = {}) {
   await connectDb();
-  await ensureLevels();
+  await ensureLevels({ force });
   return cachedLevels || [];
 }
 

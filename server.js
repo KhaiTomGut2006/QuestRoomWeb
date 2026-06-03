@@ -299,32 +299,21 @@ function pruneRoom(stage) {
   if (room.size === 0) rooms.delete(key);
 }
 
-function hashString(value) {
-  let hash = 2166136261;
-  const input = String(value || "");
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function roomPlayerScore(stage, player) {
-  return hashString(`${stage}:${player?.id || ""}`);
-}
-
-function selectPublicRoomPlayers(room, stage, focusId = "") {
+function selectPublicRoomPlayers(room, focusId = "") {
   if (!room?.size) return [];
-  return Array.from(room.values())
+  const players = Array.from(room.values())
     .map(publicPlayer)
-    .filter((player) => player?.id)
-    .sort((a, b) => {
-      const aIsFocus = a.id === focusId;
-      const bIsFocus = b.id === focusId;
-      if (aIsFocus !== bIsFocus) return aIsFocus ? -1 : 1;
-      if (Boolean(a.online) !== Boolean(b.online)) return a.online ? -1 : 1;
-      return roomPlayerScore(stage, a) - roomPlayerScore(stage, b);
-    });
+    .filter((player) => player?.id);
+  if (!focusId) return players;
+
+  const focusIndex = players.findIndex((player) => player.id === focusId);
+  if (focusIndex <= 0) return players;
+  const focusPlayer = players[focusIndex];
+  return [
+    focusPlayer,
+    ...players.slice(0, focusIndex),
+    ...players.slice(focusIndex + 1)
+  ];
 }
 
 function queueRoomPatch(io, stage, player, { volatile = true } = {}) {
@@ -741,7 +730,7 @@ app.prepare().then(() => {
       socket.join(activeStage);
 
       const nextPublicPlayer = publicPlayer(room.get(activePlayerId));
-      socket.emit("room:state", selectPublicRoomPlayers(room, activeStage, activePlayerId));
+      socket.emit("room:state", selectPublicRoomPlayers(room, activePlayerId));
       queueRoomPatch(io, activeStage, nextPublicPlayer, { volatile: false });
       if (activeStage.startsWith("tutorial-room-")) {
         clearPersonalTimer(socket.id);
@@ -762,7 +751,7 @@ app.prepare().then(() => {
       const room = rooms.get(stage);
       socket.emit("room:peek-state", {
         stage,
-        players: selectPublicRoomPlayers(room, stage)
+        players: selectPublicRoomPlayers(room)
       });
     });
 

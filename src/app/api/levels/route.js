@@ -77,7 +77,7 @@ export async function PUT(request) {
     await Level.deleteMany({});
     if (levels.length > 0) await Level.insertMany(levels);
 
-    const savedLevels = await getAvailableLevels();
+    const savedLevels = await getAvailableLevels({ force: true });
     return NextResponse.json({ success: true, levels: savedLevels }, { headers: CORS });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 503, headers: CORS });

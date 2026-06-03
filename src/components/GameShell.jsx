@@ -849,8 +849,8 @@ export default function GameShell() {
     || stageLabel(activeViewedStage);
   const currentRoomLabel = tutorialRoomStage
     ? "Tutorial Room"
-    : activeMember?.stageLabel
-    || effectiveRoomLevels.find((level) => level.stageId === actualStage)?.name
+    : effectiveRoomLevels.find((level) => level.stageId === actualStage)?.name
+    || activeMember?.stageLabel
     || stageLabel(actualStage);
   const activeNpcVisitPurchases = useMemo(() => (
     doorNpc?.visitId && activeMember?.npcVisitId === doorNpc.visitId
