@@ -258,6 +258,25 @@ function playerFromMember(member, stageOverride = "") {
   };
 }
 
+function playerPresencePayload(player) {
+  if (!player) return null;
+  return {
+    id: player.id,
+    name: player.name,
+    username: player.username,
+    avatar: player.avatar,
+    equippedAccessory: player.equippedAccessory,
+    stage: player.stage,
+    challengeFailureCount: player.challengeFailureCount,
+    x: player.x,
+    y: player.y,
+    action: player.action,
+    coins: player.coins,
+    hasNpcQuest: player.hasNpcQuest,
+    permanentReductionMs: player.permanentReductionMs
+  };
+}
+
 function positionChangedEnough(a, b) {
   if (!a || !b) return Boolean(a);
   const ax = Number(a.x);
@@ -1354,11 +1373,11 @@ export default function GameShell() {
     });
     socket.on("player:reaction", showPlayerReaction);
     socket.on("connect", () => {
-      socket.emit("player:join", selfPlayer);
+      socket.emit("player:join", playerPresencePayload(selfPlayer));
     });
 
     if (socket.connected) {
-      socket.emit("player:join", selfPlayer);
+      socket.emit("player:join", playerPresencePayload(selfPlayer));
     }
 
     return () => {

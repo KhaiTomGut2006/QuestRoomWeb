@@ -327,12 +327,6 @@ function selectPublicRoomPlayers(room, stage, focusId = "") {
     });
 }
 
-function getRoomDisplayIds(stage) {
-  const key = String(stage || "");
-  const room = rooms.get(key);
-  return new Set(selectPublicRoomPlayers(room, key).map((player) => player.id));
-}
-
 function queueRoomPatch(io, stage, player, { volatile = true } = {}) {
   const key = String(stage || "");
   if (!key || !player?.id) return;
@@ -351,9 +345,7 @@ function queueRoomPatch(io, stage, player, { volatile = true } = {}) {
     const nextBuffer = roomPatchBuffers.get(key);
     roomPatchBuffers.delete(key);
     if (!nextBuffer?.players?.size) return;
-    const displayIds = getRoomDisplayIds(key);
-    const patch = Array.from(nextBuffer.players.values())
-      .filter((patchedPlayer) => displayIds.has(patchedPlayer.id));
+    const patch = Array.from(nextBuffer.players.values()).filter((patchedPlayer) => patchedPlayer?.id);
     if (!patch.length) return;
     const target = io.to(key);
     if (nextBuffer.reliable) {
@@ -451,13 +443,13 @@ function publicPlayer(player) {
 }
 
 function publicPlayerMovement(player) {
-  const compact = compactPlayer(player, Boolean(player.socketIds?.size));
+  const position = getWalkablePoint(player) || { x: 50, y: 70 };
   return {
-    id: compact.id,
-    x: compact.x,
-    y: compact.y,
-    action: compact.action,
-    updatedAt: compact.updatedAt
+    id: String(player?.id || ""),
+    x: position.x,
+    y: position.y,
+    action: String(player?.action || "move").slice(0, 24),
+    updatedAt: Date.now()
   };
 }
 

@@ -8,6 +8,7 @@ import CourseConfig from "@/models/CourseConfig";
 
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 0;
+const ROOM_PLAYERS_CACHE_TTL_MS = Math.max(0, Number(process.env.ROOM_PLAYERS_CACHE_TTL_MS || 5_000));
 export const MEMBER_INTERACTION_SELECT = [
   "_id",
   "discord_id",
@@ -50,6 +51,19 @@ const SOCIAL_ACTIVITY_CACHE_TTL_MS = 10_000;
 const MAX_SOCIAL_ACTIVITY_ITEMS = 100;
 const RANKING_CACHE_TTL_MS = Math.max(10_000, Number(process.env.RANKING_CACHE_TTL_MS || 60_000));
 const cachedStageRankings = new Map();
+const roomPlayersCache = new Map();
+
+function cloneRoomPlayers(players) {
+  return players.map((player) => ({ ...player }));
+}
+
+function clearRoomPlayersCache(stage = "") {
+  if (stage) {
+    roomPlayersCache.delete(String(stage));
+    return;
+  }
+  roomPlayersCache.clear();
+}
 
 async function ensureLevels({ force = false } = {}) {
   const cacheIsFresh =
@@ -571,8 +585,14 @@ export async function getMemberByDiscordId(discordId, options = {}) {
 export async function getRoomPlayers(stage = DEFAULT_STAGE) {
   await connectDb();
   await ensureLevels();
+  const stageKey = String(stage || DEFAULT_STAGE);
+  const cached = roomPlayersCache.get(stageKey);
+  if (cached && Date.now() - cached.cachedAt < ROOM_PLAYERS_CACHE_TTL_MS) {
+    return cloneRoomPlayers(cached.players);
+  }
+
   const members = await Member.find({
-    stage: String(stage || DEFAULT_STAGE),
+    stage: stageKey,
     discord_id: { $exists: true, $ne: "" },
     lastAuthentication: { $exists: true, $ne: null },
     npcCycle: { $exists: true, $ne: null }
@@ -581,15 +601,13 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
     .sort({ lastAuthentication: -1 });
 
   await Promise.all(members.map(reconcileChallengeSublevel));
-  return members.map((member) => {
+  const players = members.map((member) => {
     const normalized = normalizeMemberInteraction(member);
     return {
       id: normalized.discordId,
       name: normalized.name,
       username: normalized.username,
       avatar: normalized.avatar,
-      rank: normalized.rank,
-      achievements: normalized.achievements,
       equippedAccessory: normalized.equippedAccessory,
       stage: normalized.stage,
       challengeFailureCount: normalized.challengeFailureCount,
@@ -599,6 +617,14 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
       online: false
     };
   });
+
+  if (ROOM_PLAYERS_CACHE_TTL_MS > 0) {
+    roomPlayersCache.set(stageKey, {
+      cachedAt: Date.now(),
+      players: cloneRoomPlayers(players)
+    });
+  }
+  return players;
 }
 
 export async function updateMemberPosition(discordId, position) {
@@ -619,6 +645,7 @@ export async function updateMemberPosition(discordId, position) {
     }
   );
 
+  if (result.matchedCount) clearRoomPlayersCache();
   return result.matchedCount ? { ok: true, position: nextPosition } : null;
 }
 
