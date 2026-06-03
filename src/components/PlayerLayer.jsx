@@ -118,11 +118,17 @@ const PlayerToken = memo(function PlayerToken({ player, selfId, reactions, onOpe
         <div className="player-avatar">
           {accessoryImagePath && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img className="player-accessory" src={withBasePath(accessoryImagePath)} alt="" />
+            <img
+              className="player-accessory"
+              src={withBasePath(accessoryImagePath)}
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
           )}
           {player.avatar ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={player.avatar} alt="" />
+            <img src={player.avatar} alt="" loading="lazy" decoding="async" />
           ) : (
             <span>{initials(player.name)}</span>
           )}

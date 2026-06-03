@@ -272,6 +272,22 @@ function getRoom(stage) {
   return rooms.get(key);
 }
 
+function displayAvatarUrl(url, size = 64) {
+  const value = String(url || "");
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    const isDiscordAvatar =
+      (parsed.hostname === "cdn.discordapp.com" || parsed.hostname === "media.discordapp.net")
+      && parsed.pathname.startsWith("/avatars/");
+    if (!isDiscordAvatar) return value;
+    parsed.searchParams.set("size", String(size));
+    return parsed.toString();
+  } catch {
+    return value;
+  }
+}
+
 function pruneRoom(stage) {
   const key = String(stage || "");
   const room = rooms.get(key);
@@ -302,7 +318,7 @@ function pruneRoom(stage) {
 function selectPublicRoomPlayers(room, focusId = "") {
   if (!room?.size) return [];
   const players = Array.from(room.values())
-    .map(publicPlayer)
+    .map(publicPlayerPresence)
     .filter((player) => player?.id);
   if (!focusId) return players;
 
@@ -399,7 +415,7 @@ function compactPlayer(player, online = Boolean(player?.online)) {
     id: String(player.id || ""),
     name: String(player.name || "Player").slice(0, 32),
     username: String(player.username || "").slice(0, 32),
-    avatar: String(player.avatar || ""),
+    avatar: displayAvatarUrl(player.avatar),
     rank: String(player.rank || "Game Tester").slice(0, 48),
     achievements,
     equippedAccessory: ACCESSORY_IDS.has(String(player.equippedAccessory || "")) ? String(player.equippedAccessory) : "",
@@ -439,6 +455,21 @@ function publicPlayerMovement(player) {
     y: position.y,
     action: String(player?.action || "move").slice(0, 24),
     updatedAt: Date.now()
+  };
+}
+
+function publicPlayerPresence(player) {
+  const compact = compactPlayer(player, Boolean(player.socketIds?.size));
+  return {
+    id: compact.id,
+    equippedAccessory: compact.equippedAccessory,
+    stage: compact.stage,
+    challengeFailureCount: compact.challengeFailureCount,
+    x: compact.x,
+    y: compact.y,
+    action: compact.action,
+    online: compact.online,
+    updatedAt: compact.updatedAt
   };
 }
 

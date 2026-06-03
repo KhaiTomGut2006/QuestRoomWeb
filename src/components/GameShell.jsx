@@ -236,12 +236,28 @@ function getChestRewardIcon(reward) {
   return "/assets/Coin.png";
 }
 
+function displayAvatarUrl(url, size = 64) {
+  const value = String(url || "");
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    const isDiscordAvatar =
+      (parsed.hostname === "cdn.discordapp.com" || parsed.hostname === "media.discordapp.net")
+      && parsed.pathname.startsWith("/avatars/");
+    if (!isDiscordAvatar) return value;
+    parsed.searchParams.set("size", String(size));
+    return parsed.toString();
+  } catch {
+    return value;
+  }
+}
+
 function playerFromMember(member, stageOverride = "") {
   return {
     id: member.discordId || "demo-local",
     name: member.name || member.username || "Player",
     username: member.username || "",
-    avatar: member.avatar || "",
+    avatar: displayAvatarUrl(member.avatar),
     rank: member.rank || "Game Tester",
     achievements: member.achievements || [],
     equippedAccessory: member.equippedAccessory || "",

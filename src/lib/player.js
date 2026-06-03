@@ -120,7 +120,7 @@ function roomPlayerFromMember(member) {
       discord.username ||
       "Player",
     username: discord.username || member?.username || "",
-    avatar: discord.avatarUrl || "",
+    avatar: normalizeAvatarUrl(discord.avatarUrl || ""),
     equippedAccessory: String(member?.equippedAccessory || ""),
     stage,
     challengeFailureCount: member?.challengeFailureStage === stage
@@ -131,6 +131,22 @@ function roomPlayerFromMember(member) {
     action: "idle",
     online: false
   };
+}
+
+function normalizeAvatarUrl(url, size = 64) {
+  const value = String(url || "");
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    const isDiscordAvatar =
+      (parsed.hostname === "cdn.discordapp.com" || parsed.hostname === "media.discordapp.net")
+      && parsed.pathname.startsWith("/avatars/");
+    if (!isDiscordAvatar) return value;
+    parsed.searchParams.set("size", String(size));
+    return parsed.toString();
+  } catch {
+    return value;
+  }
 }
 
 async function ensureLevels({ force = false } = {}) {
@@ -436,7 +452,7 @@ function normalizeNpcQuestEvidence(discordId, evidence) {
 
 export function getDiscordAvatar(discordId, avatarHash) {
   if (!discordId || !avatarHash) return "";
-  return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=128`;
+  return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=64`;
 }
 
 export function normalizeMember(member, options = {}) {
@@ -468,7 +484,7 @@ export function normalizeMember(member, options = {}) {
       discord.username ||
       "Player",
     username: discord.username || member.username || "",
-    avatar: discord.avatarUrl || "",
+    avatar: normalizeAvatarUrl(discord.avatarUrl || ""),
     rank: member.rank || "Game Tester",
     achievements: (member.profileAchievements || []).map(normalizeBadge),
     stage: member.stage || DEFAULT_STAGE,
