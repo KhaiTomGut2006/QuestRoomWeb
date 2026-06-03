@@ -15,6 +15,8 @@ const GRIDFS_MAX_UPLOAD_BYTES = Math.min(
   MAX_UPLOAD_BYTES,
   Math.max(1, Number(process.env.GRIDFS_MAX_UPLOAD_MB || 8)) * 1024 * 1024
 );
+const GRIDFS_UPLOADS_ENABLED = process.env.ALLOW_GRIDFS_UPLOADS === "true"
+  || process.env.NODE_ENV !== "production";
 const ALLOWED_CONTENT_TYPES = [
   "image/jpeg",
   "image/png",
@@ -95,6 +97,10 @@ function getGridFsBucket() {
 }
 
 async function saveGridFsUpload(request, discordId) {
+  if (!GRIDFS_UPLOADS_ENABLED) {
+    return NextResponse.json({ error: "direct_upload_required" }, { status: 503 });
+  }
+
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > GRIDFS_MAX_UPLOAD_BYTES + 1024 * 1024) {
     return NextResponse.json(
@@ -185,6 +191,9 @@ export async function GET(request) {
     const maximumSizeInBytes = process.env.BLOB_READ_WRITE_TOKEN
       ? MAX_UPLOAD_BYTES
       : GRIDFS_MAX_UPLOAD_BYTES;
+    if (!process.env.BLOB_READ_WRITE_TOKEN && !GRIDFS_UPLOADS_ENABLED) {
+      return NextResponse.json({ error: "direct_upload_required" }, { status: 503 });
+    }
     if (requestedSize > maximumSizeInBytes) {
       return NextResponse.json(
         { error: "file_too_large", maximumSizeInBytes },

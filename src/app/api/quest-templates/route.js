@@ -8,6 +8,8 @@ const CORS = {
   "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
+const CACHE_TTL_MS = Math.max(30_000, Number(process.env.TEMPLATE_CACHE_TTL_MS || 300_000));
+let cachedQuestTemplates = new Map();
 
 export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS });
@@ -19,9 +21,16 @@ export async function GET(request) {
   const difficulty = searchParams.get("difficulty");
 
   try {
-    await connectDb();
     const filter = difficulty ? { difficulty } : {};
+    const cacheKey = difficulty || "__all__";
+    const cached = cachedQuestTemplates.get(cacheKey);
+    if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) {
+      return NextResponse.json({ quests: cached.quests }, { headers: CORS });
+    }
+
+    await connectDb();
     const quests = await QuestTemplate.find(filter).sort({ difficulty: 1, createdAt: 1 }).lean();
+    cachedQuestTemplates.set(cacheKey, { quests, loadedAt: Date.now() });
     return NextResponse.json({ quests }, { headers: CORS });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503, headers: CORS });
@@ -57,6 +66,7 @@ export async function PUT(request) {
     }
 
     const quests = await QuestTemplate.find({}).sort({ difficulty: 1, createdAt: 1 }).lean();
+    cachedQuestTemplates = new Map();
     return NextResponse.json({ success: true, quests }, { headers: CORS });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503, headers: CORS });

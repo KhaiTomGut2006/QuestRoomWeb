@@ -7,6 +7,9 @@ const CORS = {
   "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
+const CACHE_TTL_MS = Math.max(30_000, Number(process.env.TEMPLATE_CACHE_TTL_MS || 300_000));
+let cachedHints = null;
+let cachedHintsAt = 0;
 
 export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS });
@@ -15,8 +18,14 @@ export async function OPTIONS() {
 // GET /api/hint-templates   — returns all hints ordered by order field
 export async function GET() {
   try {
+    if (cachedHints && Date.now() - cachedHintsAt < CACHE_TTL_MS) {
+      return NextResponse.json({ hints: cachedHints }, { headers: CORS });
+    }
+
     await connectDb();
     const hints = await HintTemplate.find().sort({ order: 1, createdAt: 1 }).lean();
+    cachedHints = hints;
+    cachedHintsAt = Date.now();
     return NextResponse.json({ hints }, { headers: CORS });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503, headers: CORS });
@@ -44,6 +53,8 @@ export async function PUT(request) {
     if (valid.length > 0) await HintTemplate.insertMany(valid);
 
     const hints = await HintTemplate.find().sort({ order: 1, createdAt: 1 }).lean();
+    cachedHints = null;
+    cachedHintsAt = 0;
     return NextResponse.json({ hints }, { headers: CORS });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503, headers: CORS });

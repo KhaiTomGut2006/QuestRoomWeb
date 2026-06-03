@@ -30,9 +30,9 @@ export async function PATCH(request) {
 
   try {
     const body = await request.json();
-    const member = await updateMemberPosition(discordId, body?.position || body);
-    if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
-    return NextResponse.json({ member });
+    const result = await updateMemberPosition(discordId, body?.position || body);
+    if (!result) return NextResponse.json({ error: "invalid_position_or_member_not_found" }, { status: 400 });
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503 });
   }

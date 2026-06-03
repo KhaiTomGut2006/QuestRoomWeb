@@ -28,8 +28,13 @@ const playerNpcQuest = new Map(); // playerId → bool (has active NPC quest)
 const MAX_ROOM_PLAYERS = 240;
 const MAX_VISIBLE_ROOM_PLAYERS = Math.max(1, Number(process.env.MAX_VISIBLE_ROOM_PLAYERS || 20));
 const ROOM_PATCH_INTERVAL_MS = 100;
+const SOCKET_TRANSPORTS = process.env.SOCKET_ALLOW_POLLING === "true"
+  ? ["websocket", "polling"]
+  : ["websocket"];
+const LEVEL_CONFIG_CACHE_TTL_MS = Math.max(30_000, Number(process.env.LEVEL_CONFIG_CACHE_TTL_MS || 300_000));
 const roomPatchBuffers = new Map();
 const roomPatchTimers = new Map();
+const levelConfigCache = new Map();
 
 // ─── NPC Cycle Timer (per-socket personal timers) ───────────────────
 const CYCLE_MS = 20 * 60 * 1000;
@@ -87,11 +92,21 @@ function pickWeightedNpc() {
 }
 
 async function getLevelConfig(stage, projection) {
+  const stageKey = String(stage || "");
+  const projectionKey = Object.keys(projection || {}).sort().join(",");
+  const cacheKey = `${stageKey}:${projectionKey}`;
+  const cached = levelConfigCache.get(cacheKey);
+  if (cached && Date.now() - cached.loadedAt < LEVEL_CONFIG_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
   await getMembersCollection();
-  return mongoose.connection.collection("levels").findOne(
+  const value = await mongoose.connection.collection("levels").findOne(
     { stageId: String(stage || "") },
     { projection }
   );
+  levelConfigCache.set(cacheKey, { value, loadedAt: Date.now() });
+  return value;
 }
 
 async function pickWeightedNpcForStage(stage) {
@@ -160,7 +175,12 @@ async function getMembersCollection() {
   if (mongoose.connection.readyState !== 1) {
     await mongoose.connect(mongoUri, {
       bufferCommands: false,
-      dbName: mongoDbName
+      dbName: mongoDbName,
+      maxPoolSize: Math.max(5, Number(process.env.MONGODB_MAX_POOL_SIZE || 20)),
+      minPoolSize: Math.max(0, Number(process.env.MONGODB_MIN_POOL_SIZE || 0)),
+      maxIdleTimeMS: Math.max(5_000, Number(process.env.MONGODB_MAX_IDLE_MS || 30_000)),
+      serverSelectionTimeoutMS: Math.max(1_000, Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || 5_000)),
+      socketTimeoutMS: Math.max(10_000, Number(process.env.MONGODB_SOCKET_TIMEOUT_MS || 45_000))
     });
   }
   return mongoose.connection.collection("members");
@@ -449,7 +469,7 @@ app.prepare().then(() => {
     path: `${basePath}/socket.io`,
     addTrailingSlash: false,
     cors: { origin: true },
-    transports: ["websocket", "polling"]
+    transports: SOCKET_TRANSPORTS
   });
 
   // ─── Per-socket personal NPC cycle ────────────────────────────

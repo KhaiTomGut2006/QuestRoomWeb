@@ -43,12 +43,14 @@ export const MEMBER_INTERACTION_SELECT = [
 let cachedLevels = null;
 let cachedLevelsAt = 0;
 let pendingLevelsLoad = null;
-const LEVEL_CACHE_TTL_MS = 15_000;
+const LEVEL_CACHE_TTL_MS = Math.max(30_000, Number(process.env.LEVEL_CACHE_TTL_MS || 300_000));
 let cachedSocialActivity = null;
 let cachedSocialActivityAt = 0;
 let pendingSocialActivityLoad = null;
 const SOCIAL_ACTIVITY_CACHE_TTL_MS = 10_000;
 const MAX_SOCIAL_ACTIVITY_ITEMS = 100;
+const RANKING_CACHE_TTL_MS = Math.max(10_000, Number(process.env.RANKING_CACHE_TTL_MS || 60_000));
+const cachedStageRankings = new Map();
 
 async function ensureLevels({ force = false } = {}) {
   const cacheIsFresh =
@@ -603,14 +605,10 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
 
 export async function updateMemberPosition(discordId, position) {
   await connectDb();
-  await ensureLevels();
   const nextPosition = getWalkablePoint(position);
-  if (!nextPosition) {
-    const existing = await getMemberByDiscordId(discordId);
-    return existing;
-  }
+  if (!nextPosition) return null;
 
-  const member = await Member.findOneAndUpdate(
+  const result = await Member.updateOne(
     { discord_id: String(discordId || "") },
     {
       $set: {
@@ -620,11 +618,10 @@ export async function updateMemberPosition(discordId, position) {
           updatedAt: new Date()
         }
       }
-    },
-    { new: true }
+    }
   );
 
-  return member ? normalizeMember(member) : null;
+  return result.matchedCount ? { ok: true, position: nextPosition } : null;
 }
 
 export async function transferCoins(senderDiscordId, recipientDiscordId, amount) {
@@ -809,7 +806,7 @@ export async function acknowledgeReward(discordId, rewardId) {
 
 export async function getAvailableLevels() {
   await connectDb();
-  await ensureLevels({ force: true });
+  await ensureLevels();
   return cachedLevels || [];
 }
 
@@ -819,6 +816,11 @@ export async function getStageRanking(stageId) {
   
   const level = cachedLevels.find(l => l.stageId === stageId) || cachedLevels[0];
   if (!level) return [];
+  const cacheKey = String(level.stageId || level.name || stageId || "");
+  const cached = cachedStageRankings.get(cacheKey);
+  if (cached && Date.now() - cached.loadedAt < RANKING_CACHE_TTL_MS) {
+    return cached.ranking;
+  }
 
   const members = await Member.find({
     discord_id: { $exists: true, $ne: "" },
@@ -863,7 +865,7 @@ export async function getStageRanking(stageId) {
     return timeA - timeB;
   });
 
-  return rankedPlayers.map((p, idx) => ({
+  const ranking = rankedPlayers.map((p, idx) => ({
     rank: idx + 1,
     id: p.id,
     name: p.name,
@@ -871,6 +873,8 @@ export async function getStageRanking(stageId) {
     avatar: p.avatar,
     badge: p.badge
   }));
+  cachedStageRankings.set(cacheKey, { ranking, loadedAt: Date.now() });
+  return ranking;
 }
 
 export async function acceptNpcQuest(discordId, questData) {

@@ -28,6 +28,15 @@ const NPC_VISIT_ACTIONS = {
   hint: "__hint__"
 };
 const MAX_VISIBLE_ROOM_PLAYERS = 20;
+const MEMBER_REFRESH_INTERVAL_MS = 120_000;
+const ROOM_LEVEL_REFRESH_INTERVAL_MS = 300_000;
+const ROOM_PEEK_INTERVAL_MS = 60_000;
+const SOCIAL_STATUS_INTERVAL_MS = 300_000;
+const POSITION_SAVE_INTERVAL_MS = 60_000;
+const POSITION_SAVE_MIN_DELTA = 0.5;
+const SOCKET_TRANSPORTS = process.env.NEXT_PUBLIC_SOCKET_ALLOW_POLLING === "true"
+  ? ["websocket", "polling"]
+  : ["websocket"];
 
 function safeUploadName(filename) {
   return String(filename || "evidence")
@@ -248,6 +257,16 @@ function playerFromMember(member, stageOverride = "") {
     // Permanent cooldown reduction: 60s per Lv1 purchase + 60s per Lv2 purchase
     permanentReductionMs: ((member.shopCooldownT1 || 0) + (member.shopCooldownT2 || 0)) * 60_000,
   };
+}
+
+function positionChangedEnough(a, b) {
+  if (!a || !b) return Boolean(a);
+  const ax = Number(a.x);
+  const ay = Number(a.y);
+  const bx = Number(b.x);
+  const by = Number(b.y);
+  if (![ax, ay, bx, by].every(Number.isFinite)) return true;
+  return Math.hypot(ax - bx, ay - by) >= POSITION_SAVE_MIN_DELTA;
 }
 
 function sameRoomPlayer(a, b) {
@@ -794,7 +813,6 @@ export default function GameShell() {
     }
   }, []);
   const socketRef = useRef(null);
-  const emitTimerRef = useRef(null);
   const autoLoginStartedRef = useRef(false);
   const shownRewardIdsRef = useRef(new Set());
   const doorNpcRef = useRef(null);
@@ -805,6 +823,12 @@ export default function GameShell() {
   const memberRefreshInFlightRef = useRef(false);
   const socialStatusInFlightRef = useRef(false);
   const playerDisplaySeedRef = useRef(Math.random().toString(36).slice(2));
+  const latestPositionRef = useRef(null);
+  const lastPersistedPositionRef = useRef(null);
+  const persistedPositionOwnerRef = useRef("");
+  const positionSaveInFlightRef = useRef(false);
+  const questTemplatesCacheRef = useRef(new Map());
+  const hintTemplatesCacheRef = useRef(null);
 
   const isAuthed = status === "authenticated";
   const activeMember = member || (previewMode ? demoMember : null);
@@ -883,6 +907,58 @@ export default function GameShell() {
       setReward(nextReward);
     }
   }, []);
+
+  useEffect(() => {
+    const ownerId = activeMember?.discordId || activeMember?.id || "";
+    const position = activeMember?.position
+      ? {
+          x: Number(activeMember.position.x),
+          y: Number(activeMember.position.y)
+        }
+      : null;
+    if (!ownerId || !position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) return;
+
+    latestPositionRef.current = position;
+    if (persistedPositionOwnerRef.current !== ownerId) {
+      persistedPositionOwnerRef.current = ownerId;
+      lastPersistedPositionRef.current = position;
+    }
+  }, [activeMember?.discordId, activeMember?.id, activeMember?.position?.x, activeMember?.position?.y]);
+
+  const persistLatestPosition = useCallback((force = false) => {
+    if (!isAuthed || previewMode || positionSaveInFlightRef.current) return;
+    const position = latestPositionRef.current;
+    if (!position || !positionChangedEnough(position, lastPersistedPositionRef.current)) return;
+    if (!force && document.visibilityState === "hidden") return;
+
+    positionSaveInFlightRef.current = true;
+    fetch(withBasePath("/api/player/me"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ position })
+    })
+      .then((response) => {
+        if (response.ok) lastPersistedPositionRef.current = position;
+      })
+      .catch(() => {})
+      .finally(() => {
+        positionSaveInFlightRef.current = false;
+      });
+  }, [isAuthed, previewMode]);
+
+  useEffect(() => {
+    if (!isAuthed || previewMode) return;
+    const interval = window.setInterval(() => persistLatestPosition(false), POSITION_SAVE_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") persistLatestPosition(true);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      positionSaveInFlightRef.current = false;
+    };
+  }, [isAuthed, persistLatestPosition, previewMode]);
 
   const showPlayerReaction = useCallback(({ playerId, emoji }) => {
     if (!playerId || !emoji) return;
@@ -994,7 +1070,7 @@ export default function GameShell() {
     };
 
     fetchSocialStatus();
-    const interval = window.setInterval(fetchSocialStatus, 60_000);
+    const interval = window.setInterval(fetchSocialStatus, SOCIAL_STATUS_INTERVAL_MS);
     document.addEventListener("visibilitychange", fetchSocialStatus);
     return () => {
       window.clearInterval(interval);
@@ -1238,7 +1314,7 @@ export default function GameShell() {
         .finally(() => {
           memberRefreshInFlightRef.current = false;
         });
-    }, 15_000);
+    }, MEMBER_REFRESH_INTERVAL_MS);
     return () => {
       window.clearInterval(interval);
       memberRefreshInFlightRef.current = false;
@@ -1260,7 +1336,7 @@ export default function GameShell() {
         .catch(() => {});
     };
     loadRoomLevels();
-    const interval = window.setInterval(loadRoomLevels, 60_000);
+    const interval = window.setInterval(loadRoomLevels, ROOM_LEVEL_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [isAuthed]);
 
@@ -1295,7 +1371,7 @@ export default function GameShell() {
     const socket = io({
       path: withBasePath("/socket.io"),
       addTrailingSlash: false,
-      transports: ["websocket", "polling"],
+      transports: SOCKET_TRANSPORTS,
       reconnectionAttempts: 6
     });
     socketRef.current = socket;
@@ -1356,7 +1432,7 @@ export default function GameShell() {
       socketRef.current?.emit("room:peek", { stage: activeViewedStage });
     };
     requestRoomSnapshot();
-    const interval = window.setInterval(requestRoomSnapshot, 10_000);
+    const interval = window.setInterval(requestRoomSnapshot, ROOM_PEEK_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [activeViewedStage, isViewingOtherRoom]);
 
@@ -1386,19 +1462,10 @@ export default function GameShell() {
       }
 
       const payload = { x, y, action: "move" };
+      latestPositionRef.current = nextPosition;
       socketRef.current?.emit("player:move", payload);
-
-      window.clearTimeout(emitTimerRef.current);
-      emitTimerRef.current = window.setTimeout(() => {
-        if (!isAuthed) return;
-        fetch(withBasePath("/api/player/me"), {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ position: nextPosition })
-        }).catch(() => {});
-      }, 240);
     },
-    [activeMember, isAuthed, isViewingOtherRoom, previewMode, selfPlayer]
+    [activeMember, isViewingOtherRoom, previewMode, selfPlayer]
   );
 
   const handleStageClick = useCallback(
@@ -1495,16 +1562,26 @@ export default function GameShell() {
     if (questDataKeyRef.current === npcKey) return;
     questDataKeyRef.current = npcKey;
 
+    const applyQuestPool = (pool) => {
+      if (pool.length === 0) { setNpcQuestData(null); return; }
+      const picked = pool[Math.floor(Math.random() * pool.length)];
+      const reward = Math.round(
+        picked.rewardMin + Math.random() * (picked.rewardMax - picked.rewardMin)
+      );
+      setNpcQuestData({ ...picked, reward });
+    };
+    const cachedPool = questTemplatesCacheRef.current.get(difficulty);
+    if (cachedPool) {
+      applyQuestPool(cachedPool);
+      return;
+    }
+
     fetch(withBasePath(`/api/quest-templates?difficulty=${difficulty}`))
       .then((r) => r.json())
       .then((data) => {
         const pool = Array.isArray(data.quests) ? data.quests : [];
-        if (pool.length === 0) { setNpcQuestData(null); return; }
-        const picked = pool[Math.floor(Math.random() * pool.length)];
-        const reward = Math.round(
-          picked.rewardMin + Math.random() * (picked.rewardMax - picked.rewardMin)
-        );
-        setNpcQuestData({ ...picked, reward });
+        questTemplatesCacheRef.current.set(difficulty, pool);
+        applyQuestPool(pool);
       })
       .catch(() => setNpcQuestData(null));
 
@@ -1513,10 +1590,18 @@ export default function GameShell() {
   useEffect(() => {
     if (npcVisit?.type === "hints") {
       if (!hintsData) {
-        fetch(withBasePath("/api/hint-templates"))
-          .then((r) => r.json())
-          .then((data) => setHintsData(Array.isArray(data.hints) ? data.hints : []))
-          .catch(() => setHintsData([]));
+        if (hintTemplatesCacheRef.current) {
+          setHintsData(hintTemplatesCacheRef.current);
+        } else {
+          fetch(withBasePath("/api/hint-templates"))
+            .then((r) => r.json())
+            .then((data) => {
+              const hints = Array.isArray(data.hints) ? data.hints : [];
+              hintTemplatesCacheRef.current = hints;
+              setHintsData(hints);
+            })
+            .catch(() => setHintsData([]));
+        }
       }
     } else {
       setHintsData(null);
