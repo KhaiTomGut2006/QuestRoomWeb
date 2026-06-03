@@ -8,7 +8,6 @@ import CourseConfig from "@/models/CourseConfig";
 
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 0;
-const MAX_VISIBLE_ROOM_PLAYERS = Math.max(1, Number(process.env.MAX_VISIBLE_ROOM_PLAYERS || 20));
 export const MEMBER_INTERACTION_SELECT = [
   "_id",
   "discord_id",
@@ -579,8 +578,7 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
     npcCycle: { $exists: true, $ne: null }
   })
     .select(MEMBER_INTERACTION_SELECT)
-    .sort({ lastAuthentication: -1 })
-    .limit(MAX_VISIBLE_ROOM_PLAYERS);
+    .sort({ lastAuthentication: -1 });
 
   await Promise.all(members.map(reconcileChallengeSublevel));
   return members.map((member) => {

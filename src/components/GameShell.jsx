@@ -27,7 +27,6 @@ const NPC_VISIT_ACTIONS = {
   gamble: "__gamble__",
   hint: "__hint__"
 };
-const MAX_VISIBLE_ROOM_PLAYERS = 20;
 const MEMBER_REFRESH_INTERVAL_MS = 120_000;
 const ROOM_LEVEL_REFRESH_INTERVAL_MS = 300_000;
 const ROOM_PEEK_INTERVAL_MS = 60_000;
@@ -286,56 +285,9 @@ function sameRoomPlayer(a, b) {
   return comparableKeys.every((key) => !(key in b) || a[key] === b[key]);
 }
 
-function hashString(value) {
-  let hash = 2166136261;
-  const input = String(value || "");
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function roomPlayerScore(player, seed) {
-  return hashString(`${seed}:${player?.stage || ""}:${player?.id || ""}`);
-}
-
-function selectRoomPlayers(players, { selfId = "", seed = "", limit = MAX_VISIBLE_ROOM_PLAYERS, excludeSelf = false } = {}) {
+function selectRoomPlayers(players, { selfId = "", excludeSelf = false } = {}) {
   const incoming = Array.isArray(players) ? players.filter((player) => player?.id) : [];
-  if (incoming.length <= limit && !excludeSelf) return incoming;
-
-  return [...incoming]
-    .sort((a, b) => {
-      const aIsSelf = a.id === selfId;
-      const bIsSelf = b.id === selfId;
-      if (aIsSelf !== bIsSelf) return aIsSelf ? -1 : 1;
-      if (Boolean(a.online) !== Boolean(b.online)) return a.online ? -1 : 1;
-      return roomPlayerScore(a, seed) - roomPlayerScore(b, seed);
-    })
-    .filter((player) => !(excludeSelf && player.id === selfId))
-    .slice(0, limit);
-}
-
-function capPlayersByStage(players, selfId, seed) {
-  const incoming = Array.isArray(players) ? players : [];
-  if (!incoming.length) return incoming;
-
-  const grouped = new Map();
-  for (const player of incoming) {
-    const stage = player?.stage || "";
-    if (!grouped.has(stage)) grouped.set(stage, []);
-    grouped.get(stage).push(player);
-  }
-
-  let changed = false;
-  const capped = [];
-  for (const group of grouped.values()) {
-    const selected = selectRoomPlayers(group, { selfId, seed });
-    if (selected.length !== group.length) changed = true;
-    capped.push(...selected);
-  }
-
-  return changed ? capped : incoming;
+  return excludeSelf ? incoming.filter((player) => player.id !== selfId) : incoming;
 }
 
 function mergeRoomPlayers(currentPlayers, nextPlayers) {
@@ -824,7 +776,6 @@ export default function GameShell() {
   const npcSwapTimerRef = useRef(null);
   const memberRefreshInFlightRef = useRef(false);
   const socialStatusInFlightRef = useRef(false);
-  const playerDisplaySeedRef = useRef(Math.random().toString(36).slice(2));
   const latestPositionRef = useRef(null);
   const lastPersistedPositionRef = useRef(null);
   const persistedPositionOwnerRef = useRef("");
@@ -842,13 +793,9 @@ export default function GameShell() {
     () => (activeMember ? playerFromMember(activeMember, tutorialRoomStage) : null),
     [activeMember, tutorialRoomStage]
   );
-  const mergeAndCapPlayers = useCallback((currentPlayers, nextPlayers) => (
-    capPlayersByStage(
-      mergeRoomPlayers(currentPlayers, nextPlayers),
-      selfPlayer?.id,
-      playerDisplaySeedRef.current
-    )
-  ), [selfPlayer?.id]);
+  const mergePlayers = useCallback((currentPlayers, nextPlayers) => (
+    mergeRoomPlayers(currentPlayers, nextPlayers)
+  ), []);
   const tutorialVisitor = useMemo(
     () => npcFromTutorialStep(activeMember?.tutorial?.step),
     [activeMember?.tutorial?.step]
@@ -1354,7 +1301,7 @@ export default function GameShell() {
       .then(({ players: roomPlayers }) => {
         setPlayers((prev) => {
           const currentPlayersById = new Map(prev.map((player) => [player.id, player]));
-          return mergeAndCapPlayers(
+          return mergePlayers(
             prev,
             (roomPlayers || []).map((player) => ({
               ...player,
@@ -1366,7 +1313,7 @@ export default function GameShell() {
       .catch(() => {});
 
     return () => controller.abort();
-  }, [activeViewedStage, isAuthed, mergeAndCapPlayers]);
+  }, [activeViewedStage, isAuthed, mergePlayers]);
 
   useEffect(() => {
     if (!selfPlayer) return;
@@ -1379,19 +1326,19 @@ export default function GameShell() {
     socketRef.current = socket;
 
     socket.on("room:state", (roomPlayers) => {
-      setPlayers((prev) => mergeAndCapPlayers(prev, roomPlayers));
+      setPlayers((prev) => mergePlayers(prev, roomPlayers));
     });
     socket.on("player:upsert", (player) => {
-      setPlayers((prev) => mergeAndCapPlayers(prev, [player]));
+      setPlayers((prev) => mergePlayers(prev, [player]));
     });
     socket.on("players:patch", (roomPlayers) => {
-      setPlayers((prev) => mergeAndCapPlayers(prev, roomPlayers));
+      setPlayers((prev) => mergePlayers(prev, roomPlayers));
     });
     socket.on("player:leave", (id) => {
       setPlayers((prev) => prev.filter((player) => player.id !== id));
     });
     socket.on("room:peek-state", ({ players: roomPlayers = [] } = {}) => {
-      setPlayers((prev) => mergeAndCapPlayers(prev, roomPlayers));
+      setPlayers((prev) => mergePlayers(prev, roomPlayers));
     });
     socket.on("timer:sync", (data) => setCycleInfo(data));
     socket.on("npc:visit", (npc) => {
@@ -1418,7 +1365,7 @@ export default function GameShell() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [mergeAndCapPlayers, previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
+  }, [mergePlayers, previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
 
   useEffect(() => {
     if (!selfPlayer?.id) return;
@@ -1440,8 +1387,8 @@ export default function GameShell() {
 
   useEffect(() => {
     if (!selfPlayer) return;
-    setPlayers((prev) => mergeAndCapPlayers(prev, [selfPlayer]));
-  }, [mergeAndCapPlayers, selfPlayer]);
+    setPlayers((prev) => mergePlayers(prev, [selfPlayer]));
+  }, [mergePlayers, selfPlayer]);
 
   useEffect(() => {
     if (!activeMember) return;
@@ -1892,8 +1839,7 @@ export default function GameShell() {
       return isInViewedRoom && !isBrowsingSelf;
     });
     return selectRoomPlayers(roomPlayers, {
-      selfId: isViewingOtherRoom ? "" : selfPlayer?.id,
-      seed: playerDisplaySeedRef.current,
+      selfId: selfPlayer?.id,
       excludeSelf: isViewingOtherRoom
     });
   }, [activeViewedStage, isViewingOtherRoom, players, selfPlayer?.id]);
