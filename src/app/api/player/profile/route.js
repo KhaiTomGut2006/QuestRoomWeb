@@ -16,7 +16,7 @@ export async function GET(request) {
       return NextResponse.json({ error: "id_required" }, { status: 400 });
     }
 
-    const member = await getMemberByDiscordId(discordId);
+    const member = await getMemberByDiscordId(discordId, { submissionLimit: 12 });
     if (!member) {
       return NextResponse.json({ error: "player_not_found" }, { status: 404 });
     }

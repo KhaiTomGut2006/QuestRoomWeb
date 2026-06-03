@@ -26,6 +26,7 @@ const socketToPlayer = new Map(); // socketId → playerId
 const socketPlayerCoins = new Map(); // socketId → last client-synced balance for NPC offer sizing
 const playerNpcQuest = new Map(); // playerId → bool (has active NPC quest)
 const MAX_ROOM_PLAYERS = 240;
+const MAX_VISIBLE_ROOM_PLAYERS = Math.max(1, Number(process.env.MAX_VISIBLE_ROOM_PLAYERS || 20));
 const ROOM_PATCH_INTERVAL_MS = 100;
 const roomPatchBuffers = new Map();
 const roomPatchTimers = new Map();
@@ -279,6 +280,41 @@ function pruneRoom(stage) {
   if (room.size === 0) rooms.delete(key);
 }
 
+function hashString(value) {
+  let hash = 2166136261;
+  const input = String(value || "");
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function roomPlayerScore(stage, player) {
+  return hashString(`${stage}:${player?.id || ""}`);
+}
+
+function selectPublicRoomPlayers(room, stage, focusId = "") {
+  if (!room?.size) return [];
+  return Array.from(room.values())
+    .map(publicPlayer)
+    .filter((player) => player?.id)
+    .sort((a, b) => {
+      const aIsFocus = a.id === focusId;
+      const bIsFocus = b.id === focusId;
+      if (aIsFocus !== bIsFocus) return aIsFocus ? -1 : 1;
+      if (Boolean(a.online) !== Boolean(b.online)) return a.online ? -1 : 1;
+      return roomPlayerScore(stage, a) - roomPlayerScore(stage, b);
+    })
+    .slice(0, MAX_VISIBLE_ROOM_PLAYERS);
+}
+
+function getRoomDisplayIds(stage) {
+  const key = String(stage || "");
+  const room = rooms.get(key);
+  return new Set(selectPublicRoomPlayers(room, key).map((player) => player.id));
+}
+
 function queueRoomPatch(io, stage, player, { volatile = true } = {}) {
   const key = String(stage || "");
   if (!key || !player?.id) return;
@@ -297,7 +333,10 @@ function queueRoomPatch(io, stage, player, { volatile = true } = {}) {
     const nextBuffer = roomPatchBuffers.get(key);
     roomPatchBuffers.delete(key);
     if (!nextBuffer?.players?.size) return;
-    const patch = Array.from(nextBuffer.players.values());
+    const displayIds = getRoomDisplayIds(key);
+    const patch = Array.from(nextBuffer.players.values())
+      .filter((patchedPlayer) => displayIds.has(patchedPlayer.id));
+    if (!patch.length) return;
     const target = io.to(key);
     if (nextBuffer.reliable) {
       target.emit("players:patch", patch);
@@ -692,7 +731,7 @@ app.prepare().then(() => {
       socket.join(activeStage);
 
       const nextPublicPlayer = publicPlayer(room.get(activePlayerId));
-      socket.emit("room:state", Array.from(room.values()).map(publicPlayer));
+      socket.emit("room:state", selectPublicRoomPlayers(room, activeStage, activePlayerId));
       queueRoomPatch(io, activeStage, nextPublicPlayer, { volatile: false });
       if (activeStage.startsWith("tutorial-room-")) {
         clearPersonalTimer(socket.id);
@@ -713,7 +752,7 @@ app.prepare().then(() => {
       const room = rooms.get(stage);
       socket.emit("room:peek-state", {
         stage,
-        players: room ? Array.from(room.values()).map(publicPlayer) : []
+        players: selectPublicRoomPlayers(room, stage)
       });
     });
 

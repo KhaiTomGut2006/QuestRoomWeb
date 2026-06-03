@@ -8,6 +8,7 @@ import CourseConfig from "@/models/CourseConfig";
 
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 0;
+const MAX_VISIBLE_ROOM_PLAYERS = Math.max(1, Number(process.env.MAX_VISIBLE_ROOM_PLAYERS || 20));
 export const MEMBER_INTERACTION_SELECT = [
   "_id",
   "discord_id",
@@ -357,6 +358,11 @@ export function getDiscordAvatar(discordId, avatarHash) {
 
 export function normalizeMember(member, options = {}) {
   const includeSubmissions = options.includeSubmissions !== false;
+  const submissionLimit = Math.max(0, Number(options.submissionLimit) || 0);
+  const npcQuestSubmissions = submissionLimit
+    ? (member.npcQuestSubmissions || []).slice(-submissionLimit)
+    : (member.npcQuestSubmissions || []);
+  const memberObject = member.toObject?.() || member;
   const discord = member.discordData || {};
   const coinNumber = Number.parseInt(member.coin || DEFAULT_COINS, 10);
   
@@ -405,9 +411,11 @@ export function normalizeMember(member, options = {}) {
         }
       : null,
     npcQuestSubmissions: includeSubmissions
-      ? (member.npcQuestSubmissions || []).map(normalizeNpcQuestSubmission)
+      ? npcQuestSubmissions.map(normalizeNpcQuestSubmission)
       : [],
-    socialQuestSubmissions: includeSubmissions ? normalizeSocialQuestSubmissions(member) : [],
+    socialQuestSubmissions: includeSubmissions
+      ? normalizeSocialQuestSubmissions({ ...memberObject, npcQuestSubmissions })
+      : [],
     tutorial: normalizeTutorial(member.tutorial),
     challenge: member.questChallenge || null,
     reward: member.questReward
@@ -524,18 +532,21 @@ export async function getMemberByDiscordId(discordId, options = {}) {
   const selectFields = includeSubmissions
     ? null
     : MEMBER_INTERACTION_SELECT;
+  const submissionLimit = Math.max(0, Number(options.submissionLimit) || 0);
 
   let member = null;
   // If it's a 24-character hex string, search by _id first
   if (/^[0-9a-fA-F]{24}$/.test(discordId)) {
     const query = Member.findById(discordId);
     if (selectFields) query.select(selectFields);
+    if (submissionLimit) query.slice("npcQuestSubmissions", -submissionLimit);
     member = await query;
   }
 
   if (!member) {
     const query = Member.findOne({ discord_id: String(discordId || "") });
     if (selectFields) query.select(selectFields);
+    if (submissionLimit) query.slice("npcQuestSubmissions", -submissionLimit);
     member = await query;
   }
 
@@ -551,7 +562,9 @@ export async function getMemberByDiscordId(discordId, options = {}) {
 
   if (!member) return null;
   const reconciled = await reconcileChallengeSublevel(member);
-  return includeSubmissions ? normalizeMember(reconciled) : normalizeMemberInteraction(reconciled);
+  return includeSubmissions
+    ? normalizeMember(reconciled, { submissionLimit })
+    : normalizeMemberInteraction(reconciled);
 }
 
 export async function getRoomPlayers(stage = DEFAULT_STAGE) {
@@ -562,7 +575,10 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
     discord_id: { $exists: true, $ne: "" },
     lastAuthentication: { $exists: true, $ne: null },
     npcCycle: { $exists: true, $ne: null }
-  }).select(MEMBER_INTERACTION_SELECT);
+  })
+    .select(MEMBER_INTERACTION_SELECT)
+    .sort({ lastAuthentication: -1 })
+    .limit(MAX_VISIBLE_ROOM_PLAYERS);
 
   await Promise.all(members.map(reconcileChallengeSublevel));
   return members.map((member) => {
