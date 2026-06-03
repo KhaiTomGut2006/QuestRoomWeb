@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { X, Search, ChevronDown, Award } from "lucide-react";
 import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 
@@ -38,29 +38,29 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  // Fetch classes and friends list
-  const fetchFriends = useCallback((classId) => {
+  useEffect(() => {
+    const controller = new AbortController();
+    const classId = selectedClassId;
     setLoading(true);
     const query = classId ? `?class=${encodeURIComponent(classId)}` : "";
-    fetch(withBasePath(`/api/player/friends${query}`))
+    fetch(withBasePath(`/api/player/friends${query}`), { signal: controller.signal })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then(({ classes: loadedClasses, friends: loadedFriends, defaultClassId }) => {
-        setClasses(loadedClasses);
-        setFriends(loadedFriends);
-        if (loadedClasses.length > 0 && !selectedClassId && !classId) {
+        setClasses(Array.isArray(loadedClasses) ? loadedClasses : []);
+        setFriends(Array.isArray(loadedFriends) ? loadedFriends : []);
+        if (Array.isArray(loadedClasses) && loadedClasses.length > 0 && !classId) {
           setSelectedClassId(defaultClassId || loadedClasses[0].sheetTitle);
         }
         setLoading(false);
       })
       .catch((err) => {
+        if (err?.name === "AbortError") return;
         console.error("Failed to load friends", err);
         setLoading(false);
       });
-  }, [selectedClassId]);
 
-  useEffect(() => {
-    fetchFriends(selectedClassId);
-  }, [selectedClassId, fetchFriends]);
+    return () => controller.abort();
+  }, [selectedClassId]);
 
   // Filter friends list based on search query
   const filteredFriends = useMemo(() => {
@@ -92,8 +92,9 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
             <img
               src={withOptimizedAsset("/assets/Friends.png")}
               alt="Friends Group"
-              className="friends-header-avatar"
-              loading="lazy"
+                            className="friends-header-avatar"
+                            loading="lazy"
+                            decoding="async"
             />
             <div className="friends-header-text">
               <h2>Friends</h2>
@@ -158,6 +159,7 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
                             alt=""
                             className="friends-avatar-img"
                             loading="lazy"
+                            decoding="async"
                           />
                         ) : (
                           <div className="friends-avatar-fallback">
@@ -178,6 +180,7 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
                                   alt={friend.bestBadge.label || "Badge"}
                                   className="friends-badge-icon"
                                   loading="lazy"
+                                  decoding="async"
                                 />
                               ) : (
                                 <div className={`friends-badge-fallback is-${friend.bestBadge.kind || "bronze"}`}>

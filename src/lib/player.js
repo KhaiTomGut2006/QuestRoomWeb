@@ -55,6 +55,27 @@ const ROOM_PLAYER_SELECT = [
   "lastAuthentication",
   "npcCycle"
 ].join(" ");
+const MEMBER_FRIEND_SELECT = [
+  "discord_id",
+  "nick",
+  "nickname",
+  "realName",
+  "username",
+  "discordData",
+  "rank",
+  "lastAuthentication",
+  "profileAchievements",
+  "courses"
+].join(" ");
+const MEMBER_RANKING_SELECT = [
+  "discord_id",
+  "nick",
+  "nickname",
+  "realName",
+  "username",
+  "discordData",
+  "profileAchievements"
+].join(" ");
 
 let cachedLevels = null;
 let cachedLevelsAt = 0;
@@ -69,12 +90,20 @@ const GLOBAL_POSTS_CACHE_TTL_MS = Math.max(5_000, Number(process.env.GLOBAL_POST
 const GLOBAL_POSTS_CACHE_MAX_KEYS = Math.max(20, Number(process.env.GLOBAL_POSTS_CACHE_MAX_KEYS || 200));
 const ACTIVE_CLASSES_CACHE_TTL_MS = Math.max(30_000, Number(process.env.ACTIVE_CLASSES_CACHE_TTL_MS || 60_000));
 const RANKING_CACHE_TTL_MS = Math.max(10_000, Number(process.env.RANKING_CACHE_TTL_MS || 60_000));
+const RANKING_LIMIT = Math.max(10, Number(process.env.RANKING_LIMIT || 100));
+const FRIENDS_CACHE_TTL_MS = Math.max(10_000, Number(process.env.FRIENDS_CACHE_TTL_MS || 60_000));
+const FRIENDS_CACHE_MAX_KEYS = Math.max(20, Number(process.env.FRIENDS_CACHE_MAX_KEYS || 200));
+const MAX_CLASS_FRIENDS = Math.max(50, Number(process.env.MAX_CLASS_FRIENDS || 500));
+const MEMBER_LIST_QUERY_MAX_TIME_MS = Math.max(1_000, Number(process.env.MEMBER_LIST_QUERY_MAX_TIME_MS || 8_000));
 const cachedStageRankings = new Map();
+const pendingStageRankings = new Map();
 const roomPlayersCache = new Map();
 const pendingRoomPlayersLoad = new Map();
 const roomPlayersCacheVersions = new Map();
 const cachedGlobalPosts = new Map();
 const pendingGlobalPosts = new Map();
+const cachedClassFriends = new Map();
+const pendingClassFriends = new Map();
 let cachedActiveClasses = null;
 let cachedActiveClassesAt = 0;
 
@@ -167,6 +196,24 @@ function roomPlayerFromMember(member) {
   };
 }
 
+function publicMemberIdentity(member) {
+  const discord = member?.discordData || {};
+  return {
+    id: member?.discord_id || "",
+    discordId: member?.discord_id || "",
+    name:
+      member?.nick ||
+      member?.nickname ||
+      member?.realName ||
+      discord.globalName ||
+      discord.username ||
+      member?.username ||
+      "Player",
+    username: discord.username || member?.username || "",
+    avatar: normalizeAvatarUrl(discord.avatarUrl || "")
+  };
+}
+
 function normalizeAvatarUrl(url, size = 64) {
   const value = String(url || "");
   if (!value) return "";
@@ -181,6 +228,59 @@ function normalizeAvatarUrl(url, size = 64) {
   } catch {
     return value;
   }
+}
+
+function getBestBadge(profileAchievements = []) {
+  const gradeValues = {
+    master: 6,
+    diamond: 5,
+    platinum: 4,
+    gold: 3,
+    silver: 2,
+    bronze: 1
+  };
+  let bestBadge = null;
+  let maxGrade = 0;
+  for (const badge of profileAchievements || []) {
+    const val = gradeValues[badge?.kind] || 0;
+    if (val > maxGrade) {
+      maxGrade = val;
+      bestBadge = badge;
+    }
+  }
+  return bestBadge;
+}
+
+function publicBadge(badge) {
+  return badge ? {
+    id: badge.id || "",
+    label: badge.label || "",
+    kind: badge.kind || "bronze",
+    icon: badge.icon || "",
+    awardedAt: badge.awardedAt || null
+  } : null;
+}
+
+function cloneFriends(friends) {
+  return friends.map((friend) => ({
+    ...friend,
+    bestBadge: friend.bestBadge ? { ...friend.bestBadge } : null
+  }));
+}
+
+function pruneClassFriendsCache(now = Date.now()) {
+  for (const [key, cached] of cachedClassFriends) {
+    if (!cached || now - cached.cachedAt >= FRIENDS_CACHE_TTL_MS) {
+      cachedClassFriends.delete(key);
+    }
+  }
+  if (cachedClassFriends.size <= FRIENDS_CACHE_MAX_KEYS) return;
+  const overflow = cachedClassFriends.size - FRIENDS_CACHE_MAX_KEYS;
+  const oldestKeys = [...cachedClassFriends.entries()]
+    .sort(([, a], [, b]) => Number(a?.cachedAt || 0) - Number(b?.cachedAt || 0))
+    .slice(0, overflow)
+    .map(([key]) => key);
+  for (const key of oldestKeys) cachedClassFriends.delete(key);
 }
 
 async function ensureLevels({ force = false } = {}) {
@@ -951,64 +1051,90 @@ export async function getStageRanking(stageId) {
   const level = cachedLevels.find(l => l.stageId === stageId) || cachedLevels[0];
   if (!level) return [];
   const cacheKey = String(level.stageId || level.name || stageId || "");
+  const now = Date.now();
   const cached = cachedStageRankings.get(cacheKey);
-  if (cached && Date.now() - cached.loadedAt < RANKING_CACHE_TTL_MS) {
-    return cached.ranking;
+  if (cached && now - cached.loadedAt < RANKING_CACHE_TTL_MS) {
+    return cached.ranking.map((player) => ({
+      ...player,
+      badge: player.badge ? { ...player.badge } : null
+    }));
   }
 
-  const members = await Member.find({
-    discord_id: { $exists: true, $ne: "" },
-    "profileAchievements.label": level.name
-  }).lean();
+  if (pendingStageRankings.has(cacheKey)) {
+    const ranking = await pendingStageRankings.get(cacheKey);
+    return ranking.map((player) => ({
+      ...player,
+      badge: player.badge ? { ...player.badge } : null
+    }));
+  }
 
-  const gradeValues = {
-    master: 6,
-    diamond: 5,
-    platinum: 4,
-    gold: 3,
-    silver: 2,
-    bronze: 1
-  };
+  const rankingLoad = (async () => {
+    const members = await Member.find({
+      discord_id: { $exists: true, $ne: "" },
+      "profileAchievements.label": level.name
+    })
+      .select(MEMBER_RANKING_SELECT)
+      .lean()
+      .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
 
-  const rankedPlayers = members.map(m => {
-    const badge = m.profileAchievements.find(a => a.label === level.name);
-    const normalized = normalizeMember(m);
-    return {
-      id: normalized.id,
-      name: normalized.name,
-      username: normalized.username,
-      avatar: normalized.avatar,
-      badge: {
-        id: badge?.id || "",
-        label: badge?.label || "",
-        kind: badge?.kind || "bronze",
-        icon: badge?.icon || "",
-        awardedAt: badge?.awardedAt || null
-      },
-      gradeValue: gradeValues[badge?.kind] || 0
+    const gradeValues = {
+      master: 6,
+      diamond: 5,
+      platinum: 4,
+      gold: 3,
+      silver: 2,
+      bronze: 1
     };
+
+    const rankedPlayers = members.map(m => {
+      const badge = (m.profileAchievements || []).find(a => a?.label === level.name);
+      const identity = publicMemberIdentity(m);
+      return {
+        id: identity.id,
+        name: identity.name,
+        username: identity.username,
+        avatar: identity.avatar,
+        badge: publicBadge(badge) || {
+          id: "",
+          label: "",
+          kind: "bronze",
+          icon: "",
+          awardedAt: null
+        },
+        gradeValue: gradeValues[badge?.kind] || 0
+      };
+    });
+
+    // Sort by gradeValue descending, then by awardedAt ascending (earliest first)
+    rankedPlayers.sort((a, b) => {
+      if (b.gradeValue !== a.gradeValue) {
+        return b.gradeValue - a.gradeValue;
+      }
+      const timeA = a.badge.awardedAt ? new Date(a.badge.awardedAt).getTime() : Infinity;
+      const timeB = b.badge.awardedAt ? new Date(b.badge.awardedAt).getTime() : Infinity;
+      return timeA - timeB;
+    });
+
+    const ranking = rankedPlayers.slice(0, RANKING_LIMIT).map((p, idx) => ({
+      rank: idx + 1,
+      id: p.id,
+      name: p.name,
+      username: p.username,
+      avatar: p.avatar,
+      badge: p.badge
+    }));
+    cachedStageRankings.set(cacheKey, { ranking, loadedAt: Date.now() });
+    return ranking;
+  })().finally(() => {
+    pendingStageRankings.delete(cacheKey);
   });
 
-  // Sort by gradeValue descending, then by awardedAt ascending (earliest first)
-  rankedPlayers.sort((a, b) => {
-    if (b.gradeValue !== a.gradeValue) {
-      return b.gradeValue - a.gradeValue;
-    }
-    const timeA = a.badge.awardedAt ? new Date(a.badge.awardedAt).getTime() : Infinity;
-    const timeB = b.badge.awardedAt ? new Date(b.badge.awardedAt).getTime() : Infinity;
-    return timeA - timeB;
-  });
-
-  const ranking = rankedPlayers.map((p, idx) => ({
-    rank: idx + 1,
-    id: p.id,
-    name: p.name,
-    username: p.username,
-    avatar: p.avatar,
-    badge: p.badge
+  pendingStageRankings.set(cacheKey, rankingLoad);
+  const ranking = await rankingLoad;
+  return ranking.map((player) => ({
+    ...player,
+    badge: player.badge ? { ...player.badge } : null
   }));
-  cachedStageRankings.set(cacheKey, { ranking, loadedAt: Date.now() });
-  return ranking;
 }
 
 export async function acceptNpcQuest(discordId, questData) {
@@ -1554,123 +1680,122 @@ export async function reactToGlobalQuestPost(discordId, postId, reaction) {
 
 export async function getClassFriends(classId) {
   await connectDb();
-  
-  const botUrl = (process.env.BOT_SERVER_URL || "https://api.hamsterquest.com/attendance").replace(/\/$/, "");
-  const botTimeoutMs = Math.max(2000, Number(process.env.BOT_SERVER_TIMEOUT_MS) || 20000);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), botTimeoutMs);
+  const normalizedClassId = String(classId || "").trim();
+  if (!normalizedClassId) return [];
 
-  let sheetStudents = [];
-  try {
-    const res = await fetch(`${botUrl}/api/attendance?course=${encodeURIComponent(classId)}`, {
-      signal: controller.signal
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && Array.isArray(data.students)) {
-        sheetStudents = data.students;
-      }
-    }
-  } catch (err) {
-    console.warn("Failed to fetch students from bot server, falling back to local DB:", err.message);
-  } finally {
-    clearTimeout(timeoutId);
+  const now = Date.now();
+  pruneClassFriendsCache(now);
+  const cached = cachedClassFriends.get(normalizedClassId);
+  if (cached && now - cached.cachedAt < FRIENDS_CACHE_TTL_MS) {
+    return cloneFriends(cached.friends);
+  }
+  if (pendingClassFriends.has(normalizedClassId)) {
+    return cloneFriends(await pendingClassFriends.get(normalizedClassId));
   }
 
-  let members = [];
-  const gradeValues = {
-    master: 6,
-    diamond: 5,
-    platinum: 4,
-    gold: 3,
-    silver: 2,
-    bronze: 1
-  };
-
-  if (sheetStudents.length > 0) {
-    const discordIds = sheetStudents.map(s => s.discordId).filter(Boolean);
-    if (discordIds.length > 0) {
-      members = await Member.find({
-        discord_id: { $in: discordIds }
-      }).lean();
+  const friendsLoad = (async () => {
+    const botUrl = (process.env.BOT_SERVER_URL || "https://api.hamsterquest.com/attendance").replace(/\/$/, "");
+    const botTimeoutMs = Math.max(2000, Number(process.env.BOT_SERVER_TIMEOUT_MS) || 20000);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), botTimeoutMs);
+  
+    let sheetStudents = [];
+    try {
+      const res = await fetch(`${botUrl}/api/attendance?course=${encodeURIComponent(normalizedClassId)}`, {
+        signal: controller.signal
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.students)) {
+          sheetStudents = data.students.slice(0, MAX_CLASS_FRIENDS);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch students from bot server, falling back to local DB:", err.message);
+    } finally {
+      clearTimeout(timeoutId);
     }
 
-    const memberMap = new Map(members.map(m => [m.discord_id, m]));
-    return sheetStudents.map(student => {
-      const m = memberMap.get(student.discordId);
-      if (m) {
-        const normalized = normalizeMember(m);
-        let bestBadge = null;
-        let maxGrade = 0;
-        (m.profileAchievements || []).forEach(badge => {
-          const val = gradeValues[badge.kind] || 0;
-          if (val > maxGrade) {
-            maxGrade = val;
-            bestBadge = badge;
-          }
-        });
-        return {
-          id: normalized.discordId,
-          name: normalized.name,
-          username: normalized.username,
-          avatar: normalized.avatar,
-          rank: normalized.rank,
-          lastAuthentication: m.lastAuthentication ? m.lastAuthentication.toISOString() : null,
-          isOnline: student.isOnline || false,
-          bestBadge: bestBadge ? {
-            id: bestBadge.id || "",
-            label: bestBadge.label || "",
-            kind: bestBadge.kind || "bronze",
-            icon: bestBadge.icon || ""
-          } : null
-        };
-      } else {
+    let members = [];
+
+    if (sheetStudents.length > 0) {
+      const discordIds = sheetStudents.map(s => String(s.discordId || "")).filter(Boolean);
+      if (discordIds.length > 0) {
+        members = await Member.find({
+          discord_id: { $in: discordIds }
+        })
+          .select(MEMBER_FRIEND_SELECT)
+          .lean()
+          .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
+      }
+
+      const memberMap = new Map(members.map(m => [m.discord_id, m]));
+      return sheetStudents.map(student => {
+        const m = memberMap.get(String(student.discordId || ""));
+        if (m) {
+          const identity = publicMemberIdentity(m);
+          const bestBadge = getBestBadge(m.profileAchievements);
+          return {
+            id: identity.discordId,
+            name: identity.name,
+            username: identity.username,
+            avatar: identity.avatar,
+            rank: m.rank || "Game Tester",
+            lastAuthentication: m.lastAuthentication ? m.lastAuthentication.toISOString() : null,
+            isOnline: student.isOnline || false,
+            bestBadge: publicBadge(bestBadge)
+          };
+        }
         return {
           id: student.discordId || `sheet-${student.sheetRowIndex}`,
           name: student.name || "Player",
           username: student.discordUsername || "",
-          avatar: student.avatarUrl || "",
+          avatar: normalizeAvatarUrl(student.avatarUrl || ""),
           rank: "Game Tester",
           lastAuthentication: null,
           isOnline: student.isOnline || false,
           bestBadge: null
         };
-      }
-    });
-  } else {
+      });
+    }
+
     // Return only exact local matches if the Google Sheet service is unavailable.
     const query = {
       discord_id: { $exists: true, $ne: "" },
-      courses: String(classId)
+      courses: normalizedClassId
     };
 
-    members = await Member.find(query).lean();
+    members = await Member.find(query)
+      .select(MEMBER_FRIEND_SELECT)
+      .limit(MAX_CLASS_FRIENDS)
+      .lean()
+      .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
+
     return members.map(m => {
-      const normalized = normalizeMember(m);
-      let bestBadge = null;
-      let maxGrade = 0;
-      (m.profileAchievements || []).forEach(badge => {
-        const val = gradeValues[badge.kind] || 0;
-        if (val > maxGrade) {
-          maxGrade = val;
-          bestBadge = badge;
-        }
-      });
+      const identity = publicMemberIdentity(m);
+      const bestBadge = getBestBadge(m.profileAchievements);
       return {
-        id: normalized.discordId,
-        name: normalized.name,
-        username: normalized.username,
-        avatar: normalized.avatar,
-        rank: normalized.rank,
+        id: identity.discordId,
+        name: identity.name,
+        username: identity.username,
+        avatar: identity.avatar,
+        rank: m.rank || "Game Tester",
         lastAuthentication: m.lastAuthentication ? m.lastAuthentication.toISOString() : null,
         isOnline: false,
-        bestBadge: bestBadge ? {
-          id: bestBadge.id || "",
-          label: bestBadge.label || "",
-          kind: bestBadge.kind || "bronze",
-          icon: bestBadge.icon || ""
-        } : null
+        bestBadge: publicBadge(bestBadge)
       };
     });
-  }
+  })().then((friends) => {
+    cachedClassFriends.set(normalizedClassId, {
+      friends: cloneFriends(friends),
+      cachedAt: Date.now()
+    });
+    pruneClassFriendsCache();
+    return friends;
+  }).finally(() => {
+    pendingClassFriends.delete(normalizedClassId);
+  });
+
+  pendingClassFriends.set(normalizedClassId, friendsLoad);
+  return cloneFriends(await friendsLoad);
 }

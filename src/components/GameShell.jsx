@@ -1959,7 +1959,8 @@ export default function GameShell() {
           </div>
           <div className="profile-action">
             <button className="circle-button ranking" type="button" aria-label="Ranking" onClick={() => setShowRanking(true)}>
-              <Trophy size={38} fill="currentColor" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={withOptimizedAsset("/assets/Rank.png")} alt="Rank" />
             </button>
             <span>Rank</span>
           </div>
@@ -1990,53 +1991,56 @@ export default function GameShell() {
             </button>
             <span>Friends</span>
           </div>
-          <div className="profile-action settings-wrapper" ref={settingsPanelRef}>
-            <button
-              className={`circle-button settings-btn${showSettings ? " active" : ""}`}
-              type="button"
-              aria-label="Settings"
-              onClick={() => setShowSettings((s) => !s)}
-            >
-              <Settings size={30} strokeWidth={2.5} />
-            </button>
-            <span>ตั้งค่า</span>
-            {showSettings && (
-              <div className="settings-panel">
-                <p className="settings-panel-title">⚙️ ตั้งค่า</p>
-                <div className="settings-row">
-                  <button
-                    className="settings-mute-btn"
-                    type="button"
-                    aria-label={isMuted ? "Unmute" : "Mute"}
-                    onClick={toggleMute}
-                  >
-                    {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                  </button>
-                  <input
-                    type="range"
-                    min="0" max="1" step="0.05"
-                    value={volume}
-                    onChange={handleVolumeChange}
-                    className="settings-volume-slider"
-                    aria-label="Volume"
-                  />
-                  <span className="settings-vol-pct">
-                    {isMuted ? "Muted" : `${Math.round(volume * 100)}%`}
-                  </span>
-                </div>
-                {isAuthed && (
-                  <button
-                    className="settings-logout-btn"
-                    type="button"
-                    onClick={() => signOut()}
-                  >
-                    <LogOut size={16} />
-                    ออกจากระบบ
-                  </button>
-                )}
+        </div>
+      </section>
+
+      <section className="bottom-right hud-cluster">
+        <div className="profile-action settings-wrapper" ref={settingsPanelRef}>
+          <span>ตั้งค่า</span>
+          <button
+            className={`circle-button settings-btn${showSettings ? " active" : ""}`}
+            type="button"
+            aria-label="Settings"
+            onClick={() => setShowSettings((s) => !s)}
+          >
+            <Settings size={30} strokeWidth={2.5} />
+          </button>
+          {showSettings && (
+            <div className="settings-panel">
+              <p className="settings-panel-title">⚙️ ตั้งค่า</p>
+              <div className="settings-row">
+                <button
+                  className="settings-mute-btn"
+                  type="button"
+                  aria-label={isMuted ? "Unmute" : "Mute"}
+                  onClick={toggleMute}
+                >
+                  {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                </button>
+                <input
+                  type="range"
+                  min="0" max="1" step="0.05"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  className="settings-volume-slider"
+                  aria-label="Volume"
+                />
+                <span className="settings-vol-pct">
+                  {isMuted ? "Muted" : `${Math.round(volume * 100)}%`}
+                </span>
               </div>
-            )}
-          </div>
+              {isAuthed && (
+                <button
+                  className="settings-logout-btn"
+                  type="button"
+                  onClick={() => signOut()}
+                >
+                  <LogOut size={16} />
+                  ออกจากระบบ
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </section>
 

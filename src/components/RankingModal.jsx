@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { Trophy, X, ChevronDown, Award } from "lucide-react";
 import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 
@@ -19,29 +19,29 @@ export default function RankingModal({ onClose, onOpenProfile }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  // Fetch ranking data based on selected stage
-  const fetchRanking = useCallback((stageId) => {
+  useEffect(() => {
+    const controller = new AbortController();
+    const stageId = selectedStageId;
     setLoading(true);
     const query = stageId ? `?stage=${encodeURIComponent(stageId)}` : "";
-    fetch(withBasePath(`/api/player/ranking${query}`))
+    fetch(withBasePath(`/api/player/ranking${query}`), { signal: controller.signal })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then(({ levels: loadedLevels, ranking: loadedRanking }) => {
-        setLevels(loadedLevels);
-        setRanking(loadedRanking);
-        if (loadedLevels.length > 0 && !selectedStageId && !stageId) {
+        setLevels(Array.isArray(loadedLevels) ? loadedLevels : []);
+        setRanking(Array.isArray(loadedRanking) ? loadedRanking : []);
+        if (Array.isArray(loadedLevels) && loadedLevels.length > 0 && !stageId) {
           setSelectedStageId(loadedLevels[0].stageId);
         }
         setLoading(false);
       })
       .catch((err) => {
+        if (err?.name === "AbortError") return;
         console.error("Failed to load rankings", err);
         setLoading(false);
       });
-  }, [selectedStageId]);
 
-  useEffect(() => {
-    fetchRanking(selectedStageId);
-  }, [selectedStageId, fetchRanking]);
+    return () => controller.abort();
+  }, [selectedStageId]);
 
   // Find the selected stage name
   const currentStageName = levels.find((l) => l.stageId === selectedStageId)?.name || "Game Designer";
@@ -123,6 +123,7 @@ export default function RankingModal({ onClose, onOpenProfile }) {
                             alt={player.badge?.label || "Badge"}
                             className="ranking-badge-img"
                             loading="lazy"
+                            decoding="async"
                           />
                         ) : (
                           <div className={`ranking-badge-fallback is-${player.badge?.kind || "bronze"}`}>

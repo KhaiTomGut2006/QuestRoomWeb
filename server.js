@@ -39,7 +39,7 @@ const SERVER_METRICS_RSS_WARN_MB = Math.max(256, Number(process.env.SERVER_METRI
 let lastMetricsCheckAt = Date.now();
 
 // ─── NPC Cycle Timer (per-socket personal timers) ───────────────────
-const CYCLE_MS = 20 * 60 * 1000;
+const CYCLE_MS = 30 * 60 * 1000;
 
 // socketId → { timerId, startedAt, durationMs }
 const socketPersonalTimer = new Map();
