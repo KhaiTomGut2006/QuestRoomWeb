@@ -11,6 +11,10 @@ import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const GRIDFS_MAX_UPLOAD_BYTES = Math.min(
+  MAX_UPLOAD_BYTES,
+  Math.max(1, Number(process.env.GRIDFS_MAX_UPLOAD_MB || 8)) * 1024 * 1024
+);
 const ALLOWED_CONTENT_TYPES = [
   "image/jpeg",
   "image/png",
@@ -91,6 +95,14 @@ function getGridFsBucket() {
 }
 
 async function saveGridFsUpload(request, discordId) {
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > GRIDFS_MAX_UPLOAD_BYTES + 1024 * 1024) {
+    return NextResponse.json(
+      { error: "file_too_large", maximumSizeInBytes: GRIDFS_MAX_UPLOAD_BYTES },
+      { status: 413 }
+    );
+  }
+
   const formData = await request.formData();
   const file = formData.get("file");
   if (!(file instanceof File)) {
@@ -99,8 +111,11 @@ async function saveGridFsUpload(request, discordId) {
   if (!ALLOWED_CONTENT_TYPES.includes(file.type)) {
     return NextResponse.json({ error: "unsupported_file_type" }, { status: 400 });
   }
-  if (!file.size || file.size > MAX_UPLOAD_BYTES) {
-    return NextResponse.json({ error: "file_too_large" }, { status: 400 });
+  if (!file.size || file.size > GRIDFS_MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      { error: "file_too_large", maximumSizeInBytes: GRIDFS_MAX_UPLOAD_BYTES },
+      { status: 413 }
+    );
   }
 
   await connectDb();
@@ -141,6 +156,7 @@ async function saveGridFsUpload(request, discordId) {
 
 export async function GET(request) {
   if (request.nextUrl.searchParams.get("config") === "1") {
+    const requestedSize = Number(request.nextUrl.searchParams.get("size") || 0);
     if (isR2Configured()) {
       const discordId = await getDiscordId();
       if (!discordId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -148,6 +164,12 @@ export async function GET(request) {
       const fileName = request.nextUrl.searchParams.get("name") || "upload";
       if (!ALLOWED_CONTENT_TYPES.includes(mimeType)) {
         return NextResponse.json({ error: "unsupported_file_type" }, { status: 400 });
+      }
+      if (requestedSize > MAX_UPLOAD_BYTES) {
+        return NextResponse.json(
+          { error: "file_too_large", maximumSizeInBytes: MAX_UPLOAD_BYTES },
+          { status: 413 }
+        );
       }
       const { key, uploadUrl, publicUrl } = await createR2PresignedUrl(discordId, mimeType, fileName);
       return NextResponse.json({
@@ -160,9 +182,18 @@ export async function GET(request) {
         maximumSizeInBytes: MAX_UPLOAD_BYTES,
       });
     }
+    const maximumSizeInBytes = process.env.BLOB_READ_WRITE_TOKEN
+      ? MAX_UPLOAD_BYTES
+      : GRIDFS_MAX_UPLOAD_BYTES;
+    if (requestedSize > maximumSizeInBytes) {
+      return NextResponse.json(
+        { error: "file_too_large", maximumSizeInBytes },
+        { status: 413 }
+      );
+    }
     return NextResponse.json({
       storage: process.env.BLOB_READ_WRITE_TOKEN ? "blob" : "gridfs",
-      maximumSizeInBytes: MAX_UPLOAD_BYTES
+      maximumSizeInBytes
     });
   }
 

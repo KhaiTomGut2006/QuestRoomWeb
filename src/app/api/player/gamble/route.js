@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
-import { normalizeMember } from "@/lib/player";
+import { MEMBER_INTERACTION_SELECT, normalizeMemberInteraction } from "@/lib/player";
 import { markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
 
 const MIN_BET = 1;
@@ -24,7 +24,7 @@ export async function POST(request) {
     }
 
     await connectDb();
-    const member = await Member.findOne({ discord_id: String(discordId) });
+    const member = await Member.findOne({ discord_id: String(discordId) }).select(MEMBER_INTERACTION_SELECT);
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
 
     const currentCoins = Number.parseInt(member.coin || "0", 10);
@@ -41,7 +41,7 @@ export async function POST(request) {
     markNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.gamble);
     await member.save({ validateModifiedOnly: true });
 
-    return NextResponse.json({ won, delta, member: normalizeMember(member) });
+    return NextResponse.json({ won, delta, member: normalizeMemberInteraction(member) });
   } catch (error) {
     const status = error.message === "npc_visit_expired" ? 409 : 503;
     return NextResponse.json({ error: error.message }, { status });

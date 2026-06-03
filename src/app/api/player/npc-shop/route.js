@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
-import { normalizeMember } from "@/lib/player";
+import { MEMBER_INTERACTION_SELECT, normalizeMemberInteraction } from "@/lib/player";
 import { getNpcShopItem, grantShopItem, openChestReward } from "@/lib/shop";
 import { assertActiveNpcVisit } from "@/lib/npcVisit";
 
@@ -15,7 +15,7 @@ export async function POST(request) {
   try {
     const { itemId, visitId } = await request.json();
     await connectDb();
-    const member = await Member.findOne({ discord_id: String(discordId) });
+    const member = await Member.findOne({ discord_id: String(discordId) }).select(MEMBER_INTERACTION_SELECT);
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     assertActiveNpcVisit(member, visitId);
     const item = await getNpcShopItem(member.stage, itemId);
@@ -101,7 +101,7 @@ export async function POST(request) {
       cooldownReductionMs: chestReward?.cooldownReductionMs || grantedItem?.cooldownReductionMs || 0,
       assignedQuest: chestReward?.assignedQuest || grantedItem?.assignedQuest || null,
       chestReward,
-      member: normalizeMember(member),
+      member: normalizeMemberInteraction(member),
     });
   } catch (error) {
     const status = error.message === "npc_visit_expired" ? 409 : 503;

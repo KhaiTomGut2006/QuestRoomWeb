@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
 import { ACCESSORY_LIST } from "@/lib/accessories";
+import { playSfx } from "@/lib/sfx";
 
 // npcId → image filename
 const NPC_IMAGE = {

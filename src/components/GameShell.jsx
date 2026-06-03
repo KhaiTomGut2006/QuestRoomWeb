@@ -56,9 +56,22 @@ async function uploadNpcQuestEvidence(file, playerId, onProgress) {
     onUploadProgress: ({ percentage }) => onProgress?.(percentage)
   };
 
-  const configUrl = `${uploadUrl}?config=1&type=${encodeURIComponent(file.type)}&name=${encodeURIComponent(file.name)}`;
+  const configUrl = `${uploadUrl}?config=1&type=${encodeURIComponent(file.type)}&name=${encodeURIComponent(file.name)}&size=${file.size}`;
   const storageResponse = await fetch(configUrl);
-  const storageConfig = storageResponse.ok ? await storageResponse.json() : { storage: "gridfs" };
+  const storageConfig = await storageResponse.json().catch(() => ({}));
+  if (!storageResponse.ok) {
+    const maximumSizeInBytes = Number(storageConfig.maximumSizeInBytes) || 0;
+    if (storageConfig.error === "file_too_large" && maximumSizeInBytes) {
+      const maxMb = Math.floor(maximumSizeInBytes / 1024 / 1024);
+      throw new Error(`ไฟล์ใหญ่เกินไป ระบบอัปโหลดตอนนี้รองรับไม่เกิน ${maxMb} MB`);
+    }
+    throw new Error(storageConfig.error || "upload_config_failed");
+  }
+  const maximumSizeInBytes = Number(storageConfig.maximumSizeInBytes) || 0;
+  if (maximumSizeInBytes && file.size > maximumSizeInBytes) {
+    const maxMb = Math.floor(maximumSizeInBytes / 1024 / 1024);
+    throw new Error(`ไฟล์ใหญ่เกินไป ระบบอัปโหลดตอนนี้รองรับไม่เกิน ${maxMb} MB`);
+  }
 
   // ── Cloudflare R2: PUT directly with presigned URL ────────────────────────
   if (storageConfig.storage === "r2") {
@@ -793,7 +806,16 @@ export default function GameShell() {
   ), [activeMember?.npcVisitId, activeMember?.npcVisitPurchases, doorNpc?.visitId]);
 
   const applyMember = useCallback((nextMember) => {
-    setMember(nextMember);
+    setMember((current) => ({
+      ...current,
+      ...(nextMember || {}),
+      npcQuestSubmissions: nextMember?.npcQuestSubmissions?.length
+        ? nextMember.npcQuestSubmissions
+        : current?.npcQuestSubmissions || nextMember?.npcQuestSubmissions || [],
+      socialQuestSubmissions: nextMember?.socialQuestSubmissions?.length
+        ? nextMember.socialQuestSubmissions
+        : current?.socialQuestSubmissions || nextMember?.socialQuestSubmissions || [],
+    }));
     const nextReward = nextMember?.reward;
     if (nextReward?.id && !nextReward.seenAt && !shownRewardIdsRef.current.has(nextReward.id)) {
       shownRewardIdsRef.current.add(nextReward.id);
