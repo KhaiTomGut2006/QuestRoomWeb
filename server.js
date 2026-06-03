@@ -34,6 +34,9 @@ const LEVEL_CONFIG_CACHE_TTL_MS = Math.max(30_000, Number(process.env.LEVEL_CONF
 const roomPatchBuffers = new Map();
 const roomPatchTimers = new Map();
 const levelConfigCache = new Map();
+const SERVER_METRICS_INTERVAL_MS = Math.max(10_000, Number(process.env.SERVER_METRICS_INTERVAL_MS || 60_000));
+const SERVER_METRICS_RSS_WARN_MB = Math.max(256, Number(process.env.SERVER_METRICS_RSS_WARN_MB || 1536));
+let lastMetricsCheckAt = Date.now();
 
 // ─── NPC Cycle Timer (per-socket personal timers) ───────────────────
 const CYCLE_MS = 20 * 60 * 1000;
@@ -168,6 +171,40 @@ function clearPersonalTimer(socketId) {
   if (state?.timerId) clearTimeout(state.timerId);
   socketPersonalTimer.delete(socketId);
 }
+
+function startServerMetricsLogger() {
+  if (process.env.ENABLE_SERVER_METRICS === "false") return;
+  setInterval(() => {
+    const now = Date.now();
+    const memory = process.memoryUsage();
+    const rssMb = Math.round(memory.rss / 1024 / 1024);
+    const heapUsedMb = Math.round(memory.heapUsed / 1024 / 1024);
+    const lagMs = Math.max(0, now - lastMetricsCheckAt - SERVER_METRICS_INTERVAL_MS);
+    lastMetricsCheckAt = now;
+
+    if (rssMb < SERVER_METRICS_RSS_WARN_MB && lagMs < 1000) return;
+    const roomPlayerCount = Array.from(rooms.values()).reduce((sum, room) => sum + room.size, 0);
+    console.warn("[server-metrics]", JSON.stringify({
+      rssMb,
+      heapUsedMb,
+      externalMb: Math.round(memory.external / 1024 / 1024),
+      lagMs,
+      rooms: rooms.size,
+      roomPlayers: roomPlayerCount,
+      socketPersonalTimers: socketPersonalTimer.size,
+      socketFrozen: socketFrozenMs.size,
+      socketToPlayer: socketToPlayer.size,
+      playerStages: playerStages.size,
+      playerNpcQuest: playerNpcQuest.size,
+      roomPatchBuffers: roomPatchBuffers.size,
+      roomPatchTimers: roomPatchTimers.size,
+      levelConfigCache: levelConfigCache.size,
+      uptimeSec: Math.round(process.uptime())
+    }));
+  }, SERVER_METRICS_INTERVAL_MS).unref?.();
+}
+
+startServerMetricsLogger();
 
 async function getMembersCollection() {
   if (!mongoUri) throw new Error("MONGODB_URI is not configured");
@@ -678,7 +715,7 @@ app.prepare().then(() => {
       return;
     }
 
-    if (storedCycle.pendingNpc) socket.emit("npc:visit", storedCycle.pendingNpc);
+    if (storedCycle.pendingNpc && !playerNpcQuest.get(playerId)) socket.emit("npc:visit", storedCycle.pendingNpc);
     armPersistedCycle(socket, storedCycle);
   }
   // ────────────────────────────────────────────────────────────────
@@ -853,6 +890,13 @@ app.prepare().then(() => {
     socket.on("quest:active", (isActive) => {
       const pid = socketToPlayer.get(socket.id);
       if (pid) playerNpcQuest.set(pid, Boolean(isActive));
+      if (pid && isActive) {
+        const state = socketPersonalTimer.get(socket.id);
+        if (state) state.pendingNpc = null;
+        void setPersistedPendingNpc(pid, null).catch((error) => {
+          console.error("Failed to clear pending NPC after quest activation:", error.message);
+        });
+      }
       // Timer is not frozen on quest accept — it keeps counting.
       // Only resume if the timer was frozen at the last 1 second.
       if (!isActive && socketFrozenMs.has(socket.id)) {

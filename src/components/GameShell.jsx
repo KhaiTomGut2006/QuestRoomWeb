@@ -1430,6 +1430,11 @@ export default function GameShell() {
     socketRef.current?.emit("player:balance", { coins: Number(activeMember.coins) || 0 });
   }, [activeMember?.coins]);
 
+  useEffect(() => {
+    if (!activeMember || isViewingOtherRoom) return;
+    socketRef.current?.emit("quest:active", Boolean(activeMember.npcQuest));
+  }, [activeMember?.npcQuest, activeMember?.discordId, activeMember?.id, isViewingOtherRoom]);
+
   const moveSelf = useCallback(
     (x, y) => {
       if (!activeMember || !selfPlayer || isViewingOtherRoom) return;
@@ -1895,9 +1900,6 @@ export default function GameShell() {
       <section className="top-left hud-cluster">
         <h1>{currentRoomLabel}</h1>
         <div className="action-row">
-          <button className="ranking-button" type="button" aria-label="Ranking" onClick={() => setShowRanking(true)}>
-            <Trophy size={38} fill="currentColor" />
-          </button>
           <button
             className={`challenge-button${isChallengePending ? " is-pending" : ""}${hasChallengeSubmission ? " is-submitted" : ""}`}
             type="button"
@@ -1954,6 +1956,12 @@ export default function GameShell() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={withOptimizedAsset("/assets/Item/AssetTicket.png")} alt="asset ticket" />
             <span>x{Number(activeMember?.shopAssetTickets || 0).toLocaleString()}</span>
+          </div>
+          <div className="profile-action">
+            <button className="circle-button ranking" type="button" aria-label="Ranking" onClick={() => setShowRanking(true)}>
+              <Trophy size={38} fill="currentColor" />
+            </button>
+            <span>Rank</span>
           </div>
           <div className="profile-action">
             <button

@@ -65,11 +65,18 @@ let cachedSocialActivityAt = 0;
 let pendingSocialActivityLoad = null;
 const SOCIAL_ACTIVITY_CACHE_TTL_MS = 10_000;
 const MAX_SOCIAL_ACTIVITY_ITEMS = 100;
+const GLOBAL_POSTS_CACHE_TTL_MS = Math.max(5_000, Number(process.env.GLOBAL_POSTS_CACHE_TTL_MS || 15_000));
+const GLOBAL_POSTS_CACHE_MAX_KEYS = Math.max(20, Number(process.env.GLOBAL_POSTS_CACHE_MAX_KEYS || 200));
+const ACTIVE_CLASSES_CACHE_TTL_MS = Math.max(30_000, Number(process.env.ACTIVE_CLASSES_CACHE_TTL_MS || 60_000));
 const RANKING_CACHE_TTL_MS = Math.max(10_000, Number(process.env.RANKING_CACHE_TTL_MS || 60_000));
 const cachedStageRankings = new Map();
 const roomPlayersCache = new Map();
 const pendingRoomPlayersLoad = new Map();
 const roomPlayersCacheVersions = new Map();
+const cachedGlobalPosts = new Map();
+const pendingGlobalPosts = new Map();
+let cachedActiveClasses = null;
+let cachedActiveClassesAt = 0;
 
 function cloneRoomPlayers(players) {
   return players.map((player) => ({ ...player }));
@@ -86,6 +93,33 @@ function clearRoomPlayersCache(stage = "") {
   for (const stageKey of roomPlayersCacheVersions.keys()) {
     roomPlayersCacheVersions.set(stageKey, (roomPlayersCacheVersions.get(stageKey) || 0) + 1);
   }
+}
+
+function cloneGlobalPosts(posts) {
+  return posts.map((post) => ({
+    ...post,
+    evidence: post.evidence ? { ...post.evidence } : null,
+    author: post.author ? { ...post.author } : null
+  }));
+}
+
+function pruneGlobalPostsCache(now = Date.now()) {
+  for (const [key, cached] of cachedGlobalPosts) {
+    if (!cached || now - cached.cachedAt >= GLOBAL_POSTS_CACHE_TTL_MS) {
+      cachedGlobalPosts.delete(key);
+    }
+  }
+  if (cachedGlobalPosts.size <= GLOBAL_POSTS_CACHE_MAX_KEYS) return;
+  const overflow = cachedGlobalPosts.size - GLOBAL_POSTS_CACHE_MAX_KEYS;
+  const oldestKeys = [...cachedGlobalPosts.entries()]
+    .sort(([, a], [, b]) => Number(a?.cachedAt || 0) - Number(b?.cachedAt || 0))
+    .slice(0, overflow)
+    .map(([key]) => key);
+  for (const key of oldestKeys) cachedGlobalPosts.delete(key);
+}
+
+function clearGlobalQuestPostsCache() {
+  cachedGlobalPosts.clear();
 }
 
 function pruneRoomPlayersCache(now = Date.now()) {
@@ -882,6 +916,7 @@ export async function submitChallenge(discordId, evidence, postText = "") {
   member.markModified("questChallenge");
   member.markModified("npcQuestSubmissions");
   await member.save({ validateModifiedOnly: true });
+  clearGlobalQuestPostsCache();
 
   return {
     member: normalizeMemberInteraction(member),
@@ -1123,32 +1158,48 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
   member.markModified("tutorial");
   member.markModified("profileAchievements");
   await member.save();
+  clearGlobalQuestPostsCache();
   return { member: normalizeMemberInteraction(member), reward, submission: normalizeNpcQuestSubmission(member.npcQuestSubmissions.at(-1)) };
 }
 
 export async function getActiveClasses() {
   await connectDb();
+  if (cachedActiveClasses && Date.now() - cachedActiveClassesAt < ACTIVE_CLASSES_CACHE_TTL_MS) {
+    return cachedActiveClasses.map((item) => ({ ...item }));
+  }
   const configs = await CourseConfig.find({ isActive: true }).sort({ courseName: 1 }).lean();
-  return configs.map(c => ({
+  cachedActiveClasses = configs.map(c => ({
     sheetTitle: c.sheetTitle,
     courseName: c.courseName
   }));
+  cachedActiveClassesAt = Date.now();
+  return cachedActiveClasses.map((item) => ({ ...item }));
 }
 
 export async function getGlobalQuestPosts(classId, viewerDiscordId) {
   await connectDb();
   const isAllCourses = String(classId || "") === "all";
   const viewerId = String(viewerDiscordId || "");
+  const cacheKey = `${String(classId || "all")}:${viewerId}`;
+  pruneGlobalPostsCache();
+  const cached = cachedGlobalPosts.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < GLOBAL_POSTS_CACHE_TTL_MS) {
+    return cloneGlobalPosts(cached.posts);
+  }
+  const pending = pendingGlobalPosts.get(cacheKey);
+  if (pending) return cloneGlobalPosts(await pending);
+
   let discordIdMatch = { $exists: true, $ne: "" };
 
-  if (!isAllCourses) {
-    const friends = await getClassFriends(classId);
-    const discordIds = friends.map((friend) => friend.id).filter(Boolean);
-    if (discordIds.length === 0) return [];
-    discordIdMatch = { $in: discordIds };
-  }
+  const nextLoad = (async () => {
+    if (!isAllCourses) {
+      const friends = await getClassFriends(classId);
+      const discordIds = friends.map((friend) => friend.id).filter(Boolean);
+      if (discordIds.length === 0) return [];
+      discordIdMatch = { $in: discordIds };
+    }
 
-  const posts = await Member.aggregate([
+    const posts = await Member.aggregate([
     {
       $match: {
         discord_id: discordIdMatch,
@@ -1273,9 +1324,19 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId) {
         }
       }
     }
-  ]).option({ allowDiskUse: true });
+    ]).option({ allowDiskUse: true });
 
-  return posts;
+    cachedGlobalPosts.set(cacheKey, {
+      cachedAt: Date.now(),
+      posts: cloneGlobalPosts(posts)
+    });
+    return posts;
+  })().finally(() => {
+    pendingGlobalPosts.delete(cacheKey);
+  });
+  pendingGlobalPosts.set(cacheKey, nextLoad);
+
+  return cloneGlobalPosts(await nextLoad);
 }
 
 async function loadSocialActivity() {
@@ -1482,6 +1543,7 @@ export async function reactToGlobalQuestPost(discordId, postId, reaction) {
 
   member.markModified("npcQuestSubmissions");
   await member.save({ validateModifiedOnly: true });
+  clearGlobalQuestPostsCache();
   return {
     postId: submission.id,
     viewerReaction: normalizedReaction,
