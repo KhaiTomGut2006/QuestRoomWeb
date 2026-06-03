@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Clock3, Sparkles } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withOptimizedAsset } from "@/lib/basePath";
 
 const CHAT_STEPS = {
   "welcome-1": {
@@ -97,7 +97,7 @@ export default function TutorialMode({ tutorial, activeQuest, busy, error, onAct
           <section className="tutorial-chat-box" role="dialog" aria-modal="true" aria-label="Tutorial NPC chat">
             <div className="tutorial-chat-npc">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withBasePath("/assets/NPC/Witch.png")} alt="Tutorial Guide" />
+              <img src={withOptimizedAsset("/assets/NPC/Witch.png")} alt="Tutorial Guide" />
             </div>
             <div className="tutorial-chat-copy">
               <p className="tutorial-chat-name">Tutorial Guide</p>

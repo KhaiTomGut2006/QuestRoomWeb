@@ -3,25 +3,25 @@ export const ACCESSORIES = {
     id: "accessory-mrx",
     name: "Mr. X",
     cost: 10000,
-    image: "mrX.png"
+    image: "mrX.webp"
   },
   "accessory-mrx-red-eye": {
     id: "accessory-mrx-red-eye",
     name: "Mr. X Red Eye",
     cost: 20000,
-    image: "mrXredeye.png"
+    image: "mrXredeye.webp"
   },
   "accessory-mrx-glasses": {
     id: "accessory-mrx-glasses",
     name: "Mr. X with Glasses",
     cost: 15000,
-    image: "mrXwithGlasses.png"
+    image: "mrXwithGlasses.webp"
   },
   "accessory-ppuk": {
     id: "accessory-ppuk",
     name: "P'Puk",
     cost: 8000,
-    image: "ppuk.png"
+    image: "ppuk.webp"
   }
 };
 
@@ -32,7 +32,7 @@ export function getAccessory(accessoryId) {
 }
 
 // Bump this number whenever you replace an accessory image file
-const ACCESSORY_ASSET_VERSION = "3";
+const ACCESSORY_ASSET_VERSION = "4";
 
 export function getAccessoryImagePath(accessoryId) {
   const accessory = getAccessory(accessoryId);

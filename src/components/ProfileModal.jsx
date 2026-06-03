@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowLeftRight, Gamepad2, MessageSquare, Shirt, ThumbsDown, ThumbsUp, X } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withOptimizedAsset } from "@/lib/basePath";
 import { ACCESSORY_LIST, getAccessoryImagePath } from "@/lib/accessories";
 
 function initials(name) {
@@ -18,14 +18,14 @@ function initials(name) {
 function Badge({ achievement }) {
   const icon = String(achievement.icon || "");
   const hasImage = /^(https?:\/\/|\/)/.test(icon);
-  const imageSource = icon.startsWith("/") ? withBasePath(icon) : icon;
+  const imageSource = icon.startsWith("/") ? withOptimizedAsset(icon) : icon;
 
   return (
     <div className="profile-badge">
       <div className={`profile-badge-medal ${achievement.kind ? `is-${achievement.kind}` : ""}`}>
         {hasImage ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageSource} alt="" />
+          <img src={imageSource} alt="" loading="lazy" />
         ) : (
           <span>{icon || initials(achievement.label)}</span>
         )}
@@ -41,7 +41,7 @@ function AccessoryDoll({ accessoryId, className = "" }) {
   if (!imagePath) return null;
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img className={className} src={withBasePath(imagePath)} alt="" />
+    <img className={className} src={withOptimizedAsset(imagePath)} alt="" loading="lazy" />
   );
 }
 
@@ -54,7 +54,7 @@ function QuestPost({ post }) {
         <video className="profile-quest-media" src={post.evidence.url} controls preload="metadata" />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className="profile-quest-media" src={post.evidence.url} alt={post.title || "Quest submission"} />
+        <img className="profile-quest-media" src={post.evidence.url} alt={post.title || "Quest submission"} loading="lazy" />
       )}
       <div className="profile-quest-reactions" aria-label="Quest reactions">
         <span><ThumbsUp size={20} /> {post.likeCount || 0}</span>
@@ -148,7 +148,7 @@ export default function ProfileModal({ player, selfId, onClose, onTrade, onEquip
             <AccessoryDoll accessoryId={player.equippedAccessory} className="profile-equipped-accessory" />
             {player.avatar ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={player.avatar} alt="" />
+              <img src={player.avatar} alt="" loading="lazy" />
             ) : (
               <span>{initials(player.name)}</span>
             )}

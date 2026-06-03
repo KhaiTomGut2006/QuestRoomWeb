@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MessageSquare } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 import { ACCESSORY_LIST } from "@/lib/accessories";
 import { playSfx } from "@/lib/sfx";
 
@@ -143,7 +143,7 @@ const SMOKE_PUFFS = [
 // ── Shared NPC dialog layout (portrait left, speech bubble right) ────────────
 function InteractDialog({ npcId, npcName, intro, children }) {
   const imgFile = NPC_IMAGE[npcId] || "Witch.png";
-  const imgSrc  = withBasePath(`/assets/NPC/${imgFile}`);
+  const imgSrc  = withOptimizedAsset(`/assets/NPC/${imgFile}`);
   return (
     <div className="npc-quest-layout">
       <div className="npc-quest-npc-side">
@@ -184,7 +184,7 @@ function GamblingDialog({ npc, result, hasGambledThisVisit, replayBetAmount, onG
           <div className="npc-interact-betamount">
             เดิมพันใหม่{" "}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+            <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
             <span>×{replayBet.toLocaleString()}</span>
           </div>
         ) : (
@@ -221,7 +221,7 @@ function GamblingDialog({ npc, result, hasGambledThisVisit, replayBetAmount, onG
           <div className="npc-interact-betamount">
             เดิมพัน{" "}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+            <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
             <span>×{betAmount.toLocaleString()}</span>
           </div>
           <button
@@ -386,8 +386,8 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
           const unavailable = status !== "available";
           const isQuestScroll = itemId.startsWith("quest-scroll-");
           const imgFolder   = item.imageFolder || "Item";
-          const imgVersion  = imgFolder === "Accessories" ? "?v=3" : "";
-          const imgSrc      = withBasePath(`/assets/${imgFolder}/${item.image}${imgVersion}`);
+          const imgVersion  = imgFolder === "Accessories" ? "?v=4" : "";
+          const imgSrc      = withOptimizedAsset(`/assets/${imgFolder}/${item.image}${imgVersion}`);
           const descLabel   = isBought
             ? (purchase?.message || purchase || "ซื้อแล้ว")
             : (STOCK_LABEL[status] ?? item.description);
@@ -433,7 +433,7 @@ function ShopDialog({ npc, purchases, memberShop, loadingItem, onBuy, onClose })
                 ) : (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+                    <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
                     {loadingItem === itemId ? "..." : item.cost}
                   </>
                 )}
@@ -460,7 +460,7 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
   const standaloneQuest = Boolean(npc.standaloneQuest);
   const charKey = questData.npcCharacter || npc.npcId || npc.id;
   const imgFile = NPC_IMAGE[charKey] || "Witch.png";
-  const imgSrc  = withBasePath(`/assets/NPC/${imgFile}`);
+  const imgSrc  = withOptimizedAsset(`/assets/NPC/${imgFile}`);
   const charName = charKey
     ? charKey.charAt(0).toUpperCase() + charKey.slice(1)
     : npc.name;
@@ -541,7 +541,7 @@ function QuestDialog({ npc, questData, activeQuest, onAccept, onCancel, onSubmit
         <div className="npc-quest-reward">
           <span>Reward :</span>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+          <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
           <span>×{questData.reward}</span>
         </div>
         {activeQuest ? (
@@ -662,7 +662,7 @@ export default function NpcVisitModal({
   if (!npc) return null;
 
   const imgFile = NPC_IMAGE[npc.npcId] || NPC_IMAGE[npc.id] || "chest_open.png";
-  const imgSrc  = withBasePath(`/assets/NPC/${imgFile}`);
+  const imgSrc  = withOptimizedAsset(`/assets/NPC/${imgFile}`);
   const meta    = TYPE_META[npc.type] || { label: npc.type, cls: "" };
   const isQuestDialog    = (npc.type === "quest" || npc.type === "stupid-quest") && questData;
   const isGamblingDialog = npc.type === "gambling";

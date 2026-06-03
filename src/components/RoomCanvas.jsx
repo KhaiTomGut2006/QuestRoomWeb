@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { withBasePath } from "@/lib/basePath";
+import { withOptimizedAsset } from "@/lib/basePath";
 
 export default function RoomCanvas({ target, onTargetHandled }) {
   const hostRef = useRef(null);
@@ -35,7 +35,7 @@ export default function RoomCanvas({ target, onTargetHandled }) {
 
       app.ticker.maxFPS = window.matchMedia("(pointer: coarse)").matches ? 30 : 60;
 
-      const texture = await PIXI.Assets.load(withBasePath("/assets/room1.png"));
+      const texture = await PIXI.Assets.load(withOptimizedAsset("/assets/room1.png"));
       const room = new PIXI.Sprite(texture);
       room.anchor.set(0.5);
       app.stage.addChild(room);

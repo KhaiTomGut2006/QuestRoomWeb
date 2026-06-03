@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { MessageSquare } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withOptimizedAsset } from "@/lib/basePath";
 
 const MAX_EVIDENCE_BYTES = 100 * 1024 * 1024;
 
@@ -80,7 +80,7 @@ export default function ActiveQuestPanel({ quest, onSubmit, onCancel }) {
 
           <div className="aqp-reward-row">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+            <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
             <span>×{reward.toLocaleString()}</span>
           </div>
 

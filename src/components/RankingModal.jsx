@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Trophy, X, ChevronDown, Award } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 
 export default function RankingModal({ onClose, onOpenProfile }) {
   const [levels, setLevels] = useState([]);
@@ -100,7 +100,7 @@ export default function RankingModal({ onClose, onOpenProfile }) {
                 {ranking.map((player) => {
                   const badgeIcon = String(player.badge?.icon || "");
                   const hasImage = /^(https?:\/\/|\/)/.test(badgeIcon);
-                  const imageSource = badgeIcon.startsWith("/") ? withBasePath(badgeIcon) : badgeIcon;
+                  const imageSource = badgeIcon.startsWith("/") ? withOptimizedAsset(badgeIcon) : badgeIcon;
 
                   return (
                     <div
@@ -122,6 +122,7 @@ export default function RankingModal({ onClose, onOpenProfile }) {
                             src={imageSource}
                             alt={player.badge?.label || "Badge"}
                             className="ranking-badge-img"
+                            loading="lazy"
                           />
                         ) : (
                           <div className={`ranking-badge-fallback is-${player.badge?.kind || "bronze"}`}>

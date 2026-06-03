@@ -1,7 +1,7 @@
 "use client";
 
 import { Zap } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withOptimizedAsset } from "@/lib/basePath";
 
 export default function ChallengeModal({ member, onConfirm, onCancel }) {
   const cost = member?.currentChallengeCost || 250;
@@ -26,7 +26,7 @@ export default function ChallengeModal({ member, onConfirm, onCancel }) {
             <span className="challenge-modal-impact-label">ค่าใช้จ่าย</span>
             <span className="challenge-modal-impact-cost">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+              <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
               −{cost.toLocaleString()}
             </span>
           </div>

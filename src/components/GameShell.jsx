@@ -20,7 +20,7 @@ import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
 import ChallengeSubmissionPanel from "@/components/ChallengeSubmissionPanel";
 import TutorialMode from "@/components/TutorialMode";
 import QuestReceivedPopup from "@/components/QuestReceivedPopup";
-import { withBasePath } from "@/lib/basePath";
+import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 import { getWalkablePoint } from "@/lib/walkableArea";
 
 const NPC_VISIT_ACTIONS = {
@@ -734,7 +734,9 @@ export default function GameShell() {
   const showGlobalQuestRef = useRef(false);
 
   useEffect(() => {
-    const audio = new Audio(withBasePath("/assets/bgmusic.mp3"));
+    const audio = new Audio();
+    audio.preload = "none";
+    audio.src = withBasePath("/assets/bgmusic.mp3");
     audio.loop = true;
     audio.volume = 0.25; // 0.5 (default volume state) * 0.5 scale
     audioRef.current = audio;
@@ -1226,7 +1228,7 @@ export default function GameShell() {
           ...(challengePreview === "submitted"
             ? {
                 evidence: {
-                  url: withBasePath("/assets/room1.png"),
+                  url: withOptimizedAsset("/assets/room1.png"),
                   pathname: "demo/challenge-preview.png",
                   contentType: "image/png",
                   size: 0,
@@ -1933,7 +1935,7 @@ export default function GameShell() {
           <div className="cost-chip">
             <span>-{activeMember?.currentChallengeCost || 250}</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+            <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
             {activeMember?.costMultiplier > 1 && (
               <span className="multiplier-tag">x{activeMember.costMultiplier}</span>
             )}
@@ -1965,11 +1967,11 @@ export default function GameShell() {
           <div className="coin-pill">
             <span>{activeMember?.coins?.toLocaleString?.() || "0"}</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+            <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
           </div>
           <div className="ticket-pill" title="Select 1 Asset on HamStore tickets">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withBasePath("/assets/Item/AssetTicket.png")} alt="asset ticket" />
+            <img src={withOptimizedAsset("/assets/Item/AssetTicket.png")} alt="asset ticket" />
             <span>x{Number(activeMember?.shopAssetTickets || 0).toLocaleString()}</span>
           </div>
           <div className="profile-action">
@@ -1980,7 +1982,7 @@ export default function GameShell() {
               onClick={handleGlobalQuestOpen}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withBasePath("/assets/Global.png")} alt="" />
+              <img src={withOptimizedAsset("/assets/Global.png")} alt="" />
               {socialUnreadCount > 0 && (
                 <b className="social-unread-badge">{socialUnreadCount > 99 ? "99+" : socialUnreadCount}</b>
               )}
@@ -1995,7 +1997,7 @@ export default function GameShell() {
               onClick={() => (activeMember && isAuthed ? setShowFriends(true) : signIn("discord"))}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withBasePath("/assets/Friends.png")} alt="" />
+              <img src={withOptimizedAsset("/assets/Friends.png")} alt="" />
             </button>
             <span>Friends</span>
           </div>
@@ -2211,7 +2213,7 @@ export default function GameShell() {
             <div className="quest-success-reward">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={withBasePath(questSuccess.isChest ? getChestRewardIcon(questSuccess.chestReward) : "/assets/Coin.png")}
+                src={withOptimizedAsset(questSuccess.isChest ? getChestRewardIcon(questSuccess.chestReward) : "/assets/Coin.png")}
                 alt={questSuccess.isChest && questSuccess.chestReward?.kind === "item" ? "item" : "coin"}
               />
               <span>

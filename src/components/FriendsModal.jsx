@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { X, Search, ChevronDown, Award } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 
 // Format relative time elapsed since lastAuthentication
 function getRelativeTimeString(lastAuthStr) {
@@ -90,9 +90,10 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
           <header className="friends-header">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={withBasePath("/assets/Friends.png")}
+              src={withOptimizedAsset("/assets/Friends.png")}
               alt="Friends Group"
               className="friends-header-avatar"
+              loading="lazy"
             />
             <div className="friends-header-text">
               <h2>Friends</h2>
@@ -137,7 +138,7 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
                 {filteredFriends.map((friend) => {
                   const badgeIcon = String(friend.bestBadge?.icon || "");
                   const hasImage = /^(https?:\/\/|\/)/.test(badgeIcon);
-                  const imageSource = badgeIcon.startsWith("/") ? withBasePath(badgeIcon) : badgeIcon;
+                  const imageSource = badgeIcon.startsWith("/") ? withOptimizedAsset(badgeIcon) : badgeIcon;
 
                   // Check if currently online in sockets (or active in room)
                   const isOnline = roomPlayers.some((p) => p.id === friend.id && p.online) || friend.isOnline;
@@ -156,6 +157,7 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
                             src={friend.avatar}
                             alt=""
                             className="friends-avatar-img"
+                            loading="lazy"
                           />
                         ) : (
                           <div className="friends-avatar-fallback">
@@ -175,6 +177,7 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
                                   src={imageSource}
                                   alt={friend.bestBadge.label || "Badge"}
                                   className="friends-badge-icon"
+                                  loading="lazy"
                                 />
                               ) : (
                                 <div className={`friends-badge-fallback is-${friend.bestBadge.kind || "bronze"}`}>

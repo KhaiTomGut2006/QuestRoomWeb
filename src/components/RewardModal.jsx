@@ -1,12 +1,12 @@
 "use client";
 
 import { Award, Sparkles } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withOptimizedAsset } from "@/lib/basePath";
 
 function Badge({ badge }) {
   const icon = String(badge?.icon || "");
   const hasImage = /^(https?:\/\/|\/)/.test(icon);
-  const imageSource = icon.startsWith("/") ? withBasePath(icon) : icon;
+  const imageSource = icon.startsWith("/") ? withOptimizedAsset(icon) : icon;
 
   return (
     <div className={`reward-badge is-${badge?.kind || "gold"}`}>

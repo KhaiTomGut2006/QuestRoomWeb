@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ThumbsDown, ThumbsUp, X } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 
 function relativeTime(value) {
   const timestamp = new Date(value || 0).getTime();
@@ -18,7 +18,7 @@ function relativeTime(value) {
 function AuthorAvatar({ author }) {
   if (author.avatar) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img className="global-post-avatar" src={author.avatar} alt="" />;
+    return <img className="global-post-avatar" src={author.avatar} alt="" loading="lazy" />;
   }
   return (
     <span className="global-post-avatar global-post-avatar--fallback">
@@ -98,7 +98,7 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
 
         <header className="global-quest-header">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={withBasePath("/assets/Global.png")} alt="" />
+          <img src={withOptimizedAsset("/assets/Global.png")} alt="" loading="lazy" />
           <div>
             <h2>Global Quest</h2>
             <div className="global-quest-select-wrap">
@@ -140,7 +140,7 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
                   <video className="global-post-media" src={post.evidence.url} controls preload="metadata" />
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img className="global-post-media" src={post.evidence.url} alt={post.title || "Quest submission"} />
+                  <img className="global-post-media" src={post.evidence.url} alt={post.title || "Quest submission"} loading="lazy" />
                 )}
                 <div className="global-post-actions">
                   <button

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { ScrollText, Sparkles } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withOptimizedAsset } from "@/lib/basePath";
 
 const DISPLAY_MS = 3200;
 
@@ -34,7 +34,7 @@ export default function QuestReceivedPopup({ quest, onDone }) {
         <div className="quest-received-reward">
           <span>Reward</span>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={withBasePath("/assets/Coin.png")} alt="coin" />
+          <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
           <strong>×{Number(quest.reward || 0).toLocaleString()}</strong>
         </div>
         <button type="button" onClick={onDone}>ดูเควสทางซ้าย</button>

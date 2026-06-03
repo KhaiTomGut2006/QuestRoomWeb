@@ -1,7 +1,7 @@
 "use client";
 
 import { MousePointerClick } from "lucide-react";
-import { withBasePath } from "@/lib/basePath";
+import { withOptimizedAsset } from "@/lib/basePath";
 
 const NPC_IMAGE = {
   milt: "Milt.png",
@@ -37,7 +37,7 @@ export default function NpcDoorVisitor({ npc, phase = "idle", onInteract }) {
       </span>
       <span className="npc-door-visitor-prompt">คลิกเพื่อพูดคุย</span>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={withBasePath(`/assets/NPC/${imgFile}`)} alt="" />
+      <img src={withOptimizedAsset(`/assets/NPC/${imgFile}`)} alt="" />
       <span className="npc-door-visitor-shadow" aria-hidden="true" />
     </button>
   );
