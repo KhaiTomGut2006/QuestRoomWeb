@@ -753,11 +753,11 @@ app.prepare().then(() => {
 
       current.socketIds.delete(socket.id);
       if (removeIfOffline && current.socketIds.size === 0) {
+        socket.to(activeStage).emit("player:upsert", publicPlayer({ ...current, socketIds: new Set() }));
         room.delete(activePlayerId);
         playerStages.delete(activePlayerId);
         playerNpcQuest.delete(activePlayerId);
         pruneRoom(activeStage);
-        socket.to(activeStage).emit("player:leave", activePlayerId);
         return;
       }
 

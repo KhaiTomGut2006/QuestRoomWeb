@@ -807,8 +807,7 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
       const members = await Member.find({
         stage: stageKey,
         discord_id: { $exists: true, $ne: "" },
-        lastAuthentication: { $exists: true, $ne: null },
-        npcCycle: { $exists: true, $ne: null }
+        lastAuthentication: { $exists: true, $ne: null }
       })
         .select(ROOM_PLAYER_SELECT)
         .sort({ lastAuthentication: -1 })
