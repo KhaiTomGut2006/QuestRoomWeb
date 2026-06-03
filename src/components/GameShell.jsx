@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { ChevronLeft, ChevronRight, Coins, Trophy, Zap, Volume2, VolumeX, LogOut, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Coins, Zap, Volume2, VolumeX, LogOut, Settings } from "lucide-react";
 import { io } from "socket.io-client";
 import { upload } from "@vercel/blob/client";
 import RoomCanvas from "@/components/RoomCanvas";
@@ -1430,10 +1430,17 @@ export default function GameShell() {
     socketRef.current?.emit("player:balance", { coins: Number(activeMember.coins) || 0 });
   }, [activeMember?.coins]);
 
+  const emitQuestActive = useCallback((quest) => {
+    socketRef.current?.emit("quest:active", {
+      active: Boolean(quest),
+      source: quest?.source || ""
+    });
+  }, []);
+
   useEffect(() => {
     if (!activeMember || isViewingOtherRoom) return;
-    socketRef.current?.emit("quest:active", Boolean(activeMember.npcQuest));
-  }, [activeMember?.npcQuest, activeMember?.discordId, activeMember?.id, isViewingOtherRoom]);
+    emitQuestActive(activeMember.npcQuest);
+  }, [activeMember?.npcQuest, activeMember?.discordId, activeMember?.id, emitQuestActive, isViewingOtherRoom]);
 
   const moveSelf = useCallback(
     (x, y) => {
@@ -1636,7 +1643,7 @@ export default function GameShell() {
       if (data?.member) {
         activeNpcQuestRef.current = data.member.npcQuest;
         setQuestReceived(data.member.npcQuest);
-        socketRef.current?.emit("quest:active", true);
+        emitQuestActive(data.member.npcQuest);
       }
       setNpcVisit(null);
       setNpcQuestData(null);
@@ -1665,25 +1672,26 @@ export default function GameShell() {
         setDoorNpc(questNpc);
         setDoorNpcPhase("idle");
         setQuestReceived(data.member.npcQuest);
-        socketRef.current?.emit("quest:active", true);
+        emitQuestActive(data.member.npcQuest);
       }
     } catch {}
     setNpcVisit(null);
     setNpcQuestData(null);
-  }, [applyMember, handleTutorialAction, isAuthed, npcQuestData, npcVisit]);
+  }, [applyMember, emitQuestActive, handleTutorialAction, isAuthed, npcQuestData, npcVisit]);
 
-  const handleQuestScrollBought = useCallback((assignedQuest, updatedMember) => {
+  const handleQuestScrollBought = useCallback((assignedQuest, updatedMember, options = {}) => {
     // Quest is assigned directly to the player — no quest NPC spawned at the door.
     // The shop NPC (Milt) stays until its current cooldown expires.
     applyMember(updatedMember);
     setQuestReceived(assignedQuest);
     activeNpcQuestRef.current = null;
     // Notify server so timer freezes at 1 sec when it expires
-    socketRef.current?.emit("quest:active", true);
-    // Close the modal but keep the door NPC visible
-    setNpcVisit(null);
-    setNpcQuestData(null);
-  }, [applyMember]);
+    emitQuestActive(assignedQuest || updatedMember?.npcQuest);
+    if (!options.keepShopOpen) {
+      setNpcVisit(null);
+      setNpcQuestData(null);
+    }
+  }, [applyMember, emitQuestActive]);
 
   const handleNpcQuestCancel = useCallback(async () => {
     if (!isAuthed) return;
@@ -1694,13 +1702,13 @@ export default function GameShell() {
         const data = await res.json();
         applyMember(data.member);
         activeNpcQuestRef.current = null;
-        socketRef.current?.emit("quest:active", false);
+        emitQuestActive(null);
         setNpcVisit(null);
         setNpcQuestData(null);
         if (visitorQuest) dismissDoorNpc();
       }
     } catch {}
-  }, [activeMember?.npcQuest?.source, applyMember, dismissDoorNpc, isAuthed]);
+  }, [activeMember?.npcQuest?.source, applyMember, dismissDoorNpc, emitQuestActive, isAuthed]);
 
   const handleNpcQuestSubmit = useCallback(async (file, onUploadProgress, postText = "") => {
     if (!isAuthed) throw new Error("กรุณาเข้าสู่ระบบก่อนส่งเควส");
@@ -1716,7 +1724,7 @@ export default function GameShell() {
 
     applyMember(data.member);
     activeNpcQuestRef.current = null;
-    socketRef.current?.emit("quest:active", false);
+    emitQuestActive(null);
     setNpcVisit(null);
     setNpcQuestData(null);
     if (visitorQuest) dismissDoorNpc();
@@ -1728,7 +1736,7 @@ export default function GameShell() {
       authorName: activeMember?.name,
       username: activeMember?.username
     });
-  }, [activeMember?.discordId, activeMember?.id, activeMember?.name, activeMember?.npcQuest?.source, activeMember?.username, applyMember, dismissDoorNpc, isAuthed]);
+  }, [activeMember?.discordId, activeMember?.id, activeMember?.name, activeMember?.npcQuest?.source, activeMember?.username, applyMember, dismissDoorNpc, emitQuestActive, isAuthed]);
 
   const handleChestClaim = useCallback((chestReward, { dismissNpc = true } = {}) => {
     if (dismissNpc) dismissDoorNpc();
@@ -1960,7 +1968,7 @@ export default function GameShell() {
           <div className="profile-action">
             <button className="circle-button ranking" type="button" aria-label="Ranking" onClick={() => setShowRanking(true)}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withOptimizedAsset("/assets/Rank.png")} alt="Rank" />
+              <img src={withOptimizedAsset("/assets/Rank.webp")} alt="Rank" />
             </button>
             <span>Rank</span>
           </div>

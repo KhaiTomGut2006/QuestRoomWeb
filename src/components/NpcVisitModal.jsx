@@ -721,7 +721,7 @@ export default function NpcVisitModal({
       // Determine per-item purchase message for feedback in the shop
       let purchaseMsg = "ซื้อสำเร็จ";
       if (data.assignedQuest) {
-        onQuestScrollBought?.(data.assignedQuest, data.member);
+        onQuestScrollBought?.(data.assignedQuest, data.member, { keepShopOpen: true });
         purchaseMsg = "รับเควสแล้ว!";
       } else if (data.chestReward) {
         onChestClaim?.(data.chestReward, { dismissNpc: false });

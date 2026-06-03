@@ -162,6 +162,23 @@ function enrichNpc(npc, availableCoins = 0, configuredShopItems = null) {
   return { ...npc, visitId };
 }
 
+function isShopNpc(npc) {
+  return npc?.type === "shop" || npc?.id === "shop" || npc?.npcId === "milt";
+}
+
+function normalizeQuestActivePayload(payload) {
+  if (typeof payload === "object" && payload !== null) {
+    return {
+      active: Boolean(payload.active),
+      source: String(payload.source || "")
+    };
+  }
+  return {
+    active: Boolean(payload),
+    source: ""
+  };
+}
+
 // ─── Per-socket personal timer helpers ──────────────────────────────
 // Called inside app.prepare() so `io` is in scope there; helpers are defined
 // at module level but use socketPersonalTimer / socketFrozenMs which are.
@@ -650,11 +667,11 @@ app.prepare().then(() => {
   async function handlePersistedCycleElapsed(socket) {
     const playerId = socketToPlayer.get(socket.id);
     if (!playerId) return;
-    socketPersonalTimer.delete(socket.id);
     if (playerNpcQuest.get(playerId)) {
       await freezePersistedCycle(socket, 1000);
       return;
     }
+    socketPersonalTimer.delete(socket.id);
 
     const npc = await enrichNpcForStage(await pickWeightedNpcForStage(playerStages.get(playerId)), socketPlayerCoins.get(socket.id), playerStages.get(playerId));
     socket.emit("npc:visit", npc);
@@ -715,7 +732,9 @@ app.prepare().then(() => {
       return;
     }
 
-    if (storedCycle.pendingNpc && !playerNpcQuest.get(playerId)) socket.emit("npc:visit", storedCycle.pendingNpc);
+    if (storedCycle.pendingNpc && (!playerNpcQuest.get(playerId) || isShopNpc(storedCycle.pendingNpc))) {
+      socket.emit("npc:visit", storedCycle.pendingNpc);
+    }
     armPersistedCycle(socket, storedCycle);
   }
   // ────────────────────────────────────────────────────────────────
@@ -887,10 +906,11 @@ app.prepare().then(() => {
     });
 
     // ─── NPC Quest state sync ────────────────────────────────────
-    socket.on("quest:active", (isActive) => {
+    socket.on("quest:active", (payload) => {
+      const { active: isActive, source } = normalizeQuestActivePayload(payload);
       const pid = socketToPlayer.get(socket.id);
       if (pid) playerNpcQuest.set(pid, Boolean(isActive));
-      if (pid && isActive) {
+      if (pid && isActive && source !== "shop") {
         const state = socketPersonalTimer.get(socket.id);
         if (state) state.pendingNpc = null;
         void setPersistedPendingNpc(pid, null).catch((error) => {
