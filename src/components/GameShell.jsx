@@ -236,6 +236,41 @@ function playerFromMember(member, stageOverride = "") {
   };
 }
 
+function sameRoomPlayer(a, b) {
+  if (!a || !b || a.id !== b.id) return false;
+  const comparableKeys = [
+    "name",
+    "username",
+    "avatar",
+    "equippedAccessory",
+    "stage",
+    "challengeFailureCount",
+    "x",
+    "y",
+    "action",
+    "online"
+  ];
+  return comparableKeys.every((key) => !(key in b) || a[key] === b[key]);
+}
+
+function mergeRoomPlayers(currentPlayers, nextPlayers) {
+  const incoming = Array.isArray(nextPlayers) ? nextPlayers : [];
+  if (!incoming.length) return currentPlayers;
+
+  let changed = false;
+  const playersById = new Map(currentPlayers.map((player) => [player.id, player]));
+  for (const player of incoming) {
+    if (!player?.id) continue;
+    const current = playersById.get(player.id);
+    if (!sameRoomPlayer(current, player)) {
+      changed = true;
+      playersById.set(player.id, current ? { ...current, ...player } : player);
+    }
+  }
+
+  return changed ? Array.from(playersById.values()) : currentPlayers;
+}
+
 function LoginScreen({ authConfigured, authError }) {
   const hasError = Boolean(authError);
   return (
@@ -701,6 +736,8 @@ export default function GameShell() {
   const tutorialActiveRef = useRef(false);
   const questDataKeyRef = useRef(-1); // npcKey for which quest data was last fetched
   const npcSwapTimerRef = useRef(null);
+  const memberRefreshInFlightRef = useRef(false);
+  const socialStatusInFlightRef = useRef(false);
 
   const isAuthed = status === "authenticated";
   const activeMember = member || (previewMode ? demoMember : null);
@@ -855,7 +892,9 @@ export default function GameShell() {
     socialCheckedAtRef.current = new Date().toISOString();
 
     const fetchSocialStatus = () => {
+      if (document.visibilityState === "hidden" || socialStatusInFlightRef.current) return;
       const since = socialCheckedAtRef.current;
+      socialStatusInFlightRef.current = true;
       fetch(withBasePath(`/api/player/social-status?since=${encodeURIComponent(since)}`))
         .then((response) => (response.ok ? response.json() : Promise.reject(response)))
         .then((data) => {
@@ -865,12 +904,20 @@ export default function GameShell() {
           }
           socialCheckedAtRef.current = data.checkedAt || new Date().toISOString();
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          socialStatusInFlightRef.current = false;
+        });
     };
 
     fetchSocialStatus();
-    const interval = window.setInterval(fetchSocialStatus, 8000);
-    return () => window.clearInterval(interval);
+    const interval = window.setInterval(fetchSocialStatus, 60_000);
+    document.addEventListener("visibilitychange", fetchSocialStatus);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", fetchSocialStatus);
+      socialStatusInFlightRef.current = false;
+    };
   }, [activeMember?.discordId, isAuthed, showSocialNotification]);
 
   useEffect(() => {
@@ -1091,6 +1138,8 @@ export default function GameShell() {
   useEffect(() => {
     if (!isAuthed) return;
     const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden" || memberRefreshInFlightRef.current) return;
+      memberRefreshInFlightRef.current = true;
       fetch(withBasePath("/api/player/me"))
         .then((res) => (res.ok ? res.json() : Promise.reject(res)))
         .then((data) => {
@@ -1102,9 +1151,15 @@ export default function GameShell() {
             setReward(nextReward);
           }
         })
-        .catch(() => {});
-    }, 3000);
-    return () => window.clearInterval(interval);
+        .catch(() => {})
+        .finally(() => {
+          memberRefreshInFlightRef.current = false;
+        });
+    }, 15_000);
+    return () => {
+      window.clearInterval(interval);
+      memberRefreshInFlightRef.current = false;
+    };
   }, [isAuthed]);
 
   useEffect(() => {
@@ -1115,13 +1170,14 @@ export default function GameShell() {
   useEffect(() => {
     if (!isAuthed) return;
     const loadRoomLevels = () => {
+      if (document.visibilityState === "hidden") return;
       fetch(withBasePath("/api/player/rooms"))
         .then((res) => (res.ok ? res.json() : Promise.reject(res)))
         .then(({ levels }) => setRoomLevels(Array.isArray(levels) ? levels : []))
         .catch(() => {});
     };
     loadRoomLevels();
-    const interval = window.setInterval(loadRoomLevels, 15_000);
+    const interval = window.setInterval(loadRoomLevels, 60_000);
     return () => window.clearInterval(interval);
   }, [isAuthed]);
 
@@ -1136,15 +1192,14 @@ export default function GameShell() {
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then(({ players: roomPlayers }) => {
         setPlayers((prev) => {
-          const merged = new Map(prev.map((player) => [player.id, player]));
-          for (const player of roomPlayers) {
-            const current = merged.get(player.id);
-            merged.set(player.id, {
+          const currentPlayersById = new Map(prev.map((player) => [player.id, player]));
+          return mergeRoomPlayers(
+            prev,
+            (roomPlayers || []).map((player) => ({
               ...player,
-              online: Boolean(current?.online || player.online)
-            });
-          }
-          return Array.from(merged.values());
+              online: Boolean(currentPlayersById.get(player.id)?.online || player.online)
+            }))
+          );
         });
       })
       .catch(() => {});
@@ -1163,29 +1218,19 @@ export default function GameShell() {
     socketRef.current = socket;
 
     socket.on("room:state", (roomPlayers) => {
-      setPlayers((prev) => {
-        const merged = new Map([...prev, ...roomPlayers].map((p) => [p.id, p]));
-        return Array.from(merged.values());
-      });
+      setPlayers((prev) => mergeRoomPlayers(prev, roomPlayers));
     });
     socket.on("player:upsert", (player) => {
-      setPlayers((prev) => {
-        const map = new Map(prev.map((item) => [item.id, item]));
-        map.set(player.id, player);
-        return Array.from(map.values());
-      });
+      setPlayers((prev) => mergeRoomPlayers(prev, [player]));
+    });
+    socket.on("players:patch", (roomPlayers) => {
+      setPlayers((prev) => mergeRoomPlayers(prev, roomPlayers));
     });
     socket.on("player:leave", (id) => {
       setPlayers((prev) => prev.filter((player) => player.id !== id));
     });
     socket.on("room:peek-state", ({ players: roomPlayers = [] } = {}) => {
-      setPlayers((prev) => {
-        const merged = new Map(prev.map((player) => [player.id, player]));
-        for (const player of roomPlayers) {
-          merged.set(player.id, player);
-        }
-        return Array.from(merged.values());
-      });
+      setPlayers((prev) => mergeRoomPlayers(prev, roomPlayers));
     });
     socket.on("timer:sync", (data) => setCycleInfo(data));
     socket.on("npc:visit", (npc) => {
@@ -1224,20 +1269,17 @@ export default function GameShell() {
   useEffect(() => {
     if (!isViewingOtherRoom || !activeViewedStage) return;
     const requestRoomSnapshot = () => {
+      if (document.visibilityState === "hidden") return;
       socketRef.current?.emit("room:peek", { stage: activeViewedStage });
     };
     requestRoomSnapshot();
-    const interval = window.setInterval(requestRoomSnapshot, 3000);
+    const interval = window.setInterval(requestRoomSnapshot, 10_000);
     return () => window.clearInterval(interval);
   }, [activeViewedStage, isViewingOtherRoom]);
 
   useEffect(() => {
     if (!selfPlayer) return;
-    setPlayers((prev) => {
-      const map = new Map(prev.map((item) => [item.id, item]));
-      map.set(selfPlayer.id, selfPlayer);
-      return Array.from(map.values());
-    });
+    setPlayers((prev) => mergeRoomPlayers(prev, [selfPlayer]));
   }, [selfPlayer]);
 
   useEffect(() => {

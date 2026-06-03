@@ -25,6 +25,10 @@ const playerStages = new Map();   // playerId → current stage (cross-socket tr
 const socketToPlayer = new Map(); // socketId → playerId
 const socketPlayerCoins = new Map(); // socketId → last client-synced balance for NPC offer sizing
 const playerNpcQuest = new Map(); // playerId → bool (has active NPC quest)
+const MAX_ROOM_PLAYERS = 240;
+const ROOM_PATCH_INTERVAL_MS = 100;
+const roomPatchBuffers = new Map();
+const roomPatchTimers = new Map();
 
 // ─── NPC Cycle Timer (per-socket personal timers) ───────────────────
 const CYCLE_MS = 20 * 60 * 1000;
@@ -248,6 +252,62 @@ function getRoom(stage) {
   return rooms.get(key);
 }
 
+function pruneRoom(stage) {
+  const key = String(stage || "");
+  const room = rooms.get(key);
+  if (!room) return;
+
+  for (const [playerId, player] of room) {
+    if (!player.socketIds?.size) {
+      room.delete(playerId);
+      playerStages.delete(playerId);
+      playerNpcQuest.delete(playerId);
+    }
+  }
+
+  if (room.size > MAX_ROOM_PLAYERS) {
+    const playersByAge = Array.from(room.entries())
+      .sort(([, a], [, b]) => Number(a.updatedAt || 0) - Number(b.updatedAt || 0));
+    for (const [playerId, player] of playersByAge.slice(0, room.size - MAX_ROOM_PLAYERS)) {
+      if (player.socketIds?.size) continue;
+      room.delete(playerId);
+      playerStages.delete(playerId);
+      playerNpcQuest.delete(playerId);
+    }
+  }
+
+  if (room.size === 0) rooms.delete(key);
+}
+
+function queueRoomPatch(io, stage, player, { volatile = true } = {}) {
+  const key = String(stage || "");
+  if (!key || !player?.id) return;
+
+  let buffer = roomPatchBuffers.get(key);
+  if (!buffer) {
+    buffer = { players: new Map(), reliable: false };
+    roomPatchBuffers.set(key, buffer);
+  }
+  buffer.players.set(player.id, player);
+  buffer.reliable ||= !volatile;
+
+  if (roomPatchTimers.has(key)) return;
+  const timer = setTimeout(() => {
+    roomPatchTimers.delete(key);
+    const nextBuffer = roomPatchBuffers.get(key);
+    roomPatchBuffers.delete(key);
+    if (!nextBuffer?.players?.size) return;
+    const patch = Array.from(nextBuffer.players.values());
+    const target = io.to(key);
+    if (nextBuffer.reliable) {
+      target.emit("players:patch", patch);
+    } else {
+      target.volatile.emit("players:patch", patch);
+    }
+  }, ROOM_PATCH_INTERVAL_MS);
+  roomPatchTimers.set(key, timer);
+}
+
 // Returns a non-overlapping spawn position for a joining player.
 // Checks only against players who currently have an active socket (online).
 function resolveSpawnPosition(proposed, room, excludeId) {
@@ -316,7 +376,32 @@ function compactPlayer(player, online = Boolean(player?.online)) {
 }
 
 function publicPlayer(player) {
-  return compactPlayer(player, Boolean(player.socketIds?.size));
+  const compact = compactPlayer(player, Boolean(player.socketIds?.size));
+  return {
+    id: compact.id,
+    name: compact.name,
+    username: compact.username,
+    avatar: compact.avatar,
+    equippedAccessory: compact.equippedAccessory,
+    stage: compact.stage,
+    challengeFailureCount: compact.challengeFailureCount,
+    x: compact.x,
+    y: compact.y,
+    action: compact.action,
+    online: compact.online,
+    updatedAt: compact.updatedAt
+  };
+}
+
+function publicPlayerMovement(player) {
+  const compact = compactPlayer(player, Boolean(player.socketIds?.size));
+  return {
+    id: compact.id,
+    x: compact.x,
+    y: compact.y,
+    action: compact.action,
+    updatedAt: compact.updatedAt
+  };
 }
 
 app.prepare().then(() => {
@@ -533,6 +618,7 @@ app.prepare().then(() => {
     let activeStage = null;
     let activePlayerId = null;
     let lastReactionAt = 0;
+    let lastMoveAt = 0;
 
     function detachPlayer({ removeIfOffline = false } = {}) {
       if (!activeStage || !activePlayerId) return;
@@ -544,6 +630,8 @@ app.prepare().then(() => {
       if (removeIfOffline && current.socketIds.size === 0) {
         room.delete(activePlayerId);
         playerStages.delete(activePlayerId);
+        playerNpcQuest.delete(activePlayerId);
+        pruneRoom(activeStage);
         socket.to(activeStage).emit("player:leave", activePlayerId);
         return;
       }
@@ -586,6 +674,7 @@ app.prepare().then(() => {
       activeStage = player.stage;
       activePlayerId = player.id;
 
+      pruneRoom(activeStage);
       const room = getRoom(activeStage);
       const current = room.get(activePlayerId);
       const socketIds = current?.socketIds || new Set();
@@ -602,8 +691,9 @@ app.prepare().then(() => {
       room.set(activePlayerId, { ...current, ...spawnedPlayer, socketIds });
       socket.join(activeStage);
 
+      const nextPublicPlayer = publicPlayer(room.get(activePlayerId));
       socket.emit("room:state", Array.from(room.values()).map(publicPlayer));
-      socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
+      queueRoomPatch(io, activeStage, nextPublicPlayer, { volatile: false });
       if (activeStage.startsWith("tutorial-room-")) {
         clearPersonalTimer(socket.id);
         socketFrozenMs.delete(socket.id);
@@ -629,11 +719,15 @@ app.prepare().then(() => {
 
     socket.on("player:move", (payload = {}) => {
       if (!activeStage || !activePlayerId) return;
+      const now = Date.now();
+      if (now - lastMoveAt < 90) return;
       const room = getRoom(activeStage);
       const current = room.get(activePlayerId);
       if (!current) return;
       const position = getWalkablePoint(payload);
       if (!position) return;
+      if (Math.hypot((current.x || 0) - position.x, (current.y || 0) - position.y) < 0.15) return;
+      lastMoveAt = now;
 
       const nextPlayer = compactPlayer({
         ...current,
@@ -643,7 +737,7 @@ app.prepare().then(() => {
       });
 
       room.set(activePlayerId, { ...current, ...nextPlayer });
-      socket.to(activeStage).emit("player:upsert", publicPlayer(room.get(activePlayerId)));
+      queueRoomPatch(io, activeStage, publicPlayerMovement(room.get(activePlayerId)));
     });
 
     socket.on("player:accessory", (payload = {}) => {
@@ -830,7 +924,7 @@ app.prepare().then(() => {
       socketPermanentReductionMs.delete(socket.id);
       socketToPlayer.delete(socket.id);
       socketPlayerCoins.delete(socket.id);
-      detachPlayer();
+      detachPlayer({ removeIfOffline: true });
     });
   });
 

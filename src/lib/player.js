@@ -317,8 +317,7 @@ function normalizeNpcQuestEvidence(discordId, evidence) {
 
 export function getDiscordAvatar(discordId, avatarHash) {
   if (!discordId || !avatarHash) return "";
-  const ext = String(avatarHash).startsWith("a_") ? "gif" : "png";
-  return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.${ext}?size=128`;
+  return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=128`;
 }
 
 export function normalizeMember(member) {
@@ -404,7 +403,7 @@ export async function upsertMemberFromDiscord(profile) {
   const discordId = String(profile?.id || "");
   if (!discordId) throw new Error("Discord profile is missing id");
 
-  const avatarUrl = profile.image_url || getDiscordAvatar(discordId, profile.avatar);
+  const avatarUrl = getDiscordAvatar(discordId, profile.avatar) || profile.image_url || "";
   const username = String(profile.username || "").trim();
   const globalName = String(profile.global_name || profile.globalName || "").trim();
   const initialPosition = {
@@ -1014,28 +1013,142 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId) {
 
 export async function getSocialQuestStatus(discordId, since) {
   await connectDb();
-  await ensureLevels();
   const viewerId = String(discordId || "");
-  const viewer = await Member.findOne({ discord_id: viewerId }).lean();
+  const viewer = await Member.findOne(
+    { discord_id: viewerId },
+    { socialLastSeenAt: 1 }
+  ).lean();
   if (!viewer) return null;
 
   const sinceAt = new Date(since || 0);
   const validSinceAt = Number.isFinite(sinceAt.getTime()) ? sinceAt : new Date(0);
   const lastSeenAt = new Date(viewer.socialLastSeenAt || 0);
-  const members = await Member.find({
-    discord_id: { $exists: true, $ne: "" },
-    "npcQuestSubmissions.0": { $exists: true }
-  }).lean();
-  const posts = members
-    .flatMap((member) => (member.npcQuestSubmissions || [])
-      .map((submission) => normalizeSocialNotification(member, submission))
-      .filter(Boolean))
-    .filter((post) => post.author.id !== viewerId)
-    .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+
+  const [result = {}] = await Member.aggregate([
+    {
+      $match: {
+        discord_id: { $exists: true, $nin: ["", viewerId] },
+        "npcQuestSubmissions.0": { $exists: true }
+      }
+    },
+    { $unwind: "$npcQuestSubmissions" },
+    {
+      $addFields: {
+        socialSubmission: "$npcQuestSubmissions",
+        isChallengeSubmission: { $eq: ["$npcQuestSubmissions.source", "challenge"] },
+        authorName: {
+          $ifNull: [
+            "$nick",
+            {
+              $ifNull: [
+                "$fullname",
+                {
+                  $ifNull: [
+                    "$discordData.global_name",
+                    { $ifNull: ["$discordData.username", "Player"] }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        authorUsername: {
+          $ifNull: [
+            "$username",
+            { $ifNull: ["$discordData.username", ""] }
+          ]
+        }
+      }
+    },
+    {
+      $addFields: {
+        challengeIsVisible: {
+          $and: [
+            "$isChallengeSubmission",
+            { $eq: ["$questChallenge.submissionId", "$socialSubmission.id"] },
+            {
+              $or: [
+                { $ne: ["$questChallenge.approvedAt", null] },
+                { $eq: ["$questChallenge.status", "approved"] }
+              ]
+            }
+          ]
+        },
+        publishedAt: {
+          $cond: [
+            "$isChallengeSubmission",
+            "$questChallenge.approvedAt",
+            "$socialSubmission.submittedAt"
+          ]
+        }
+      }
+    },
+    {
+      $match: {
+        $expr: {
+          $and: [
+            {
+              $or: [
+                { $ne: ["$isChallengeSubmission", true] },
+                "$challengeIsVisible"
+              ]
+            },
+            { $ne: ["$socialSubmission.evidence.url", null] },
+            { $ne: ["$socialSubmission.evidence.url", ""] },
+            { $ne: ["$publishedAt", null] }
+          ]
+        }
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        id: { $toString: "$socialSubmission.id" },
+        type: {
+          $cond: [
+            "$isChallengeSubmission",
+            "challenge",
+            "npc-quest"
+          ]
+        },
+        title: {
+          $ifNull: [
+            "$socialSubmission.title",
+            {
+              $cond: [
+                "$isChallengeSubmission",
+                "Challenge",
+                "NPC Quest"
+              ]
+            }
+          ]
+        },
+        publishedAt: 1,
+        author: {
+          id: "$discord_id",
+          name: "$authorName",
+          username: "$authorUsername"
+        }
+      }
+    },
+    {
+      $facet: {
+        unread: [
+          { $match: { publishedAt: { $gt: lastSeenAt } } },
+          { $count: "count" }
+        ],
+        notifications: [
+          { $match: { publishedAt: { $gt: validSinceAt } } },
+          { $sort: { publishedAt: -1 } },
+          { $limit: 8 }
+        ]
+      }
+    }
+  ]).option({ allowDiskUse: true });
 
   return {
-    unreadCount: posts.filter((post) => new Date(post.publishedAt) > lastSeenAt).length,
-    notifications: posts.filter((post) => new Date(post.publishedAt) > validSinceAt).slice(0, 8),
+    unreadCount: Number(result.unread?.[0]?.count || 0),
+    notifications: result.notifications || [],
     checkedAt: new Date()
   };
 }

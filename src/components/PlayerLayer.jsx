@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import { withBasePath } from "@/lib/basePath";
 import { getAccessoryImagePath } from "@/lib/accessories";
 
@@ -18,7 +18,7 @@ function initials(name) {
     .toUpperCase();
 }
 
-function PlayerToken({ player, selfId, reactions, onOpenProfile, onSelectReaction, onReactionEnd }) {
+const PlayerToken = memo(function PlayerToken({ player, selfId, reactions, onOpenProfile, onSelectReaction, onReactionEnd }) {
   const longPressTimerRef = useRef(null);
   const pointerStartRef = useRef(null);
   const suppressClickRef = useRef(false);
@@ -144,7 +144,30 @@ function PlayerToken({ player, selfId, reactions, onOpenProfile, onSelectReactio
       ))}
     </div>
   );
-}
+}, (prev, next) => {
+  const prevPlayer = prev.player;
+  const nextPlayer = next.player;
+  if (
+    prev.selfId !== next.selfId ||
+    prevPlayer.id !== nextPlayer.id ||
+    prevPlayer.name !== nextPlayer.name ||
+    prevPlayer.avatar !== nextPlayer.avatar ||
+    prevPlayer.equippedAccessory !== nextPlayer.equippedAccessory ||
+    prevPlayer.challengeFailureCount !== nextPlayer.challengeFailureCount ||
+    prevPlayer.online !== nextPlayer.online ||
+    prevPlayer.x !== nextPlayer.x ||
+    prevPlayer.y !== nextPlayer.y ||
+    prev.reactions.length !== next.reactions.length
+  ) {
+    return false;
+  }
+
+  for (let i = 0; i < prev.reactions.length; i += 1) {
+    if (prev.reactions[i].id !== next.reactions[i].id) return false;
+  }
+
+  return true;
+});
 
 export default function PlayerLayer({
   players,
@@ -154,6 +177,16 @@ export default function PlayerLayer({
   onSelectReaction,
   onReactionEnd
 }) {
+  const reactionsByPlayer = useMemo(() => {
+    const map = new Map();
+    for (const reaction of reactions) {
+      const list = map.get(reaction.playerId);
+      if (list) list.push(reaction);
+      else map.set(reaction.playerId, [reaction]);
+    }
+    return map;
+  }, [reactions]);
+
   return (
     <div className="player-layer" aria-label="Players in this stage">
       {players.map((player) => (
@@ -161,7 +194,7 @@ export default function PlayerLayer({
           key={player.id}
           player={player}
           selfId={selfId}
-          reactions={reactions.filter((reaction) => reaction.playerId === player.id)}
+          reactions={reactionsByPlayer.get(player.id) || []}
           onOpenProfile={onOpenProfile}
           onSelectReaction={onSelectReaction}
           onReactionEnd={onReactionEnd}
