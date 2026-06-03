@@ -25,8 +25,8 @@ const playerStages = new Map();   // playerId → current stage (cross-socket tr
 const socketToPlayer = new Map(); // socketId → playerId
 const socketPlayerCoins = new Map(); // socketId → last client-synced balance for NPC offer sizing
 const playerNpcQuest = new Map(); // playerId → bool (has active NPC quest)
-const MAX_ROOM_PLAYERS = 240;
-const MAX_VISIBLE_ROOM_PLAYERS = Math.max(1, Number(process.env.MAX_VISIBLE_ROOM_PLAYERS || 20));
+const MAX_ROOM_PLAYERS = 1000;
+const MAX_VISIBLE_ROOM_PLAYERS = Math.max(1, Number(aMAX_ROOM_PLAYERS));
 const ROOM_PATCH_INTERVAL_MS = 100;
 const SOCKET_TRANSPORTS = process.env.SOCKET_ALLOW_POLLING === "true"
   ? ["websocket", "polling"]
