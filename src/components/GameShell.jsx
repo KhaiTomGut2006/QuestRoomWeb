@@ -1442,7 +1442,11 @@ export default function GameShell() {
     socket.on("challenge:announce", (data) => {
       setChallengeAnnouncement(data);
     });
+    socket.on("member:update", ({ member: nextMember } = {}) => {
+      if (nextMember) applyMember(nextMember);
+    });
     socket.on("social:notification", (data) => {
+      if (data?.author?.id && data.author.id === activeMember?.discordId) return;
       showSocialNotification(data, { incrementUnread: true });
     });
     socket.on("player:reaction", showPlayerReaction);
@@ -1458,7 +1462,7 @@ export default function GameShell() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [mergePlayers, previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
+  }, [activeMember?.discordId, applyMember, mergePlayers, previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
 
   useEffect(() => {
     if (!selfPlayer?.id) return;

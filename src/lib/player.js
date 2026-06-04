@@ -673,6 +673,63 @@ async function upsertSocialPostForSubmission(member, submission) {
   return doc;
 }
 
+function newestBadge(badges = []) {
+  return [...(badges || [])]
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.awardedAt || 0) - new Date(a.awardedAt || 0))[0] || null;
+}
+
+function rewardIdForBadge(badge) {
+  if (!badge) return "";
+  const awardedAt = badge.awardedAt ? new Date(badge.awardedAt).getTime() : "";
+  return `badge:${badge.id || badge.label || "badge"}:${awardedAt}`;
+}
+
+export async function syncChallengeReview(discordId, { createReward = false } = {}) {
+  await connectDb();
+  await ensureLevels();
+  const member = await Member.findOne({ discord_id: String(discordId || "") })
+    .select(`${MEMBER_INTERACTION_SELECT} npcQuestSubmissions`);
+  if (!member) return null;
+
+  let saved = false;
+  const challenge = member.questChallenge || null;
+  const challengeSubmission = challenge?.submissionId
+    ? (member.npcQuestSubmissions || []).find((submission) => submission.id === challenge.submissionId)
+    : null;
+  const challengeBadge = normalizeBadge(challenge?.badge) || normalizeBadge(challengeSubmission?.badge);
+  const fallbackBadge = challengeBadge || normalizeBadge(newestBadge(member.profileAchievements));
+
+  if (createReward && fallbackBadge) {
+    const nextRewardId = rewardIdForBadge(fallbackBadge);
+    if (!member.questReward?.id || member.questReward.id !== nextRewardId) {
+      member.questReward = {
+        id: nextRewardId,
+        taskId: challenge?.taskId || member.stage || DEFAULT_STAGE,
+        taskName: challenge?.taskName || fallbackBadge.label || getTaskName(member.stage),
+        badge: fallbackBadge,
+        awardedAt: fallbackBadge.awardedAt || new Date(),
+        seenAt: null
+      };
+      member.markModified("questReward");
+      saved = true;
+    }
+  }
+
+  if (challengeSubmission) {
+    await upsertSocialPostForSubmission(member, challengeSubmission);
+  }
+
+  if (saved) {
+    await member.save({ validateModifiedOnly: true });
+  }
+
+  return {
+    member: normalizeMemberInteraction(member),
+    notification: challengeSubmission ? normalizeSocialNotification(member, challengeSubmission) : null
+  };
+}
+
 async function backfillSocialPostsFromMembers({ force = false } = {}) {
   const now = Date.now();
   if (pendingSocialPostBackfill) {

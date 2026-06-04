@@ -568,6 +568,7 @@ app.prepare().then(() => {
     cors: { origin: true },
     transports: SOCKET_TRANSPORTS
   });
+  globalThis.__questRoomIo = io;
 
   // ─── Per-socket personal NPC cycle ────────────────────────────
   // Returns the effective full-cycle duration for a socket (with permanent reductions)
@@ -805,6 +806,7 @@ app.prepare().then(() => {
 
       // Track socket → player mapping
       socketToPlayer.set(socket.id, player.id);
+      socket.join(`player:${player.id}`);
       socketPlayerCoins.set(socket.id, Math.max(0, Number(payload.coins) || 0));
       // Restore permanent cooldown reduction from previous purchases
       const permReduction = Math.max(0, Number(payload.permanentReductionMs) || 0);
