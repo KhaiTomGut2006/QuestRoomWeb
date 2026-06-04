@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { X, Search, ChevronDown, Award } from "lucide-react";
 import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
+import AvatarWithFallback from "./AvatarWithFallback";
 
 // Format relative time elapsed since lastAuthentication
 function getRelativeTimeString(lastAuthStr) {
@@ -152,20 +153,15 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
                       onClick={() => onOpenProfile && onOpenProfile(friend.id)}
                     >
                       <div className="friends-item-avatar-col">
-                        {friend.avatar ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={friend.avatar}
-                            alt=""
-                            className="friends-avatar-img"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ) : (
-                          <div className="friends-avatar-fallback">
-                            {String(friend.name || "P").charAt(0).toUpperCase()}
-                          </div>
-                        )}
+                        <AvatarWithFallback
+                          src={friend.avatar}
+                          className="friends-avatar-img"
+                          fallbackAs="div"
+                          fallbackClassName="friends-avatar-fallback"
+                          fallbackText={String(friend.name || "P").charAt(0).toUpperCase()}
+                          loading="lazy"
+                          decoding="async"
+                        />
                       </div>
                       
                       <div className="friends-item-info-col">

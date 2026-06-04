@@ -3,6 +3,7 @@
 import { memo, useCallback, useMemo, useRef } from "react";
 import { withBasePath } from "@/lib/basePath";
 import { getAccessoryImagePath } from "@/lib/accessories";
+import AvatarWithFallback from "./AvatarWithFallback";
 
 const LONG_PRESS_MS = 600;
 const MOVE_THRESHOLD = 10;
@@ -126,12 +127,12 @@ const PlayerToken = memo(function PlayerToken({ player, selfId, reactions, onOpe
               decoding="async"
             />
           )}
-          {player.avatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={player.avatar} alt="" loading="lazy" decoding="async" />
-          ) : (
-            <span>{initials(player.name)}</span>
-          )}
+          <AvatarWithFallback
+            src={player.avatar}
+            fallbackText={initials(player.name)}
+            loading="lazy"
+            decoding="async"
+          />
           {player.online && <span className="player-online-dot" aria-hidden="true" />}
         </div>
         <div className="player-name">{player.name}</div>

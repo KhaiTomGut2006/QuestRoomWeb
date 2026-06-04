@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
+import AvatarWithFallback from "./AvatarWithFallback";
 
 function relativeTime(value) {
   const timestamp = new Date(value || 0).getTime();
@@ -16,14 +17,14 @@ function relativeTime(value) {
 }
 
 function AuthorAvatar({ author }) {
-  if (author.avatar) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img className="global-post-avatar" src={author.avatar} alt="" loading="lazy" />;
-  }
   return (
-    <span className="global-post-avatar global-post-avatar--fallback">
-      {String(author.name || "P").charAt(0).toUpperCase()}
-    </span>
+    <AvatarWithFallback
+      src={author.avatar}
+      className="global-post-avatar"
+      fallbackClassName="global-post-avatar global-post-avatar--fallback"
+      fallbackText={String(author.name || "P").charAt(0).toUpperCase()}
+      loading="lazy"
+    />
   );
 }
 

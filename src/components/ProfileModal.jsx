@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeftRight, Gamepad2, MessageSquare, Shirt, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { withOptimizedAsset } from "@/lib/basePath";
 import { ACCESSORY_LIST, getAccessoryImagePath } from "@/lib/accessories";
+import AvatarWithFallback from "./AvatarWithFallback";
 
 function initials(name) {
   return String(name || "P")
@@ -146,12 +147,11 @@ export default function ProfileModal({ player, selfId, onClose, onTrade, onEquip
         <div className="profile-modal-header">
           <div className="profile-modal-avatar">
             <AccessoryDoll accessoryId={player.equippedAccessory} className="profile-equipped-accessory" />
-            {player.avatar ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={player.avatar} alt="" loading="lazy" />
-            ) : (
-              <span>{initials(player.name)}</span>
-            )}
+            <AvatarWithFallback
+              src={player.avatar}
+              fallbackText={initials(player.name)}
+              loading="lazy"
+            />
             {player.online && <i className="profile-modal-online" aria-label="Online" />}
           </div>
           <div>

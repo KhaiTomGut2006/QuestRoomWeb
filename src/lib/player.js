@@ -586,7 +586,8 @@ function normalizeNpcQuestEvidence(discordId, evidence) {
 
 export function getDiscordAvatar(discordId, avatarHash) {
   if (!discordId || !avatarHash) return "";
-  return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=64`;
+  const extension = String(avatarHash).startsWith("a_") ? "gif" : "png";
+  return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.${extension}?size=64`;
 }
 
 export function normalizeMember(member, options = {}) {
