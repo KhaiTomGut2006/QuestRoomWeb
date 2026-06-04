@@ -101,6 +101,7 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
   const [nextCursor, setNextCursor] = useState("");
   const [hasMore, setHasMore] = useState(false);
   const lastLoadedClassRef = useRef("");
+  const loadMoreRef = useRef(null);
 
   const fetchPosts = useCallback((classId = "", options = {}) => {
     const cursor = options.cursor || "";
@@ -155,6 +156,24 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
     setHasMore(false);
     setSelectedClassId(nextClassId);
   };
+
+  const handleLoadMore = useCallback(() => {
+    if (!hasMore || !nextCursor || loading || loadingMore) return;
+    fetchPosts(selectedClassId, { cursor: nextCursor });
+  }, [fetchPosts, hasMore, loading, loadingMore, nextCursor, selectedClassId]);
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !hasMore) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) handleLoadMore();
+      },
+      { root: null, rootMargin: "180px 0px", threshold: 0.01 }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [handleLoadMore, hasMore]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -266,10 +285,11 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
               ))}
               {hasMore && (
                 <button
+                  ref={loadMoreRef}
                   className="global-quest-load-more"
                   type="button"
                   disabled={loadingMore}
-                  onClick={() => fetchPosts(selectedClassId, { cursor: nextCursor })}
+                  onClick={handleLoadMore}
                 >
                   {loadingMore ? "Loading..." : "Load more"}
                 </button>

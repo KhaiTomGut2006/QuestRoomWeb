@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { X, Search, ChevronDown, Award } from "lucide-react";
 import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 import AvatarWithFallback from "./AvatarWithFallback";
@@ -35,6 +35,7 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
   const [nextCursor, setNextCursor] = useState("");
   const [hasMore, setHasMore] = useState(false);
   const lastLoadedClassRef = useRef("");
+  const loadMoreRef = useRef(null);
 
   // Esc key closes modal
   useEffect(() => {
@@ -96,7 +97,7 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
     setSelectedClassId(event.target.value);
   };
 
-  const handleLoadMore = () => {
+  const handleLoadMore = useCallback(() => {
     if (!selectedClassId || !nextCursor || loadingMore) return;
     setLoadingMore(true);
     const params = new URLSearchParams({
@@ -119,7 +120,20 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
       .finally(() => {
         setLoadingMore(false);
       });
-  };
+  }, [loadingMore, nextCursor, searchQuery, selectedClassId]);
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !hasMore) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) handleLoadMore();
+      },
+      { root: null, rootMargin: "180px 0px", threshold: 0.01 }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [handleLoadMore, hasMore]);
 
   return (
     <div
@@ -246,6 +260,7 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
                 })}
                 {hasMore && (
                   <button
+                    ref={loadMoreRef}
                     className="friends-load-more"
                     type="button"
                     disabled={loadingMore}
