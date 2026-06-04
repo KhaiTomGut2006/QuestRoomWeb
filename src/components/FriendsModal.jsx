@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useRef } from "react";
 import { X, Search, ChevronDown, Award } from "lucide-react";
 import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 import AvatarWithFallback from "./AvatarWithFallback";
+
+const PAGE_SIZE = 10;
 
 // Format relative time elapsed since lastAuthentication
 function getRelativeTimeString(lastAuthStr) {
@@ -29,6 +31,10 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
   const [selectedClassId, setSelectedClassId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const lastLoadedClassRef = useRef("");
 
   // Esc key closes modal
   useEffect(() => {
@@ -40,39 +46,80 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
   }, [onClose]);
 
   useEffect(() => {
+    const search = searchQuery.trim();
+    const loadKey = `${selectedClassId}:${search}`;
+    if (selectedClassId && lastLoadedClassRef.current === loadKey) return;
     const controller = new AbortController();
     const classId = selectedClassId;
     setLoading(true);
-    const query = classId ? `?class=${encodeURIComponent(classId)}` : "";
-    fetch(withBasePath(`/api/player/friends${query}`), { signal: controller.signal })
+    setNextCursor("");
+    setHasMore(false);
+    const timeoutId = window.setTimeout(() => {
+      const params = new URLSearchParams();
+      if (classId) params.set("class", classId);
+      params.set("limit", String(PAGE_SIZE));
+      if (search) params.set("q", search);
+      const query = `?${params.toString()}`;
+      fetch(withBasePath(`/api/player/friends${query}`), { signal: controller.signal })
+        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+        .then(({ classes: loadedClasses, friends: loadedFriends, defaultClassId, nextCursor: loadedNextCursor, hasMore: loadedHasMore }) => {
+          setClasses(Array.isArray(loadedClasses) ? loadedClasses : []);
+          setFriends(Array.isArray(loadedFriends) ? loadedFriends : []);
+          setNextCursor(loadedNextCursor || "");
+          setHasMore(Boolean(loadedHasMore));
+          const loadedClassId = defaultClassId || classId || loadedClasses?.[0]?.sheetTitle || "";
+          lastLoadedClassRef.current = `${loadedClassId}:${search}`;
+          if (Array.isArray(loadedClasses) && loadedClasses.length > 0 && !classId) {
+            setSelectedClassId(loadedClassId || loadedClasses[0].sheetTitle);
+          }
+          setLoading(false);
+        })
+        .catch((err) => {
+          if (err?.name === "AbortError") return;
+          console.error("Failed to load friends", err);
+          setLoading(false);
+        });
+    }, search ? 250 : 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [searchQuery, selectedClassId]);
+
+  const handleClassChange = (event) => {
+    lastLoadedClassRef.current = "";
+    setFriends([]);
+    setNextCursor("");
+    setHasMore(false);
+    setSearchQuery("");
+    setSelectedClassId(event.target.value);
+  };
+
+  const handleLoadMore = () => {
+    if (!selectedClassId || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    const params = new URLSearchParams({
+      class: selectedClassId,
+      limit: String(PAGE_SIZE),
+      cursor: nextCursor
+    });
+    const search = searchQuery.trim();
+    if (search) params.set("q", search);
+    fetch(withBasePath(`/api/player/friends?${params.toString()}`))
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then(({ classes: loadedClasses, friends: loadedFriends, defaultClassId }) => {
-        setClasses(Array.isArray(loadedClasses) ? loadedClasses : []);
-        setFriends(Array.isArray(loadedFriends) ? loadedFriends : []);
-        if (Array.isArray(loadedClasses) && loadedClasses.length > 0 && !classId) {
-          setSelectedClassId(defaultClassId || loadedClasses[0].sheetTitle);
-        }
-        setLoading(false);
+      .then(({ friends: loadedFriends, nextCursor: loadedNextCursor, hasMore: loadedHasMore }) => {
+        setFriends((current) => [...current, ...(Array.isArray(loadedFriends) ? loadedFriends : [])]);
+        setNextCursor(loadedNextCursor || "");
+        setHasMore(Boolean(loadedHasMore));
       })
       .catch((err) => {
-        if (err?.name === "AbortError") return;
-        console.error("Failed to load friends", err);
-        setLoading(false);
+        console.error("Failed to load more friends", err);
+      })
+      .finally(() => {
+        setLoadingMore(false);
       });
-
-    return () => controller.abort();
-  }, [selectedClassId]);
-
-  // Filter friends list based on search query
-  const filteredFriends = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return friends;
-    return friends.filter(
-      (f) =>
-        String(f.name || "").toLowerCase().includes(query) ||
-        String(f.username || "").toLowerCase().includes(query)
-    );
-  }, [friends, searchQuery]);
+  };
 
   return (
     <div
@@ -102,7 +149,7 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
               <div className="friends-select-container">
                 <select
                   value={selectedClassId}
-                  onChange={(e) => setSelectedClassId(e.target.value)}
+                  onChange={handleClassChange}
                   className="friends-class-select"
                 >
                   {classes.map((cls) => (
@@ -135,9 +182,9 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
                 <div className="friends-spinner" />
                 <p>กำลังโหลดรายชื่อเพื่อน...</p>
               </div>
-            ) : filteredFriends.length > 0 ? (
+            ) : friends.length > 0 ? (
               <div className="friends-list">
-                {filteredFriends.map((friend) => {
+                {friends.map((friend) => {
                   const badgeIcon = String(friend.bestBadge?.icon || "");
                   const hasImage = /^(https?:\/\/|\/)/.test(badgeIcon);
                   const imageSource = badgeIcon.startsWith("/") ? withOptimizedAsset(badgeIcon) : badgeIcon;
@@ -197,6 +244,16 @@ export default function FriendsModal({ onClose, onOpenProfile, roomPlayers = [] 
                     </div>
                   );
                 })}
+                {hasMore && (
+                  <button
+                    className="friends-load-more"
+                    type="button"
+                    disabled={loadingMore}
+                    onClick={handleLoadMore}
+                  >
+                    {loadingMore ? "Loading..." : "Load more"}
+                  </button>
+                )}
               </div>
             ) : (
               <div className="friends-empty-state">

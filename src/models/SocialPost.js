@@ -59,6 +59,8 @@ const SocialPostSchema = new mongoose.Schema(
 );
 
 SocialPostSchema.index({ visible: 1, publishedAt: -1 });
+SocialPostSchema.index({ visible: 1, publishedAt: -1, postId: -1 });
 SocialPostSchema.index({ authorId: 1, visible: 1, publishedAt: -1 });
+SocialPostSchema.index({ authorId: 1, visible: 1, publishedAt: -1, postId: -1 });
 
 export default mongoose.models.SocialPost || mongoose.model("SocialPost", SocialPostSchema);

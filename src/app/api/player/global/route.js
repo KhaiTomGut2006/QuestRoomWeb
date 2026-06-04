@@ -20,8 +20,17 @@ export async function GET(request) {
       ...activeClasses
     ];
     const classId = searchParams.get("class") || "all";
-    const posts = await getGlobalQuestPosts(classId, discordId);
-    return NextResponse.json({ classes, posts, defaultClassId: classId });
+    const page = await getGlobalQuestPosts(classId, discordId, {
+      limit: searchParams.get("limit"),
+      cursor: searchParams.get("cursor")
+    });
+    return NextResponse.json({
+      classes,
+      posts: page.posts,
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+      defaultClassId: classId
+    });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503 });
   }

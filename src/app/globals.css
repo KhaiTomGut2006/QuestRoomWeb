@@ -4207,6 +4207,35 @@ button {
   color: #d60000;
 }
 
+.global-quest-load-more,
+.friends-load-more {
+  align-self: center;
+  min-width: 148px;
+  min-height: 42px;
+  margin: 8px auto 4px;
+  padding: 0 18px;
+  border: 2px solid #1c1a16;
+  border-radius: 8px;
+  background: #ffbf28;
+  color: #1b1711;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #e18513;
+}
+
+.global-quest-load-more:hover,
+.friends-load-more:hover {
+  transform: translateY(-1px);
+}
+
+.global-quest-load-more:disabled,
+.friends-load-more:disabled {
+  cursor: wait;
+  opacity: 0.68;
+  transform: none;
+}
+
 /* ─── HUD Volume expanding slider & Logout styles ─── */
 .volume-control-wrapper {
   position: relative;

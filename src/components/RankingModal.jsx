@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Trophy, X, ChevronDown, Award } from "lucide-react";
 import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 
@@ -9,6 +9,7 @@ export default function RankingModal({ onClose, onOpenProfile }) {
   const [ranking, setRanking] = useState([]);
   const [selectedStageId, setSelectedStageId] = useState("");
   const [loading, setLoading] = useState(true);
+  const lastLoadedStageRef = useRef("");
 
   // Esc key closes modal
   useEffect(() => {
@@ -20,6 +21,7 @@ export default function RankingModal({ onClose, onOpenProfile }) {
   }, [onClose]);
 
   useEffect(() => {
+    if (selectedStageId && lastLoadedStageRef.current === selectedStageId) return;
     const controller = new AbortController();
     const stageId = selectedStageId;
     setLoading(true);
@@ -29,8 +31,10 @@ export default function RankingModal({ onClose, onOpenProfile }) {
       .then(({ levels: loadedLevels, ranking: loadedRanking }) => {
         setLevels(Array.isArray(loadedLevels) ? loadedLevels : []);
         setRanking(Array.isArray(loadedRanking) ? loadedRanking : []);
+        const loadedStageId = stageId || loadedLevels?.[0]?.stageId || "";
+        lastLoadedStageRef.current = loadedStageId;
         if (Array.isArray(loadedLevels) && loadedLevels.length > 0 && !stageId) {
-          setSelectedStageId(loadedLevels[0].stageId);
+          setSelectedStageId(loadedStageId);
         }
         setLoading(false);
       })

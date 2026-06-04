@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
 import AvatarWithFallback from "./AvatarWithFallback";
+
+const PAGE_SIZE = 10;
 
 function relativeTime(value) {
   const timestamp = new Date(value || 0).getTime();
@@ -94,29 +96,65 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
   const [posts, setPosts] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [nextCursor, setNextCursor] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const lastLoadedClassRef = useRef("");
 
-  const fetchPosts = useCallback((classId = "") => {
-    setLoading(true);
+  const fetchPosts = useCallback((classId = "", options = {}) => {
+    const cursor = options.cursor || "";
+    const append = Boolean(cursor);
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      setNextCursor("");
+      setHasMore(false);
+    }
     setError("");
-    const query = classId ? `?class=${encodeURIComponent(classId)}` : "";
+    const params = new URLSearchParams();
+    if (classId) params.set("class", classId);
+    params.set("limit", String(PAGE_SIZE));
+    if (cursor) params.set("cursor", cursor);
+    const query = `?${params.toString()}`;
     fetch(withBasePath(`/api/player/global${query}`))
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then(({ classes: loadedClasses, posts: loadedPosts, defaultClassId }) => {
+      .then(({ classes: loadedClasses, posts: loadedPosts, defaultClassId, nextCursor: loadedNextCursor, hasMore: loadedHasMore }) => {
         setClasses(Array.isArray(loadedClasses) ? loadedClasses : []);
-        setPosts(Array.isArray(loadedPosts) ? loadedPosts : []);
-        setSelectedClassId((current) => current || defaultClassId || "");
+        setPosts((current) => (
+          append
+            ? [...current, ...(Array.isArray(loadedPosts) ? loadedPosts : [])]
+            : (Array.isArray(loadedPosts) ? loadedPosts : [])
+        ));
+        setNextCursor(loadedNextCursor || "");
+        setHasMore(Boolean(loadedHasMore));
+        const loadedClassId = defaultClassId || classId || "";
+        lastLoadedClassRef.current = loadedClassId;
+        setSelectedClassId((current) => current || loadedClassId);
         setLoading(false);
+        setLoadingMore(false);
       })
       .catch(() => {
         setError("Unable to load Global Quest posts");
         setLoading(false);
+        setLoadingMore(false);
       });
   }, []);
 
   useEffect(() => {
+    if (selectedClassId && lastLoadedClassRef.current === selectedClassId) return;
     fetchPosts(selectedClassId);
   }, [fetchPosts, selectedClassId]);
+
+  const handleClassChange = (event) => {
+    const nextClassId = event.target.value;
+    lastLoadedClassRef.current = "";
+    setPosts([]);
+    setNextCursor("");
+    setHasMore(false);
+    setSelectedClassId(nextClassId);
+  };
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -164,7 +202,7 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
           <div>
             <h2>Global Quest</h2>
             <div className="global-quest-select-wrap">
-              <select value={selectedClassId} onChange={(event) => setSelectedClassId(event.target.value)}>
+              <select value={selectedClassId} onChange={handleClassChange}>
                 {classes.map((course) => (
                   <option key={course.sheetTitle} value={course.sheetTitle}>
                     {course.courseName || course.sheetTitle}
@@ -189,7 +227,9 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
             <p className="global-quest-status global-quest-status--error">{error}</p>
           ) : posts.length === 0 ? (
             <p className="global-quest-status">No quest submissions in this course yet</p>
-          ) : posts.map((post) => (
+          ) : (
+            <>
+              {posts.map((post) => (
               <article className="global-post" key={post.id}>
                 <div className="global-post-author">
                   <AuthorAvatar author={post.author || {}} />
@@ -223,7 +263,19 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
                 <strong className="global-post-title">{post.title || "NPC Quest"}</strong>
                 {post.postText && <p className="global-post-text">{post.postText}</p>}
               </article>
-          ))}
+              ))}
+              {hasMore && (
+                <button
+                  className="global-quest-load-more"
+                  type="button"
+                  disabled={loadingMore}
+                  onClick={() => fetchPosts(selectedClassId, { cursor: nextCursor })}
+                >
+                  {loadingMore ? "Loading..." : "Load more"}
+                </button>
+              )}
+            </>
+          )}
         </div>
       </section>
     </div>

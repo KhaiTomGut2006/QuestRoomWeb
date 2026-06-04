@@ -110,7 +110,10 @@ const SOCIAL_POST_BACKFILL_SUBMISSIONS_PER_MEMBER = Math.max(
 );
 const SOCIAL_POST_BACKFILL_MAX_OPERATIONS = Math.max(50, Number(process.env.SOCIAL_POST_BACKFILL_MAX_OPERATIONS || 500));
 const SOCIAL_POST_BACKFILL_INTERVAL_MS = Math.max(30_000, Number(process.env.SOCIAL_POST_BACKFILL_INTERVAL_MS || 300_000));
-const SOCIAL_POST_FEED_LIMIT = Math.max(10, Number(process.env.SOCIAL_POST_FEED_LIMIT || 50));
+const SOCIAL_POST_FEED_LIMIT = Math.max(1, Number(process.env.SOCIAL_POST_FEED_LIMIT || 10));
+const SOCIAL_POST_FEED_MAX_LIMIT = Math.max(SOCIAL_POST_FEED_LIMIT, Number(process.env.SOCIAL_POST_FEED_MAX_LIMIT || 30));
+const FRIENDS_PAGE_LIMIT = Math.max(1, Number(process.env.FRIENDS_PAGE_LIMIT || 10));
+const FRIENDS_PAGE_MAX_LIMIT = Math.max(FRIENDS_PAGE_LIMIT, Number(process.env.FRIENDS_PAGE_MAX_LIMIT || 50));
 const cachedStageRankings = new Map();
 const pendingStageRankings = new Map();
 const roomPlayersCache = new Map();
@@ -155,15 +158,6 @@ function clearRoomPlayersCache(stage = "") {
   for (const stageKey of roomPlayersCacheVersions.keys()) {
     roomPlayersCacheVersions.set(stageKey, (roomPlayersCacheVersions.get(stageKey) || 0) + 1);
   }
-}
-
-function cloneGlobalPosts(posts) {
-  return posts.map((post) => ({
-    ...post,
-    evidence: post.evidence ? { ...post.evidence } : null,
-    author: post.author ? { ...post.author } : null,
-    badge: post.badge ? { ...post.badge } : null
-  }));
 }
 
 function pruneGlobalPostsCache(now = Date.now()) {
@@ -1051,9 +1045,9 @@ export async function getMemberByDiscordId(discordId, options = {}) {
   await connectDb();
   await ensureLevels();
   const includeSubmissions = options.includeSubmissions !== false;
-  const selectFields = includeSubmissions
+  const selectFields = options.selectFields || (includeSubmissions
     ? null
-    : MEMBER_INTERACTION_SELECT;
+    : MEMBER_INTERACTION_SELECT);
   const submissionLimit = Math.max(0, Number(options.submissionLimit) || 0);
 
   let member = null;
@@ -1583,18 +1577,31 @@ export async function getActiveClasses() {
   return cachedActiveClasses.map((item) => ({ ...item }));
 }
 
-export async function getGlobalQuestPosts(classId, viewerDiscordId) {
+export async function getGlobalQuestPosts(classId, viewerDiscordId, options = {}) {
   await connectDb();
   const isAllCourses = String(classId || "") === "all";
   const viewerId = String(viewerDiscordId || "");
-  const cacheKey = `${String(classId || "all")}:${viewerId}`;
+  const limit = clampPageLimit(options.limit, SOCIAL_POST_FEED_LIMIT, SOCIAL_POST_FEED_MAX_LIMIT);
+  const cursor = parseSocialPostCursor(options.cursor);
+  const cacheKey = `${String(classId || "all")}:${limit}:${cursor ? socialPostCursor({ publishedAt: cursor.publishedAt, postId: cursor.postId }) : "first"}`;
   pruneGlobalPostsCache();
   const cached = cachedGlobalPosts.get(cacheKey);
   if (cached && Date.now() - cached.cachedAt < GLOBAL_POSTS_CACHE_TTL_MS) {
-    return cloneGlobalPosts(cached.posts);
+    return {
+      posts: cached.posts.map((post) => serializeSocialPost(post, viewerId)),
+      nextCursor: cached.nextCursor,
+      hasMore: cached.hasMore
+    };
   }
   const pending = pendingGlobalPosts.get(cacheKey);
-  if (pending) return cloneGlobalPosts(await pending);
+  if (pending) {
+    const page = await pending;
+    return {
+      posts: page.posts.map((post) => serializeSocialPost(post, viewerId)),
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore
+    };
+  }
 
   const nextLoad = (async () => {
     if (SOCIAL_POST_AUTO_BACKFILL_ENABLED) {
@@ -1610,14 +1617,21 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId) {
     if (!isAllCourses) {
       const friends = await getClassFriends(classId);
       const discordIds = friends.map((friend) => friend.id).filter(Boolean);
-      if (discordIds.length === 0) return [];
+      if (discordIds.length === 0) return { posts: [], nextCursor: "", hasMore: false };
       query.authorId = { $in: discordIds };
+    }
+
+    if (cursor) {
+      query.$or = [
+        { publishedAt: { $lt: cursor.publishedAt } },
+        { publishedAt: cursor.publishedAt, postId: { $lt: cursor.postId } }
+      ];
     }
 
     let posts = await SocialPost.find(query)
       .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likes dislikes publishedAt submittedAt author authorId")
-      .sort({ publishedAt: -1 })
-      .limit(SOCIAL_POST_FEED_LIMIT)
+      .sort({ publishedAt: -1, postId: -1 })
+      .limit(limit + 1)
       .lean()
       .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
 
@@ -1625,25 +1639,56 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId) {
       await backfillSocialPostsFromMembers({ force: true });
       posts = await SocialPost.find(query)
         .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likes dislikes publishedAt submittedAt author authorId")
-        .sort({ publishedAt: -1 })
-        .limit(SOCIAL_POST_FEED_LIMIT)
+        .sort({ publishedAt: -1, postId: -1 })
+        .limit(limit + 1)
         .lean()
         .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
     }
 
-    const serializedPosts = posts.map((post) => serializeSocialPost(post, viewerId));
+    const hasMore = posts.length > limit;
+    const pagePosts = hasMore ? posts.slice(0, limit) : posts;
+    const nextCursor = hasMore ? socialPostCursor(pagePosts.at(-1)) : "";
 
     cachedGlobalPosts.set(cacheKey, {
       cachedAt: Date.now(),
-      posts: cloneGlobalPosts(serializedPosts)
+      posts: pagePosts,
+      nextCursor,
+      hasMore
     });
-    return serializedPosts;
+    return { posts: pagePosts, nextCursor, hasMore };
   })().finally(() => {
     pendingGlobalPosts.delete(cacheKey);
   });
   pendingGlobalPosts.set(cacheKey, nextLoad);
 
-  return cloneGlobalPosts(await nextLoad);
+  const page = await nextLoad;
+  return {
+    posts: page.posts.map((post) => serializeSocialPost(post, viewerId)),
+    nextCursor: page.nextCursor,
+    hasMore: page.hasMore
+  };
+}
+
+function clampPageLimit(value, fallback, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.max(1, Math.floor(parsed)), max);
+}
+
+function socialPostCursor(post) {
+  const timestamp = new Date(post?.publishedAt || post?.submittedAt || 0).getTime();
+  const postId = String(post?.postId || post?.id || "");
+  return timestamp && postId ? `${timestamp}:${encodeURIComponent(postId)}` : "";
+}
+
+function parseSocialPostCursor(cursor) {
+  const [timestampText, encodedPostId = ""] = String(cursor || "").split(":");
+  const timestamp = Number(timestampText);
+  if (!Number.isFinite(timestamp) || timestamp <= 0 || !encodedPostId) return null;
+  return {
+    publishedAt: new Date(timestamp),
+    postId: decodeURIComponent(encodedPostId)
+  };
 }
 
 async function loadSocialActivity() {
@@ -1929,4 +1974,27 @@ export async function getClassFriends(classId) {
     return cloneFriends(cached.friends);
   }
   return cloneFriends(await friendsLoad);
+}
+
+export async function getClassFriendsPage(classId, options = {}) {
+  const limit = clampPageLimit(options.limit, FRIENDS_PAGE_LIMIT, FRIENDS_PAGE_MAX_LIMIT);
+  const cursor = String(options.cursor || "");
+  const search = String(options.search || "").trim().toLowerCase();
+  const allFriends = await getClassFriends(classId);
+  const friends = search
+    ? allFriends.filter((friend) => (
+      String(friend.name || "").toLowerCase().includes(search)
+      || String(friend.username || "").toLowerCase().includes(search)
+    ))
+    : allFriends;
+  const startIndex = cursor
+    ? Math.max(0, friends.findIndex((friend) => String(friend.id || "") === cursor) + 1)
+    : 0;
+  const pageFriends = friends.slice(startIndex, startIndex + limit);
+  const hasMore = startIndex + limit < friends.length;
+  return {
+    friends: pageFriends,
+    nextCursor: hasMore ? String(pageFriends.at(-1)?.id || "") : "",
+    hasMore
+  };
 }
