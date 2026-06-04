@@ -28,6 +28,24 @@ function AuthorAvatar({ author }) {
   );
 }
 
+function PostBadge({ badge }) {
+  if (!badge) return null;
+  const icon = String(badge.icon || "");
+  const hasImage = /^(https?:\/\/|\/)/.test(icon);
+  const imageSource = icon.startsWith("/") ? withOptimizedAsset(icon) : icon;
+
+  return (
+    <div className={`global-post-badge is-${badge.kind || "gold"}`} title={badge.sublabel || badge.label || "Badge"}>
+      {hasImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imageSource} alt={badge.sublabel || badge.label || "Badge"} loading="lazy" />
+      ) : (
+        <span>{icon || "Badge"}</span>
+      )}
+    </div>
+  );
+}
+
 export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
   const [classes, setClasses] = useState([]);
   const [posts, setPosts] = useState([]);
@@ -137,12 +155,15 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
                   <strong>{post.author?.name || "Player"}</strong>
                   <span>| {relativeTime(post.submittedAt)}</span>
                 </div>
-                {isVideo ? (
-                  <video className="global-post-media" src={post.evidence.url} controls preload="metadata" />
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img className="global-post-media" src={post.evidence.url} alt={post.title || "Quest submission"} loading="lazy" />
-                )}
+                <div className="global-post-media-wrap">
+                  {isVideo ? (
+                    <video className="global-post-media" src={post.evidence.url} controls preload="metadata" />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="global-post-media" src={post.evidence.url} alt={post.title || "Quest submission"} loading="lazy" />
+                  )}
+                  <PostBadge badge={post.badge} />
+                </div>
                 <div className="global-post-actions">
                   <button
                     className={post.viewerReaction === "like" ? "is-active" : ""}

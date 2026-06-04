@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 
 import Level from "@/models/Level";
 import CourseConfig from "@/models/CourseConfig";
+import SocialPost from "@/models/SocialPost";
 
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 0;
@@ -92,9 +93,17 @@ const ACTIVE_CLASSES_CACHE_TTL_MS = Math.max(30_000, Number(process.env.ACTIVE_C
 const RANKING_CACHE_TTL_MS = Math.max(10_000, Number(process.env.RANKING_CACHE_TTL_MS || 60_000));
 const RANKING_LIMIT = Math.max(10, Number(process.env.RANKING_LIMIT || 100));
 const FRIENDS_CACHE_TTL_MS = Math.max(10_000, Number(process.env.FRIENDS_CACHE_TTL_MS || 60_000));
+const FRIENDS_STALE_CACHE_TTL_MS = Math.max(
+  FRIENDS_CACHE_TTL_MS,
+  Number(process.env.FRIENDS_STALE_CACHE_TTL_MS || 900_000)
+);
 const FRIENDS_CACHE_MAX_KEYS = Math.max(20, Number(process.env.FRIENDS_CACHE_MAX_KEYS || 200));
 const MAX_CLASS_FRIENDS = Math.max(50, Number(process.env.MAX_CLASS_FRIENDS || 500));
 const MEMBER_LIST_QUERY_MAX_TIME_MS = Math.max(1_000, Number(process.env.MEMBER_LIST_QUERY_MAX_TIME_MS || 8_000));
+const SOCIAL_POSTS_QUERY_MAX_TIME_MS = Math.max(1_000, Number(process.env.SOCIAL_POSTS_QUERY_MAX_TIME_MS || 3_000));
+const SOCIAL_POST_BACKFILL_MEMBER_LIMIT = Math.max(20, Number(process.env.SOCIAL_POST_BACKFILL_MEMBER_LIMIT || 100));
+const SOCIAL_POST_BACKFILL_INTERVAL_MS = Math.max(30_000, Number(process.env.SOCIAL_POST_BACKFILL_INTERVAL_MS || 300_000));
+const SOCIAL_POST_FEED_LIMIT = Math.max(10, Number(process.env.SOCIAL_POST_FEED_LIMIT || 50));
 const cachedStageRankings = new Map();
 const pendingStageRankings = new Map();
 const roomPlayersCache = new Map();
@@ -106,6 +115,8 @@ const cachedClassFriends = new Map();
 const pendingClassFriends = new Map();
 let cachedActiveClasses = null;
 let cachedActiveClassesAt = 0;
+let pendingSocialPostBackfill = null;
+let lastSocialPostBackfillAt = 0;
 
 function cloneRoomPlayers(players) {
   return players.map((player) => ({ ...player }));
@@ -128,7 +139,8 @@ function cloneGlobalPosts(posts) {
   return posts.map((post) => ({
     ...post,
     evidence: post.evidence ? { ...post.evidence } : null,
-    author: post.author ? { ...post.author } : null
+    author: post.author ? { ...post.author } : null,
+    badge: post.badge ? { ...post.badge } : null
   }));
 }
 
@@ -147,8 +159,11 @@ function pruneGlobalPostsCache(now = Date.now()) {
   for (const key of oldestKeys) cachedGlobalPosts.delete(key);
 }
 
-function clearGlobalQuestPostsCache() {
+export function clearGlobalQuestPostsCache() {
   cachedGlobalPosts.clear();
+  cachedSocialActivity = null;
+  cachedSocialActivityAt = 0;
+  pendingSocialActivityLoad = null;
 }
 
 function pruneRoomPlayersCache(now = Date.now()) {
@@ -270,7 +285,7 @@ function cloneFriends(friends) {
 
 function pruneClassFriendsCache(now = Date.now()) {
   for (const [key, cached] of cachedClassFriends) {
-    if (!cached || now - cached.cachedAt >= FRIENDS_CACHE_TTL_MS) {
+    if (!cached || now - cached.cachedAt >= FRIENDS_STALE_CACHE_TTL_MS) {
       cachedClassFriends.delete(key);
     }
   }
@@ -466,6 +481,7 @@ function normalizeNpcQuestSubmission(submission) {
     npcCharacter: submission.npcCharacter || "",
     source: submission.source || "npc-quest",
     postText: submission.postText || "",
+    badge: normalizeBadge(submission.badge),
     likeCount: likes.length,
     dislikeCount: dislikes.length,
     evidence: submission.evidence
@@ -500,7 +516,7 @@ function isGlobalQuestSubmissionVisible(member, submission) {
   return Boolean(
     challenge
     && challenge.submissionId === submission.id
-    && (challenge.approvedAt || challenge.status === "approved")
+    && (challenge.approvedAt || ["approved", "awarded"].includes(challenge.status))
   );
 }
 
@@ -515,7 +531,7 @@ function normalizeSocialQuestSubmissions(member) {
 function socialPublishedAt(member, submission) {
   if (submission?.source === "challenge") {
     return member?.questChallenge?.submissionId === submission.id
-      ? member.questChallenge.approvedAt || null
+      ? member.questChallenge.approvedAt || submission.submittedAt || null
       : null;
   }
   return submission?.submittedAt || null;
@@ -537,6 +553,184 @@ function normalizeSocialNotification(member, submission) {
       username: author.username
     }
   };
+}
+
+function socialPostDocumentFromMemberSubmission(member, submission) {
+  if (!submission?.id || !submission?.evidence?.url) return null;
+  const publishedAt = socialPublishedAt(member, submission);
+  const visible = Boolean(publishedAt && isGlobalQuestSubmissionVisible(member, submission));
+  const identity = publicMemberIdentity(member);
+  const likes = Array.isArray(submission.likes) ? submission.likes.map(String) : [];
+  const dislikes = Array.isArray(submission.dislikes) ? submission.dislikes.map(String) : [];
+
+  return {
+    postId: String(submission.id),
+    authorId: identity.discordId,
+    author: {
+      id: identity.discordId,
+      name: identity.name,
+      username: identity.username,
+      avatar: identity.avatar
+    },
+    title: submission.title || (submission.source === "challenge" ? "Challenge" : "NPC Quest"),
+    description: submission.description || "",
+    difficulty: submission.difficulty || "",
+    reward: Math.max(0, Number(submission.reward) || 0),
+    npcType: submission.npcType || "",
+    npcName: submission.npcName || "",
+    npcCharacter: submission.npcCharacter || "",
+    source: submission.source || "npc-quest",
+    postText: String(submission.postText || "").slice(0, 500),
+    badge: normalizeBadge(submission.source === "challenge"
+      ? submission.badge || member?.questChallenge?.badge
+      : submission.badge),
+    evidence: {
+      url: submission.evidence.url || "",
+      pathname: submission.evidence.pathname || "",
+      contentType: submission.evidence.contentType || "",
+      size: Math.max(0, Number(submission.evidence.size) || 0),
+      originalName: submission.evidence.originalName || ""
+    },
+    likes,
+    dislikes,
+    submittedAt: submission.submittedAt || publishedAt || null,
+    publishedAt: publishedAt || null,
+    visible
+  };
+}
+
+function serializeSocialPost(post, viewerId = "") {
+  const raw = post?.toObject?.() || post || {};
+  const likes = Array.isArray(raw.likes) ? raw.likes.map(String) : [];
+  const dislikes = Array.isArray(raw.dislikes) ? raw.dislikes.map(String) : [];
+  const viewer = String(viewerId || "");
+  return {
+    id: raw.postId || raw.id || "",
+    title: raw.title || (raw.source === "challenge" ? "Challenge" : "NPC Quest"),
+    description: raw.description || "",
+    difficulty: raw.difficulty || "",
+    reward: Math.max(0, Number(raw.reward) || 0),
+    npcType: raw.npcType || "",
+    npcName: raw.npcName || "",
+    npcCharacter: raw.npcCharacter || "",
+    source: raw.source || "npc-quest",
+    postText: raw.postText || "",
+    badge: normalizeBadge(raw.badge),
+    evidence: raw.evidence
+      ? {
+          url: raw.evidence.url || "",
+          pathname: raw.evidence.pathname || "",
+          contentType: raw.evidence.contentType || "",
+          size: Math.max(0, Number(raw.evidence.size) || 0),
+          originalName: raw.evidence.originalName || ""
+        }
+      : null,
+    likeCount: likes.length,
+    dislikeCount: dislikes.length,
+    submittedAt: raw.publishedAt || raw.submittedAt || null,
+    author: raw.author
+      ? {
+          id: raw.author.id || raw.authorId || "",
+          name: raw.author.name || "Player",
+          username: raw.author.username || "",
+          avatar: raw.author.avatar || ""
+        }
+      : {
+          id: raw.authorId || "",
+          name: "Player",
+          username: "",
+          avatar: ""
+        },
+    viewerReaction: viewer && likes.includes(viewer)
+      ? "like"
+      : viewer && dislikes.includes(viewer)
+        ? "dislike"
+        : ""
+  };
+}
+
+async function upsertSocialPostForSubmission(member, submission) {
+  const doc = socialPostDocumentFromMemberSubmission(member, submission);
+  if (!doc?.postId || !doc.authorId) return null;
+  await SocialPost.findOneAndUpdate(
+    { postId: doc.postId },
+    { $set: doc },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  clearGlobalQuestPostsCache();
+  return doc;
+}
+
+async function backfillSocialPostsFromMembers({ force = false } = {}) {
+  const now = Date.now();
+  if (pendingSocialPostBackfill) {
+    return pendingSocialPostBackfill;
+  }
+  if (
+    !force
+    && lastSocialPostBackfillAt
+    && now - lastSocialPostBackfillAt < SOCIAL_POST_BACKFILL_INTERVAL_MS
+  ) {
+    return null;
+  }
+
+  pendingSocialPostBackfill = (async () => {
+    const members = await Member.find({
+      discord_id: { $exists: true, $ne: "" },
+      "npcQuestSubmissions.0": { $exists: true }
+    })
+      .select([
+        "discord_id",
+        "nick",
+        "nickname",
+        "realName",
+        "username",
+        "discordData",
+        "questChallenge",
+        "npcQuestSubmissions"
+      ].join(" "))
+      .sort({ "npcQuestSubmissions.submittedAt": -1 })
+      .limit(SOCIAL_POST_BACKFILL_MEMBER_LIMIT)
+      .lean()
+      .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
+
+    const operations = [];
+    for (const member of members) {
+      for (const submission of member.npcQuestSubmissions || []) {
+        const doc = socialPostDocumentFromMemberSubmission(member, submission);
+        if (!doc?.postId || !doc.authorId) continue;
+        operations.push({
+          updateOne: {
+            filter: { postId: doc.postId },
+            update: { $set: doc },
+            upsert: true
+          }
+        });
+      }
+    }
+
+    if (operations.length > 0) {
+      await SocialPost.bulkWrite(operations, { ordered: false });
+      clearGlobalQuestPostsCache();
+    }
+    lastSocialPostBackfillAt = Date.now();
+    return operations.length;
+  })()
+    .catch((error) => {
+      console.error("Failed to backfill social posts:", error.message);
+      lastSocialPostBackfillAt = Date.now();
+      return 0;
+    })
+    .finally(() => {
+      pendingSocialPostBackfill = null;
+    });
+
+  return pendingSocialPostBackfill;
+}
+
+export async function refreshSocialPostIndex({ force = true } = {}) {
+  await connectDb();
+  return backfillSocialPostsFromMembers({ force });
 }
 
 function normalizeNpcQuestEvidence(discordId, evidence) {
@@ -1016,7 +1210,7 @@ export async function submitChallenge(discordId, evidence, postText = "") {
   member.markModified("questChallenge");
   member.markModified("npcQuestSubmissions");
   await member.save({ validateModifiedOnly: true });
-  clearGlobalQuestPostsCache();
+  await upsertSocialPostForSubmission(member, submission);
 
   return {
     member: normalizeMemberInteraction(member),
@@ -1284,8 +1478,9 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
   member.markModified("tutorial");
   member.markModified("profileAchievements");
   await member.save();
-  clearGlobalQuestPostsCache();
-  return { member: normalizeMemberInteraction(member), reward, submission: normalizeNpcQuestSubmission(member.npcQuestSubmissions.at(-1)) };
+  const submission = member.npcQuestSubmissions.at(-1);
+  await upsertSocialPostForSubmission(member, submission);
+  return { member: normalizeMemberInteraction(member), reward, submission: normalizeNpcQuestSubmission(submission) };
 }
 
 export async function getActiveClasses() {
@@ -1315,148 +1510,46 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId) {
   const pending = pendingGlobalPosts.get(cacheKey);
   if (pending) return cloneGlobalPosts(await pending);
 
-  let discordIdMatch = { $exists: true, $ne: "" };
-
   const nextLoad = (async () => {
+    void backfillSocialPostsFromMembers().catch(() => {});
+
+    const query = {
+      visible: true,
+      "evidence.url": { $exists: true, $ne: "" },
+      publishedAt: { $exists: true, $ne: null }
+    };
+
     if (!isAllCourses) {
       const friends = await getClassFriends(classId);
       const discordIds = friends.map((friend) => friend.id).filter(Boolean);
       if (discordIds.length === 0) return [];
-      discordIdMatch = { $in: discordIds };
+      query.authorId = { $in: discordIds };
     }
 
-    const posts = await Member.aggregate([
-    {
-      $match: {
-        discord_id: discordIdMatch,
-        "npcQuestSubmissions.0": { $exists: true }
-      }
-    },
-    { $unwind: "$npcQuestSubmissions" },
-    {
-      $addFields: {
-        socialSubmission: "$npcQuestSubmissions",
-        isChallengeSubmission: { $eq: ["$npcQuestSubmissions.source", "challenge"] },
-        authorName: {
-          $ifNull: [
-            "$nick",
-            {
-              $ifNull: [
-                "$nickname",
-                {
-                  $ifNull: [
-                    "$realName",
-                    {
-                      $ifNull: [
-                        "$discordData.globalName",
-                        { $ifNull: ["$discordData.username", "Player"] }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        authorUsername: { $ifNull: ["$username", { $ifNull: ["$discordData.username", ""] }] },
-        authorAvatar: { $ifNull: ["$discordData.avatarUrl", ""] }
-      }
-    },
-    {
-      $addFields: {
-        challengeIsVisible: {
-          $and: [
-            "$isChallengeSubmission",
-            { $eq: ["$questChallenge.submissionId", "$socialSubmission.id"] },
-            {
-              $or: [
-                { $ne: ["$questChallenge.approvedAt", null] },
-                { $eq: ["$questChallenge.status", "approved"] }
-              ]
-            }
-          ]
-        },
-        publishedAt: {
-          $cond: [
-            "$isChallengeSubmission",
-            "$questChallenge.approvedAt",
-            "$socialSubmission.submittedAt"
-          ]
-        },
-        likes: { $ifNull: ["$socialSubmission.likes", []] },
-        dislikes: { $ifNull: ["$socialSubmission.dislikes", []] }
-      }
-    },
-    {
-      $match: {
-        $expr: {
-          $and: [
-            {
-              $or: [
-                { $ne: ["$isChallengeSubmission", true] },
-                "$challengeIsVisible"
-              ]
-            },
-            { $ne: ["$socialSubmission.evidence.url", null] },
-            { $ne: ["$socialSubmission.evidence.url", ""] },
-            { $ne: ["$publishedAt", null] }
-          ]
-        }
-      }
-    },
-    { $sort: { publishedAt: -1 } },
-    { $limit: 50 },
-    {
-      $project: {
-        _id: 0,
-        id: { $toString: "$socialSubmission.id" },
-        title: { $ifNull: ["$socialSubmission.title", "NPC Quest"] },
-        description: { $ifNull: ["$socialSubmission.description", ""] },
-        difficulty: { $ifNull: ["$socialSubmission.difficulty", ""] },
-        reward: { $ifNull: ["$socialSubmission.reward", 0] },
-        npcType: { $ifNull: ["$socialSubmission.npcType", ""] },
-        npcName: { $ifNull: ["$socialSubmission.npcName", ""] },
-        npcCharacter: { $ifNull: ["$socialSubmission.npcCharacter", ""] },
-        source: { $ifNull: ["$socialSubmission.source", "npc-quest"] },
-        postText: { $ifNull: ["$socialSubmission.postText", ""] },
-        evidence: {
-          url: { $ifNull: ["$socialSubmission.evidence.url", ""] },
-          pathname: { $ifNull: ["$socialSubmission.evidence.pathname", ""] },
-          contentType: { $ifNull: ["$socialSubmission.evidence.contentType", ""] },
-          size: { $ifNull: ["$socialSubmission.evidence.size", 0] },
-          originalName: { $ifNull: ["$socialSubmission.evidence.originalName", ""] }
-        },
-        likeCount: { $size: "$likes" },
-        dislikeCount: { $size: "$dislikes" },
-        submittedAt: "$publishedAt",
-        author: {
-          id: "$discord_id",
-          name: "$authorName",
-          username: "$authorUsername",
-          avatar: "$authorAvatar"
-        },
-        viewerReaction: {
-          $cond: [
-            { $in: [viewerId, "$likes"] },
-            "like",
-            {
-              $cond: [
-                { $in: [viewerId, "$dislikes"] },
-                "dislike",
-                ""
-              ]
-            }
-          ]
-        }
-      }
+    let posts = await SocialPost.find(query)
+      .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likes dislikes publishedAt submittedAt author authorId")
+      .sort({ publishedAt: -1 })
+      .limit(SOCIAL_POST_FEED_LIMIT)
+      .lean()
+      .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
+
+    if (posts.length === 0) {
+      await backfillSocialPostsFromMembers({ force: true });
+      posts = await SocialPost.find(query)
+        .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likes dislikes publishedAt submittedAt author authorId")
+        .sort({ publishedAt: -1 })
+        .limit(SOCIAL_POST_FEED_LIMIT)
+        .lean()
+        .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
     }
-    ]).option({ allowDiskUse: true });
+
+    const serializedPosts = posts.map((post) => serializeSocialPost(post, viewerId));
 
     cachedGlobalPosts.set(cacheKey, {
       cachedAt: Date.now(),
-      posts: cloneGlobalPosts(posts)
+      posts: cloneGlobalPosts(serializedPosts)
     });
-    return posts;
+    return serializedPosts;
   })().finally(() => {
     pendingGlobalPosts.delete(cacheKey);
   });
@@ -1472,129 +1565,31 @@ async function loadSocialActivity() {
   if (cacheIsFresh) return cachedSocialActivity;
 
   if (!pendingSocialActivityLoad) {
-    pendingSocialActivityLoad = Member.aggregate([
-      {
-        $match: {
-          discord_id: { $exists: true, $ne: "" },
-          "npcQuestSubmissions.0": { $exists: true }
-        }
-      },
-      { $unwind: "$npcQuestSubmissions" },
-      {
-        $addFields: {
-          socialSubmission: "$npcQuestSubmissions",
-          isChallengeSubmission: { $eq: ["$npcQuestSubmissions.source", "challenge"] },
-          authorName: {
-            $ifNull: [
-              "$nick",
-              {
-                $ifNull: [
-                  "$nickname",
-                  {
-                    $ifNull: [
-                      "$realName",
-                      {
-                        $ifNull: [
-                          "$discordData.globalName",
-                          { $ifNull: ["$discordData.username", "Player"] }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            ]
-          },
-          authorUsername: {
-            $ifNull: [
-              "$username",
-              { $ifNull: ["$discordData.username", ""] }
-            ]
-          }
-        }
-      },
-      {
-        $addFields: {
-          challengeIsVisible: {
-            $and: [
-              "$isChallengeSubmission",
-              { $eq: ["$questChallenge.submissionId", "$socialSubmission.id"] },
-              {
-                $or: [
-                  { $ne: ["$questChallenge.approvedAt", null] },
-                  { $eq: ["$questChallenge.status", "approved"] }
-                ]
-              }
-            ]
-          },
-          publishedAt: {
-            $cond: [
-              "$isChallengeSubmission",
-              "$questChallenge.approvedAt",
-              "$socialSubmission.submittedAt"
-            ]
-          }
-        }
-      },
-      {
-        $match: {
-          $expr: {
-            $and: [
-              {
-                $or: [
-                  { $ne: ["$isChallengeSubmission", true] },
-                  "$challengeIsVisible"
-                ]
-              },
-              { $ne: ["$socialSubmission.evidence.url", null] },
-              { $ne: ["$socialSubmission.evidence.url", ""] },
-              { $ne: ["$publishedAt", null] }
-            ]
-          }
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          id: { $toString: "$socialSubmission.id" },
-          authorId: "$discord_id",
-          type: {
-            $cond: [
-              "$isChallengeSubmission",
-              "challenge",
-              "npc-quest"
-            ]
-          },
-          title: {
-            $ifNull: [
-              "$socialSubmission.title",
-              {
-                $cond: [
-                  "$isChallengeSubmission",
-                  "Challenge",
-                  "NPC Quest"
-                ]
-              }
-            ]
-          },
-          publishedAt: 1,
-          author: {
-            id: "$discord_id",
-            name: "$authorName",
-            username: "$authorUsername"
-          }
-        }
-      },
-      { $sort: { publishedAt: -1 } },
-      { $limit: MAX_SOCIAL_ACTIVITY_ITEMS }
-    ])
-      .option({ allowDiskUse: true })
+    pendingSocialActivityLoad = SocialPost.find({
+      visible: true,
+      "evidence.url": { $exists: true, $ne: "" },
+      publishedAt: { $exists: true, $ne: null }
+    })
+      .select("-_id postId authorId source title publishedAt author")
+      .sort({ publishedAt: -1 })
+      .limit(MAX_SOCIAL_ACTIVITY_ITEMS)
+      .lean()
+      .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS)
       .then((items) => {
         cachedSocialActivity = (items || []).map((item) => ({
-          ...item,
+          id: item.postId,
+          authorId: item.authorId,
+          type: item.source === "challenge" ? "challenge" : "npc-quest",
+          title: item.title || (item.source === "challenge" ? "Challenge" : "NPC Quest"),
+          author: {
+            id: item.author?.id || item.authorId || "",
+            name: item.author?.name || "Player",
+            username: item.author?.username || ""
+          },
           publishedAt: item.publishedAt ? new Date(item.publishedAt) : null
         }));
         cachedSocialActivityAt = Date.now();
+        if (cachedSocialActivity.length === 0) void backfillSocialPostsFromMembers().catch(() => {});
         return cachedSocialActivity;
       })
       .catch((error) => {
@@ -1655,13 +1650,52 @@ export async function reactToGlobalQuestPost(discordId, postId, reaction) {
     throw new Error("invalid_reaction");
   }
 
-  const member = await Member.findOne({ "npcQuestSubmissions.id": String(postId || "") });
+  const normalizedPostId = String(postId || "");
+  const viewerId = String(discordId || "");
+  const post = await SocialPost.findOne({ postId: normalizedPostId, visible: true })
+    .select("postId likes dislikes visible")
+    .lean()
+    .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
+
+  if (post) {
+    const likes = (post.likes || []).map(String).filter((id) => id !== viewerId);
+    const dislikes = (post.dislikes || []).map(String).filter((id) => id !== viewerId);
+    if (normalizedReaction === "like") likes.push(viewerId);
+    if (normalizedReaction === "dislike") dislikes.push(viewerId);
+    await SocialPost.updateOne(
+      { postId: normalizedPostId },
+      { $set: { likes, dislikes } }
+    );
+
+    void Member.findOne({ "npcQuestSubmissions.id": normalizedPostId })
+      .select("npcQuestSubmissions")
+      .then(async (member) => {
+        const submission = member?.npcQuestSubmissions?.find((item) => item.id === normalizedPostId);
+        if (!submission) return;
+        submission.likes = likes;
+        submission.dislikes = dislikes;
+        member.markModified("npcQuestSubmissions");
+        await member.save({ validateModifiedOnly: true });
+      })
+      .catch((error) => {
+        console.warn("Failed to mirror social reaction to legacy member submission:", error.message);
+      });
+
+    clearGlobalQuestPostsCache();
+    return {
+      postId: normalizedPostId,
+      viewerReaction: normalizedReaction,
+      likeCount: likes.length,
+      dislikeCount: dislikes.length
+    };
+  }
+
+  const member = await Member.findOne({ "npcQuestSubmissions.id": normalizedPostId });
   if (!member) return null;
 
-  const submission = member.npcQuestSubmissions.find((item) => item.id === String(postId || ""));
+  const submission = member.npcQuestSubmissions.find((item) => item.id === normalizedPostId);
   if (!submission || !isGlobalQuestSubmissionVisible(member, submission)) return null;
 
-  const viewerId = String(discordId || "");
   submission.likes = (submission.likes || []).map(String).filter((id) => id !== viewerId);
   submission.dislikes = (submission.dislikes || []).map(String).filter((id) => id !== viewerId);
   if (normalizedReaction === "like") submission.likes.push(viewerId);
@@ -1669,7 +1703,7 @@ export async function reactToGlobalQuestPost(discordId, postId, reaction) {
 
   member.markModified("npcQuestSubmissions");
   await member.save({ validateModifiedOnly: true });
-  clearGlobalQuestPostsCache();
+  await upsertSocialPostForSubmission(member, submission);
   return {
     postId: submission.id,
     viewerReaction: normalizedReaction,
@@ -1686,10 +1720,14 @@ export async function getClassFriends(classId) {
   const now = Date.now();
   pruneClassFriendsCache(now);
   const cached = cachedClassFriends.get(normalizedClassId);
-  if (cached && now - cached.cachedAt < FRIENDS_CACHE_TTL_MS) {
+  const cachedAge = cached ? now - cached.cachedAt : Infinity;
+  if (cached && cachedAge < FRIENDS_CACHE_TTL_MS) {
     return cloneFriends(cached.friends);
   }
   if (pendingClassFriends.has(normalizedClassId)) {
+    if (cached && cachedAge < FRIENDS_STALE_CACHE_TTL_MS) {
+      return cloneFriends(cached.friends);
+    }
     return cloneFriends(await pendingClassFriends.get(normalizedClassId));
   }
 
@@ -1797,5 +1835,8 @@ export async function getClassFriends(classId) {
   });
 
   pendingClassFriends.set(normalizedClassId, friendsLoad);
+  if (cached && cachedAge < FRIENDS_STALE_CACHE_TTL_MS) {
+    return cloneFriends(cached.friends);
+  }
   return cloneFriends(await friendsLoad);
 }

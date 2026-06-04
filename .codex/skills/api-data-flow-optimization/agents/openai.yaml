@@ -1,0 +1,4 @@
+interface:
+  display_name: "API Data Flow Optimization"
+  short_description: "Guardrails for efficient QuestRoomWeb API and socket data flows."
+  default_prompt: "Review or design a QuestRoomWeb API, polling, Socket.IO, asset, or data-sync change for 100+ concurrent players. Enforce minimal payloads, low request frequency, caching, throttling, and load-aware tests."

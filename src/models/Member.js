@@ -123,6 +123,7 @@ const NpcQuestSubmissionSchema = new mongoose.Schema(
     npcCharacter: String,
     source:       { type: String, default: "npc-quest" },
     evidence:     QuestEvidenceSchema,
+    badge:        BadgeSchema,
     postText:     { type: String, default: "" },
     likes:        { type: [String], default: [] },
     dislikes:     { type: [String], default: [] },
