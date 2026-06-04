@@ -316,6 +316,18 @@ async function ensureLevels({ force = false } = {}) {
         npcShop:  l.npcShop  || [],
         boxDrops: l.boxDrops || [],
         npcSpawns:l.npcSpawns || [],
+        challengeInfo: {
+          title: l.challengeInfo?.title || "",
+          description: l.challengeInfo?.description || "",
+          videoUrl: l.challengeInfo?.videoUrl || "",
+          rewards: Array.isArray(l.challengeInfo?.rewards) ? l.challengeInfo.rewards.map((reward) => ({
+            id: String(reward?.id || ""),
+            label: String(reward?.label || ""),
+            image: String(reward?.image || ""),
+            quantity: Math.max(0, Number(reward?.quantity) || 0),
+            kind: String(reward?.kind || "item"),
+          })) : [],
+        },
       }));
       cachedLevelsAt = Date.now();
       return cachedLevels;

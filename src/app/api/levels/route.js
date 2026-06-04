@@ -52,6 +52,20 @@ export async function PUT(request) {
         npcId:  String(spawn.npcId || ""),
         chance: Number(spawn.chance) || 0,
       })) : [],
+      challengeInfo: {
+        title: String(level?.challengeInfo?.title || "").trim(),
+        description: String(level?.challengeInfo?.description || "").trim().slice(0, 2000),
+        videoUrl: String(level?.challengeInfo?.videoUrl || "").trim(),
+        rewards: Array.isArray(level?.challengeInfo?.rewards)
+          ? level.challengeInfo.rewards.slice(0, 8).map((reward) => ({
+            id: String(reward?.id || ""),
+            label: String(reward?.label || ""),
+            image: String(reward?.image || ""),
+            quantity: Math.max(0, Number(reward?.quantity) || 0),
+            kind: String(reward?.kind || "item"),
+          }))
+          : [],
+      },
     }));
     const stageIds = new Set(levels.map((level) => level.stageId));
 

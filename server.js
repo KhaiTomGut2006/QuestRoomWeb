@@ -239,10 +239,43 @@ async function getMembersCollection() {
   return mongoose.connection.collection("members");
 }
 
+const NPC_QUEST_DIFFICULTY = {
+  "quest-easy":   "easy",
+  "quest-medium": "medium",
+  "quest-hard":   "hard",
+  "stupid-quest": "stupid",
+};
+
+async function pickQuestTemplateForNpc(npcId) {
+  const difficulty = NPC_QUEST_DIFFICULTY[npcId];
+  if (!difficulty) return null;
+  try {
+    await getMembersCollection();
+    const templates = await mongoose.connection.collection("quest_templates")
+      .find({ difficulty }, { projection: { _id: 0, title: 1, description: 1, difficulty: 1, rewardMin: 1, rewardMax: 1, npcCharacter: 1 } })
+      .toArray();
+    if (!templates.length) return null;
+    const picked = templates[Math.floor(Math.random() * templates.length)];
+    const rewardMin = Number(picked.rewardMin) || 50;
+    const rewardMax = Number(picked.rewardMax) || 100;
+    const reward = Math.round(rewardMin + Math.random() * (rewardMax - rewardMin));
+    return { difficulty: picked.difficulty, title: picked.title, description: picked.description, reward, npcCharacter: picked.npcCharacter || null };
+  } catch {
+    return null;
+  }
+}
+
 async function enrichNpcForStage(npc, availableCoins = 0, stage = "") {
-  if (npc.type !== "shop") return enrichNpc(npc, availableCoins);
-  const level = await getLevelConfig(stage, { npcShop: 1 });
-  return enrichNpc(npc, availableCoins, level?.npcShop || null);
+  if (npc.type === "shop") {
+    const level = await getLevelConfig(stage, { npcShop: 1 });
+    return enrichNpc(npc, availableCoins, level?.npcShop || null);
+  }
+  if (npc.type === "quest" || npc.type === "stupid-quest") {
+    const questData = await pickQuestTemplateForNpc(npc.id);
+    const enriched = enrichNpc(npc, availableCoins);
+    return questData ? { ...enriched, questData } : enriched;
+  }
+  return enrichNpc(npc, availableCoins);
 }
 
 async function getPersistedNpcCycle(playerId) {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { ChevronLeft, ChevronRight, Coins, Zap, Volume2, VolumeX, LogOut, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Coins, Gift, Zap, Volume2, VolumeX, LogOut, Settings } from "lucide-react";
 import { io } from "socket.io-client";
 import { upload } from "@vercel/blob/client";
 import RoomCanvas from "@/components/RoomCanvas";
@@ -18,6 +18,7 @@ import GlobalQuestModal from "@/components/GlobalQuestModal";
 import ChallengeModal from "@/components/ChallengeModal";
 import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
 import ChallengeSubmissionPanel from "@/components/ChallengeSubmissionPanel";
+import ChallengeInfoModal from "@/components/ChallengeInfoModal";
 import TutorialMode from "@/components/TutorialMode";
 import QuestReceivedPopup from "@/components/QuestReceivedPopup";
 import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
@@ -186,6 +187,56 @@ const demoChallenge = {
   cost: 250,
   requestedAt: "demo-challenge-preview",
 };
+
+const DEFAULT_CHALLENGE_REWARDS = [
+  {
+    id: "chest-shadow",
+    label: "Mystery Chest",
+    image: "/assets/ItemShadow/chest_shadow.webp",
+    quantity: 1,
+    kind: "item",
+  },
+  {
+    id: "quest-shadow",
+    label: "Challenge Role",
+    image: "/assets/ItemShadow/quest_shadow.webp",
+    quantity: 1,
+    kind: "item",
+  },
+  {
+    id: "coins",
+    label: "Coins",
+    image: "/assets/Coin.png",
+    quantity: 1000,
+    kind: "coins",
+  },
+];
+
+function normalizeChallengeReward(reward, index) {
+  return {
+    id: String(reward?.id || reward?.itemId || `reward-${index}`),
+    label: String(reward?.label || reward?.itemName || reward?.name || "Unlock item"),
+    image: String(reward?.image || reward?.icon || reward?.asset || ""),
+    quantity: Math.max(0, Number(reward?.quantity ?? reward?.qty ?? reward?.amount ?? 1) || 0),
+    kind: String(reward?.kind || reward?.type || "item"),
+  };
+}
+
+function challengeInfoFromLevel(level, fallbackName) {
+  const source = level?.challengeInfo || level?.challenge || {};
+  const title = String(source.title || source.taskName || fallbackName || "Challenge").trim();
+  const description = String(source.description || source.details || source.prompt || "").trim();
+  const rewards = Array.isArray(source.rewards) && source.rewards.length > 0
+    ? source.rewards.map(normalizeChallengeReward)
+    : DEFAULT_CHALLENGE_REWARDS;
+
+  return {
+    title,
+    description: description || "Capture the final result, summarize your plan, and prepare a short presentation clip for review.",
+    videoUrl: String(source.videoUrl || source.video || source.mediaUrl || "").trim(),
+    rewards,
+  };
+}
 
 // ─── Room Clock (personal 30-min countdown, freezes during active quest) ────
 function RoomClock({ cycleInfo }) {
@@ -701,6 +752,7 @@ export default function GameShell() {
   const [showFriends, setShowFriends] = useState(false);
   const [showGlobalQuest, setShowGlobalQuest] = useState(false);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
+  const [challengeInfoView, setChallengeInfoView] = useState(null);
   const [showChallengeSubmission, setShowChallengeSubmission] = useState(false);
   const [challengeAnnouncement, setChallengeAnnouncement] = useState(null);
   const [socialUnreadCount, setSocialUnreadCount] = useState(0);
@@ -868,6 +920,12 @@ export default function GameShell() {
     : effectiveRoomLevels.find((level) => level.stageId === actualStage)?.name
     || activeMember?.stageLabel
     || stageLabel(actualStage);
+  const currentRoomLevel = useMemo(() => (
+    effectiveRoomLevels.find((level) => level.stageId === actualStage) || null
+  ), [actualStage, effectiveRoomLevels]);
+  const currentChallengeInfo = useMemo(() => (
+    challengeInfoFromLevel(currentRoomLevel, currentRoomLabel)
+  ), [currentRoomLabel, currentRoomLevel]);
   const activeNpcVisitPurchases = useMemo(() => (
     doorNpc?.visitId && activeMember?.npcVisitId === doorNpc.visitId
       ? activeMember.npcVisitPurchases || []
@@ -1558,6 +1616,12 @@ export default function GameShell() {
     if (questDataKeyRef.current === npcKey) return;
     questDataKeyRef.current = npcKey;
 
+    // Server already picked the quest — use it directly (stable across refreshes)
+    if (npcVisit.questData) {
+      setNpcQuestData(npcVisit.questData);
+      return;
+    }
+
     const applyQuestPool = (pool) => {
       if (pool.length === 0) { setNpcQuestData(null); return; }
       const picked = pool[Math.floor(Math.random() * pool.length)];
@@ -1906,7 +1970,18 @@ export default function GameShell() {
   return (
     <main className="game-shell">
       <section className="top-left hud-cluster">
-        <h1>{currentRoomLabel}</h1>
+        <div className="stage-title-row">
+          <h1>{currentRoomLabel}</h1>
+          <button
+            className="stage-reward-button"
+            type="button"
+            aria-label="Open challenge details"
+            disabled={isViewingOtherRoom || isTutorialActive}
+            onClick={() => setChallengeInfoView("details")}
+          >
+            <Gift size={48} fill="currentColor" strokeWidth={2.4} />
+          </button>
+        </div>
         <div className="action-row">
           <button
             className={`challenge-button${isChallengePending ? " is-pending" : ""}${hasChallengeSubmission ? " is-submitted" : ""}`}
@@ -2181,6 +2256,14 @@ export default function GameShell() {
           member={activeMember}
           onConfirm={handleChallengeConfirm}
           onCancel={() => setShowChallengeModal(false)}
+        />
+      )}
+      {challengeInfoView && (
+        <ChallengeInfoModal
+          info={currentChallengeInfo}
+          view={challengeInfoView}
+          onClose={() => setChallengeInfoView(null)}
+          onShowRewards={() => setChallengeInfoView("rewards")}
         />
       )}
       <ChallengeAnnouncement

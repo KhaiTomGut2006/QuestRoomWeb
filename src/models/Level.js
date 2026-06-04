@@ -18,6 +18,21 @@ const NpcSpawnSchema = new mongoose.Schema({
   chance: { type: Number, default: 0 },
 }, { _id: false });
 
+const ChallengeRewardSchema = new mongoose.Schema({
+  id:       { type: String, default: '' },
+  label:    { type: String, default: '' },
+  image:    { type: String, default: '' },
+  quantity: { type: Number, default: 1 },
+  kind:     { type: String, default: 'item' },
+}, { _id: false });
+
+const ChallengeInfoSchema = new mongoose.Schema({
+  title:       { type: String, default: '' },
+  description: { type: String, default: '' },
+  videoUrl:    { type: String, default: '' },
+  rewards:     { type: [ChallengeRewardSchema], default: [] },
+}, { _id: false });
+
 const LevelSchema = new mongoose.Schema({
   stageId:  { type: String, required: true, unique: true },
   name:     { type: String, required: true },
@@ -25,6 +40,7 @@ const LevelSchema = new mongoose.Schema({
   npcShop:  { type: [ShopItemSchema], default: [] },
   boxDrops: { type: [BoxDropSchema],  default: [] },
   npcSpawns:{ type: [NpcSpawnSchema], default: [] },
+  challengeInfo: { type: ChallengeInfoSchema, default: () => ({}) },
 }, { collection: "levels" });
 
 export default mongoose.models.Level || mongoose.model("Level", LevelSchema);

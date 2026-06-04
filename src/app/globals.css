@@ -65,6 +65,38 @@ button {
   text-shadow: 0 6px 0 #201c1d;
 }
 
+.stage-title-row {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2vw, 34px);
+}
+
+.stage-reward-button {
+  width: clamp(54px, 4.2vw, 78px);
+  height: clamp(54px, 4.2vw, 78px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #ef3f62;
+  filter: drop-shadow(0 5px 0 #ce8a16);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.stage-reward-button:hover {
+  transform: translateY(-2px) scale(1.04);
+}
+
+.stage-reward-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .action-row {
   display: flex;
   align-items: center;
@@ -1451,6 +1483,24 @@ button {
     white-space: nowrap;
   }
 
+  .stage-title-row {
+    gap: 10px;
+  }
+
+  .stage-title-row h1 {
+    min-width: 0;
+  }
+
+  .stage-reward-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .stage-reward-button svg {
+    width: 36px;
+    height: 36px;
+  }
+
   .action-row {
     width: auto;
     min-height: 48px;
@@ -1489,6 +1539,52 @@ button {
 
   .cost-chip img {
     height: 28px;
+  }
+
+  .challenge-info-backdrop {
+    padding: 12px;
+    align-items: flex-start;
+  }
+
+  .challenge-info-modal {
+    width: 100%;
+    min-height: calc(100dvh - 24px);
+    padding: 72px 20px 28px;
+  }
+
+  .challenge-info-title {
+    padding: 0 46px;
+    font-size: clamp(34px, 10vw, 46px);
+  }
+
+  .challenge-info-description {
+    margin: 24px 0 26px;
+    font-size: 20px;
+  }
+
+  .challenge-info-media {
+    width: 100%;
+  }
+
+  .challenge-info-rewards-button {
+    position: static;
+    margin: 24px auto 0;
+  }
+
+  .challenge-info-subtitle {
+    font-size: 22px;
+  }
+
+  .challenge-reward-list {
+    min-height: 0;
+    margin-top: 40px;
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .challenge-reward-art {
+    width: 126px;
+    height: 126px;
   }
 
   .status-text {
@@ -4296,6 +4392,186 @@ button {
 @keyframes cm-overlay-in {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+.challenge-info-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 920;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 3vw, 38px);
+  background:
+    linear-gradient(rgba(251, 241, 211, 0.82), rgba(251, 241, 211, 0.82)),
+    repeating-linear-gradient(0deg, rgba(64, 50, 24, 0.06) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(90deg, rgba(64, 50, 24, 0.06) 0 1px, transparent 1px 22px);
+}
+
+.challenge-info-modal {
+  position: relative;
+  width: min(1216px, 94vw);
+  min-height: min(800px, 88dvh);
+  padding: clamp(46px, 7.8vw, 104px) clamp(28px, 8vw, 116px) clamp(32px, 5vw, 76px);
+  background: #fff;
+  border: 3px solid #222226;
+  border-radius: 0;
+  box-shadow: 8px 8px 0 rgba(20, 20, 24, 0.08);
+  color: #a75307;
+  overflow: auto;
+}
+
+.challenge-info-close {
+  position: absolute;
+  top: clamp(20px, 4vw, 54px);
+  right: clamp(20px, 4.8vw, 66px);
+  width: clamp(48px, 5vw, 64px);
+  height: clamp(48px, 5vw, 64px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #17171b;
+  cursor: pointer;
+}
+
+.challenge-info-close:hover {
+  transform: scale(1.08);
+}
+
+.challenge-info-title {
+  margin: 0;
+  color: #a75307;
+  font-size: clamp(42px, 6.1vw, 78px);
+  line-height: 1.02;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.challenge-info-description {
+  width: min(860px, 100%);
+  margin: clamp(24px, 3vw, 36px) 0 clamp(30px, 5vw, 70px);
+  white-space: pre-line;
+  color: #a75307;
+  font-size: clamp(22px, 2.5vw, 34px);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.challenge-info-media {
+  width: min(584px, 72%);
+  aspect-ratio: 16 / 9;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111116;
+  color: rgba(255, 255, 255, 0.86);
+  overflow: hidden;
+}
+
+.challenge-info-media video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: #111116;
+}
+
+.challenge-info-media-link,
+.challenge-info-media-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+}
+
+.challenge-info-rewards-button {
+  position: absolute;
+  right: clamp(38px, 5vw, 70px);
+  bottom: clamp(28px, 4vw, 54px);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ef3f62;
+  cursor: pointer;
+  filter: drop-shadow(0 5px 0 #ce8a16);
+}
+
+.challenge-info-rewards-button span {
+  color: #a75307;
+  font-size: clamp(18px, 1.7vw, 24px);
+  font-weight: 950;
+}
+
+.challenge-info-rewards-button:hover {
+  transform: translateY(-2px) scale(1.03);
+}
+
+.challenge-info-subtitle {
+  margin: clamp(22px, 3vw, 28px) 0 0;
+  text-align: center;
+  color: #a75307;
+  font-size: clamp(24px, 3.4vw, 40px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.challenge-reward-list {
+  width: min(860px, 100%);
+  min-height: clamp(260px, 38vh, 390px);
+  margin: clamp(62px, 9vw, 118px) auto 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: clamp(28px, 5.8vw, 74px);
+  list-style: none;
+}
+
+.challenge-reward-item {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  color: #17171b;
+  font-size: clamp(18px, 2vw, 30px);
+  font-weight: 950;
+  text-align: center;
+}
+
+.challenge-reward-art {
+  width: clamp(116px, 15vw, 190px);
+  height: clamp(116px, 15vw, 190px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1b1b1f;
+}
+
+.challenge-reward-art img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.challenge-reward-name {
+  overflow-wrap: anywhere;
+}
+
+.challenge-reward-qty {
+  font-size: clamp(22px, 2.6vw, 34px);
+  line-height: 1;
 }
 
 .challenge-modal {
