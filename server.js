@@ -31,6 +31,7 @@ const SOCKET_TRANSPORTS = process.env.SOCKET_ALLOW_POLLING === "true"
   ? ["websocket", "polling"]
   : ["websocket"];
 const LEVEL_CONFIG_CACHE_TTL_MS = Math.max(30_000, Number(process.env.LEVEL_CONFIG_CACHE_TTL_MS || 300_000));
+const NPC_CYCLE_RESTORE_ENABLED = process.env.NPC_CYCLE_RESTORE_ENABLED !== "false";
 const NPC_CYCLE_RESTORE_JITTER_MS = Math.max(0, Number(process.env.NPC_CYCLE_RESTORE_JITTER_MS || 30_000));
 const NPC_CYCLE_RESTORE_CACHE_TTL_MS = Math.max(1_000, Number(process.env.NPC_CYCLE_RESTORE_CACHE_TTL_MS || 15_000));
 const NPC_CYCLE_RESTORE_CACHE_MAX = Math.max(100, Number(process.env.NPC_CYCLE_RESTORE_CACHE_MAX || 1_000));
@@ -946,7 +947,11 @@ app.prepare().then(() => {
         socketFrozenMs.delete(socket.id);
         return;
       }
-      scheduleNpcCycleRestore(socket);
+      if (NPC_CYCLE_RESTORE_ENABLED) {
+        scheduleNpcCycleRestore(socket);
+      } else {
+        schedulePersonalCycle(socket, effectiveCycleMs(socket.id));
+      }
     });
 
     socket.on("room:peek", (payload = {}) => {
