@@ -950,6 +950,18 @@ export default function GameShell() {
     }
   }, []);
 
+  const reloadMemberNow = useCallback(() => {
+    if (!isAuthed || memberRefreshInFlightRef.current) return;
+    memberRefreshInFlightRef.current = true;
+    fetch(withBasePath("/api/player/me"))
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => applyMember(data.member))
+      .catch(() => {})
+      .finally(() => {
+        memberRefreshInFlightRef.current = false;
+      });
+  }, [applyMember, isAuthed]);
+
   useEffect(() => {
     const ownerId = activeMember?.discordId || activeMember?.id || "";
     const position = activeMember?.position
@@ -1457,8 +1469,14 @@ export default function GameShell() {
     socket.on("challenge:announce", (data) => {
       setChallengeAnnouncement(data);
     });
-    socket.on("member:update", ({ member: nextMember } = {}) => {
+    socket.on("member:update", ({ member: nextMember, reason } = {}) => {
       if (nextMember) applyMember(nextMember);
+      if (["approve", "approved", "award", "awarded", "badge", "badge_awarded", "challenge_sync"].includes(String(reason || "").toLowerCase())) {
+        reloadMemberNow();
+      }
+    });
+    socket.on("questroom:reload", () => {
+      reloadMemberNow();
     });
     socket.on("social:notification", (data) => {
       if (data?.author?.id && data.author.id === activeMember?.discordId) return;
@@ -1477,7 +1495,7 @@ export default function GameShell() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [activeMember?.discordId, applyMember, mergePlayers, previewMode, queueDoorNpc, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
+  }, [activeMember?.discordId, applyMember, mergePlayers, previewMode, queueDoorNpc, reloadMemberNow, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
 
   useEffect(() => {
     if (!selfPlayer?.id) return;
