@@ -240,6 +240,7 @@ Expected production env knobs:
 
 ```env
 PORT=3001
+QUESTROOM_PORT=3001
 NEXT_PUBLIC_BASE_PATH=/questroom
 NEXT_PUBLIC_SOCKET_ALLOW_POLLING=false
 SOCKET_ALLOW_POLLING=false
@@ -295,7 +296,7 @@ QuestRoomWeb ready on http://0.0.0.0:3001
 Open on this computer: http://localhost:3001/questroom
 ```
 
-If logs show `EADDRINUSE ... port: 3000`, PM2 is still starting QuestRoomWeb with the wrong or stale port. Recreate the app with `PORT=3001` and `--update-env`.
+If logs show `EADDRINUSE ... port: 3000`, PM2 is still starting QuestRoomWeb with the wrong or stale port. Recreate the app with `QUESTROOM_PORT=3001 PORT=3001` and `--update-env`.
 
 ### What To Watch After Restart
 

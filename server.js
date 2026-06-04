@@ -341,6 +341,7 @@ async function getPersistedNpcCycle(playerId) {
 async function setPersistedNpcCycle(playerId, npcCycle) {
   const playerKey = String(playerId || "");
   if (!playerKey) return;
+  if (!NPC_CYCLE_RESTORE_ENABLED) return;
   const members = await getMembersCollection();
   await members.updateOne(
     { discord_id: playerKey },
@@ -356,10 +357,22 @@ async function setPersistedNpcCycle(playerId, npcCycle) {
 async function setPersistedPendingNpc(playerId, pendingNpc) {
   const playerKey = String(playerId || "");
   if (!playerKey) return;
+  if (!NPC_CYCLE_RESTORE_ENABLED) return;
   const members = await getMembersCollection();
   await members.updateOne(
     { discord_id: playerKey },
-    { $set: { "npcCycle.pendingNpc": pendingNpc || null } }
+    [
+      {
+        $set: {
+          npcCycle: {
+            $mergeObjects: [
+              { $ifNull: ["$npcCycle", {}] },
+              { pendingNpc: pendingNpc || null }
+            ]
+          }
+        }
+      }
+    ]
   );
   const cached = npcCycleRestoreCache.get(playerKey);
   if (cached?.npcCycle) {

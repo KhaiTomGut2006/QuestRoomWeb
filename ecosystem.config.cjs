@@ -1,3 +1,11 @@
+const { loadEnvConfig } = require("@next/env");
+
+loadEnvConfig(process.cwd());
+
+const questroomPort = process.env.QUESTROOM_PORT || "3001";
+const nodeMaxOldSpaceMb = process.env.NODE_MAX_OLD_SPACE_MB || "2048";
+const pm2MaxMemoryRestart = process.env.PM2_MAX_MEMORY_RESTART || "2400M";
+
 module.exports = {
   apps: [
     {
@@ -5,11 +13,11 @@ module.exports = {
       script: "server.js",
       exec_mode: "fork",
       instances: 1,
-      node_args: `--max-old-space-size=${process.env.NODE_MAX_OLD_SPACE_MB || 1536}`,
-      max_memory_restart: process.env.PM2_MAX_MEMORY_RESTART || "1800M",
+      node_args: `--max-old-space-size=${nodeMaxOldSpaceMb}`,
+      max_memory_restart: pm2MaxMemoryRestart,
       env: {
         NODE_ENV: "production",
-        PORT: process.env.PORT || "3001",
+        PORT: questroomPort,
         NEXT_PUBLIC_SOCKET_ALLOW_POLLING: process.env.NEXT_PUBLIC_SOCKET_ALLOW_POLLING || "false",
         SOCKET_ALLOW_POLLING: process.env.SOCKET_ALLOW_POLLING || "false",
         NPC_CYCLE_RESTORE_ENABLED: process.env.NPC_CYCLE_RESTORE_ENABLED || "false",
