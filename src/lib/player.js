@@ -160,6 +160,28 @@ function clearRoomPlayersCache(stage = "") {
   }
 }
 
+function publicEvidenceUrl(evidence) {
+  const url = String(evidence?.url || "");
+  const publicBase = String(process.env.R2_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  if (!publicBase) return url;
+
+  const pathname = String(evidence?.pathname || "");
+  if (pathname.startsWith("r2/")) {
+    const key = pathname.slice(3);
+    return `${publicBase}/${encodeURI(key).replace(/%2F/g, "/")}`;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.endsWith(".r2.dev") && parsed.pathname.startsWith("/npc-quests/")) {
+      return `${publicBase}${parsed.pathname}`;
+    }
+  } catch {
+    return url;
+  }
+  return url;
+}
+
 function pruneGlobalPostsCache(now = Date.now()) {
   for (const [key, cached] of cachedGlobalPosts) {
     if (!cached || now - cached.cachedAt >= GLOBAL_POSTS_CACHE_TTL_MS) {
@@ -514,7 +536,7 @@ function normalizeNpcQuestSubmission(submission) {
     dislikeCount: dislikes.length,
     evidence: submission.evidence
       ? {
-          url: submission.evidence.url || "",
+          url: publicEvidenceUrl(submission.evidence),
           pathname: submission.evidence.pathname || "",
           contentType: submission.evidence.contentType || "",
           size: submission.evidence.size || 0,
@@ -613,7 +635,7 @@ function socialPostDocumentFromMemberSubmission(member, submission) {
       ? submission.badge || member?.questChallenge?.badge
       : submission.badge),
     evidence: {
-      url: submission.evidence.url || "",
+      url: publicEvidenceUrl(submission.evidence),
       pathname: submission.evidence.pathname || "",
       contentType: submission.evidence.contentType || "",
       size: Math.max(0, Number(submission.evidence.size) || 0),
@@ -646,7 +668,7 @@ function serializeSocialPost(post, viewerId = "") {
     badge: normalizeBadge(raw.badge),
     evidence: raw.evidence
       ? {
-          url: raw.evidence.url || "",
+          url: publicEvidenceUrl(raw.evidence),
           pathname: raw.evidence.pathname || "",
           contentType: raw.evidence.contentType || "",
           size: Math.max(0, Number(raw.evidence.size) || 0),
