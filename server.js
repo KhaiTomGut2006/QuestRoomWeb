@@ -31,9 +31,14 @@ const SOCKET_TRANSPORTS = process.env.SOCKET_ALLOW_POLLING === "true"
   ? ["websocket", "polling"]
   : ["websocket"];
 const LEVEL_CONFIG_CACHE_TTL_MS = Math.max(30_000, Number(process.env.LEVEL_CONFIG_CACHE_TTL_MS || 300_000));
+const NPC_CYCLE_RESTORE_JITTER_MS = Math.max(0, Number(process.env.NPC_CYCLE_RESTORE_JITTER_MS || 30_000));
+const NPC_CYCLE_RESTORE_CACHE_TTL_MS = Math.max(1_000, Number(process.env.NPC_CYCLE_RESTORE_CACHE_TTL_MS || 15_000));
+const NPC_CYCLE_RESTORE_CACHE_MAX = Math.max(100, Number(process.env.NPC_CYCLE_RESTORE_CACHE_MAX || 1_000));
 const roomPatchBuffers = new Map();
 const roomPatchTimers = new Map();
 const levelConfigCache = new Map();
+const npcCycleRestoreCache = new Map();
+const socketCycleRestoreTimers = new Map();
 const SERVER_METRICS_INTERVAL_MS = Math.max(10_000, Number(process.env.SERVER_METRICS_INTERVAL_MS || 60_000));
 const SERVER_METRICS_RSS_WARN_MB = Math.max(256, Number(process.env.SERVER_METRICS_RSS_WARN_MB || 1536));
 let lastMetricsCheckAt = Date.now();
@@ -189,6 +194,12 @@ function clearPersonalTimer(socketId) {
   socketPersonalTimer.delete(socketId);
 }
 
+function clearCycleRestoreTimer(socketId) {
+  const timerId = socketCycleRestoreTimers.get(socketId);
+  if (timerId) clearTimeout(timerId);
+  socketCycleRestoreTimers.delete(socketId);
+}
+
 function startServerMetricsLogger() {
   if (process.env.ENABLE_SERVER_METRICS === "false") return;
   setInterval(() => {
@@ -209,6 +220,7 @@ function startServerMetricsLogger() {
       rooms: rooms.size,
       roomPlayers: roomPlayerCount,
       socketPersonalTimers: socketPersonalTimer.size,
+      socketCycleRestoreTimers: socketCycleRestoreTimers.size,
       socketFrozen: socketFrozenMs.size,
       socketToPlayer: socketToPlayer.size,
       playerStages: playerStages.size,
@@ -216,6 +228,7 @@ function startServerMetricsLogger() {
       roomPatchBuffers: roomPatchBuffers.size,
       roomPatchTimers: roomPatchTimers.size,
       levelConfigCache: levelConfigCache.size,
+      npcCycleRestoreCache: npcCycleRestoreCache.size,
       uptimeSec: Math.round(process.uptime())
     }));
   }, SERVER_METRICS_INTERVAL_MS).unref?.();
@@ -278,30 +291,80 @@ async function enrichNpcForStage(npc, availableCoins = 0, stage = "") {
   return enrichNpc(npc, availableCoins);
 }
 
+function cloneNpcCycle(cycle) {
+  if (!cycle) return null;
+  return {
+    ...cycle,
+    nextResetAt: cycle.nextResetAt ? new Date(cycle.nextResetAt) : cycle.nextResetAt,
+    pendingNpc: cycle.pendingNpc ? { ...cycle.pendingNpc } : cycle.pendingNpc
+  };
+}
+
+function pruneNpcCycleRestoreCache(now = Date.now()) {
+  for (const [playerId, cached] of npcCycleRestoreCache) {
+    if (!cached || now - cached.loadedAt >= NPC_CYCLE_RESTORE_CACHE_TTL_MS) {
+      npcCycleRestoreCache.delete(playerId);
+    }
+  }
+  if (npcCycleRestoreCache.size <= NPC_CYCLE_RESTORE_CACHE_MAX) return;
+  const overflow = npcCycleRestoreCache.size - NPC_CYCLE_RESTORE_CACHE_MAX;
+  const oldestKeys = [...npcCycleRestoreCache.entries()]
+    .sort(([, a], [, b]) => Number(a?.loadedAt || 0) - Number(b?.loadedAt || 0))
+    .slice(0, overflow)
+    .map(([key]) => key);
+  for (const key of oldestKeys) npcCycleRestoreCache.delete(key);
+}
+
 async function getPersistedNpcCycle(playerId) {
+  const playerKey = String(playerId || "");
+  if (!playerKey) return null;
+  const now = Date.now();
+  pruneNpcCycleRestoreCache(now);
+  const cached = npcCycleRestoreCache.get(playerKey);
+  if (cached && now - cached.loadedAt < NPC_CYCLE_RESTORE_CACHE_TTL_MS) {
+    return { npcCycle: cloneNpcCycle(cached.npcCycle) };
+  }
+
   const members = await getMembersCollection();
-  return members.findOne(
-    { discord_id: String(playerId || "") },
+  const result = await members.findOne(
+    { discord_id: playerKey },
     { projection: { npcCycle: 1 } }
   );
+  npcCycleRestoreCache.set(playerKey, {
+    loadedAt: Date.now(),
+    npcCycle: cloneNpcCycle(result?.npcCycle || null)
+  });
+  return result;
 }
 
 async function setPersistedNpcCycle(playerId, npcCycle) {
-  if (!playerId) return;
+  const playerKey = String(playerId || "");
+  if (!playerKey) return;
   const members = await getMembersCollection();
   await members.updateOne(
-    { discord_id: String(playerId) },
+    { discord_id: playerKey },
     { $set: { npcCycle } }
   );
+  npcCycleRestoreCache.set(playerKey, {
+    loadedAt: Date.now(),
+    npcCycle: cloneNpcCycle(npcCycle || null)
+  });
+  pruneNpcCycleRestoreCache();
 }
 
 async function setPersistedPendingNpc(playerId, pendingNpc) {
-  if (!playerId) return;
+  const playerKey = String(playerId || "");
+  if (!playerKey) return;
   const members = await getMembersCollection();
   await members.updateOne(
-    { discord_id: String(playerId) },
+    { discord_id: playerKey },
     { $set: { "npcCycle.pendingNpc": pendingNpc || null } }
   );
+  const cached = npcCycleRestoreCache.get(playerKey);
+  if (cached?.npcCycle) {
+    cached.loadedAt = Date.now();
+    cached.npcCycle.pendingNpc = pendingNpc || null;
+  }
 }
 
 let cycleStartedAt = Date.now(); // kept for legacy compat, not used for per-socket logic
@@ -719,7 +782,9 @@ app.prepare().then(() => {
     const storedCycle = persisted?.npcCycle || null;
     if (storedCycle?.pendingNpc && !storedCycle.pendingNpc.visitId) {
       storedCycle.pendingNpc = await enrichNpcForStage(storedCycle.pendingNpc, socketPlayerCoins.get(socket.id), playerStages.get(playerId));
-      await setPersistedNpcCycle(playerId, storedCycle);
+      void setPersistedNpcCycle(playerId, storedCycle).catch((error) => {
+        console.error("Failed to persist enriched NPC cycle:", error.message);
+      });
     }
     const durationMs = Math.max(1000, Number(storedCycle?.durationMs) || currentPersistedCycleDurationMs(socket.id));
     const frozenRemainingMs = storedCycle?.frozenRemainingMs;
@@ -771,6 +836,27 @@ app.prepare().then(() => {
     }
     armPersistedCycle(socket, storedCycle);
   }
+
+  function scheduleNpcCycleRestore(socket) {
+    clearCycleRestoreTimer(socket.id);
+    const delayMs = Math.floor(Math.random() * (NPC_CYCLE_RESTORE_JITTER_MS + 1));
+    const timerId = setTimeout(async () => {
+      socketCycleRestoreTimers.delete(socket.id);
+      if (!socket.connected || !socketToPlayer.has(socket.id)) return;
+      try {
+        await restorePersistedCycle(socket);
+      } catch (error) {
+        console.error("Failed to restore NPC cycle:", error.message);
+        if (socket.connected && socketToPlayer.has(socket.id)) {
+          await schedulePersistedCycle(socket, currentPersistedCycleDurationMs(socket.id)).catch((fallbackError) => {
+            console.error("Failed to schedule fallback NPC cycle:", fallbackError.message);
+          });
+        }
+      }
+    }, delayMs);
+    timerId.unref?.();
+    socketCycleRestoreTimers.set(socket.id, timerId);
+  }
   // ────────────────────────────────────────────────────────────────
 
   io.on("connection", (socket) => {
@@ -803,6 +889,7 @@ app.prepare().then(() => {
     socket.on("player:join", async (payload = {}) => {
       const player = compactPlayer(payload);
       if (!player.id) return;
+      clearCycleRestoreTimer(socket.id);
 
       // Track socket → player mapping
       socketToPlayer.set(socket.id, player.id);
@@ -859,12 +946,7 @@ app.prepare().then(() => {
         socketFrozenMs.delete(socket.id);
         return;
       }
-      try {
-        await restorePersistedCycle(socket);
-      } catch (error) {
-        console.error("Failed to restore NPC cycle:", error.message);
-        await schedulePersistedCycle(socket, currentPersistedCycleDurationMs(socket.id));
-      }
+      scheduleNpcCycleRestore(socket);
     });
 
     socket.on("room:peek", (payload = {}) => {
@@ -1087,6 +1169,7 @@ app.prepare().then(() => {
     // ─────────────────────────────────────────────────────────────
 
     socket.on("disconnect", () => {
+      clearCycleRestoreTimer(socket.id);
       clearPersonalTimer(socket.id);
       socketFrozenMs.delete(socket.id);
       socketPermanentReductionMs.delete(socket.id);

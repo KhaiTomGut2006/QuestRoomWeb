@@ -1111,10 +1111,14 @@ export default function GameShell() {
         });
     };
 
-    fetchSocialStatus();
+    const initialDelay = window.setTimeout(
+      fetchSocialStatus,
+      5_000 + Math.floor(Math.random() * 25_000)
+    );
     const interval = window.setInterval(fetchSocialStatus, SOCIAL_STATUS_INTERVAL_MS);
     document.addEventListener("visibilitychange", fetchSocialStatus);
     return () => {
+      window.clearTimeout(initialDelay);
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", fetchSocialStatus);
       socialStatusInFlightRef.current = false;
@@ -1387,26 +1391,33 @@ export default function GameShell() {
     const controller = new AbortController();
     const stage = activeViewedStage;
 
-    fetch(withBasePath(`/api/player/room?stage=${encodeURIComponent(stage)}`), {
-      signal: controller.signal
-    })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then(({ players: roomPlayers }) => {
-        setPlayers((prev) => {
-          const currentPlayersById = new Map(prev.map((player) => [player.id, player]));
-          return mergePlayers(
-            prev,
-            (roomPlayers || []).map((player) => ({
-              ...player,
-              online: Boolean(currentPlayersById.get(player.id)?.online || player.online)
-            }))
-          );
-        });
+    const loadRoomSnapshot = () => {
+      fetch(withBasePath(`/api/player/room?stage=${encodeURIComponent(stage)}`), {
+        signal: controller.signal
       })
-      .catch(() => {});
+        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+        .then(({ players: roomPlayers }) => {
+          setPlayers((prev) => {
+            const currentPlayersById = new Map(prev.map((player) => [player.id, player]));
+            return mergePlayers(
+              prev,
+              (roomPlayers || []).map((player) => ({
+                ...player,
+                online: Boolean(currentPlayersById.get(player.id)?.online || player.online)
+              }))
+            );
+          });
+        })
+        .catch(() => {});
+    };
+    const delayMs = isViewingOtherRoom ? 0 : 1_000 + Math.floor(Math.random() * 7_000);
+    const timeoutId = window.setTimeout(loadRoomSnapshot, delayMs);
 
-    return () => controller.abort();
-  }, [activeViewedStage, isAuthed, mergePlayers]);
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [activeViewedStage, isAuthed, isViewingOtherRoom, mergePlayers]);
 
   useEffect(() => {
     if (!selfPlayer) return;
@@ -1414,7 +1425,11 @@ export default function GameShell() {
       path: withBasePath("/socket.io"),
       addTrailingSlash: false,
       transports: SOCKET_TRANSPORTS,
-      reconnectionAttempts: 6
+      reconnectionAttempts: 6,
+      reconnectionDelay: 1_000,
+      reconnectionDelayMax: 10_000,
+      randomizationFactor: 0.75,
+      timeout: 20_000
     });
     socketRef.current = socket;
 
