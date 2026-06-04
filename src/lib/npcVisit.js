@@ -6,7 +6,11 @@ export const NPC_VISIT_ACTIONS = {
 
 export function assertActiveNpcVisit(member, visitId) {
   const normalizedVisitId = String(visitId || "");
-  if (!normalizedVisitId || String(member?.npcCycle?.pendingNpc?.visitId || "") !== normalizedVisitId) {
+  const memberId = String(member?.discord_id || member?.discordId || "");
+  const activeVisit = memberId ? globalThis.__questRoomActiveNpcVisits?.get(memberId) : null;
+  const activeVisitId = String(activeVisit?.visitId || "");
+  const persistedVisitId = String(member?.npcCycle?.pendingNpc?.visitId || "");
+  if (!normalizedVisitId || (activeVisitId !== normalizedVisitId && persistedVisitId !== normalizedVisitId)) {
     throw new Error("npc_visit_expired");
   }
   return normalizedVisitId;

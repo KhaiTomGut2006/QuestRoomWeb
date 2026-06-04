@@ -102,7 +102,13 @@ const FRIENDS_CACHE_MAX_KEYS = Math.max(20, Number(process.env.FRIENDS_CACHE_MAX
 const MAX_CLASS_FRIENDS = Math.max(50, Number(process.env.MAX_CLASS_FRIENDS || 500));
 const MEMBER_LIST_QUERY_MAX_TIME_MS = Math.max(1_000, Number(process.env.MEMBER_LIST_QUERY_MAX_TIME_MS || 8_000));
 const SOCIAL_POSTS_QUERY_MAX_TIME_MS = Math.max(1_000, Number(process.env.SOCIAL_POSTS_QUERY_MAX_TIME_MS || 3_000));
+const SOCIAL_POST_AUTO_BACKFILL_ENABLED = process.env.SOCIAL_POST_AUTO_BACKFILL_ENABLED === "true";
 const SOCIAL_POST_BACKFILL_MEMBER_LIMIT = Math.max(20, Number(process.env.SOCIAL_POST_BACKFILL_MEMBER_LIMIT || 100));
+const SOCIAL_POST_BACKFILL_SUBMISSIONS_PER_MEMBER = Math.max(
+  1,
+  Math.min(20, Number(process.env.SOCIAL_POST_BACKFILL_SUBMISSIONS_PER_MEMBER || 5))
+);
+const SOCIAL_POST_BACKFILL_MAX_OPERATIONS = Math.max(50, Number(process.env.SOCIAL_POST_BACKFILL_MAX_OPERATIONS || 500));
 const SOCIAL_POST_BACKFILL_INTERVAL_MS = Math.max(30_000, Number(process.env.SOCIAL_POST_BACKFILL_INTERVAL_MS || 300_000));
 const SOCIAL_POST_FEED_LIMIT = Math.max(10, Number(process.env.SOCIAL_POST_FEED_LIMIT || 50));
 const cachedStageRankings = new Map();
@@ -774,6 +780,7 @@ async function backfillSocialPostsFromMembers({ force = false } = {}) {
         "questChallenge",
         "npcQuestSubmissions"
       ].join(" "))
+      .slice("npcQuestSubmissions", -SOCIAL_POST_BACKFILL_SUBMISSIONS_PER_MEMBER)
       .sort({ "npcQuestSubmissions.submittedAt": -1 })
       .limit(SOCIAL_POST_BACKFILL_MEMBER_LIMIT)
       .lean()
@@ -782,6 +789,7 @@ async function backfillSocialPostsFromMembers({ force = false } = {}) {
     const operations = [];
     for (const member of members) {
       for (const submission of member.npcQuestSubmissions || []) {
+        if (operations.length >= SOCIAL_POST_BACKFILL_MAX_OPERATIONS) break;
         const doc = socialPostDocumentFromMemberSubmission(member, submission);
         if (!doc?.postId || !doc.authorId) continue;
         operations.push({
@@ -792,6 +800,7 @@ async function backfillSocialPostsFromMembers({ force = false } = {}) {
           }
         });
       }
+      if (operations.length >= SOCIAL_POST_BACKFILL_MAX_OPERATIONS) break;
     }
 
     if (operations.length > 0) {
@@ -1591,7 +1600,9 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId) {
   if (pending) return cloneGlobalPosts(await pending);
 
   const nextLoad = (async () => {
-    void backfillSocialPostsFromMembers().catch(() => {});
+    if (SOCIAL_POST_AUTO_BACKFILL_ENABLED) {
+      void backfillSocialPostsFromMembers().catch(() => {});
+    }
 
     const query = {
       visible: true,
@@ -1613,7 +1624,7 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId) {
       .lean()
       .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
 
-    if (posts.length === 0) {
+    if (posts.length === 0 && SOCIAL_POST_AUTO_BACKFILL_ENABLED) {
       await backfillSocialPostsFromMembers({ force: true });
       posts = await SocialPost.find(query)
         .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likes dislikes publishedAt submittedAt author authorId")
@@ -1669,7 +1680,9 @@ async function loadSocialActivity() {
           publishedAt: item.publishedAt ? new Date(item.publishedAt) : null
         }));
         cachedSocialActivityAt = Date.now();
-        if (cachedSocialActivity.length === 0) void backfillSocialPostsFromMembers().catch(() => {});
+        if (cachedSocialActivity.length === 0 && SOCIAL_POST_AUTO_BACKFILL_ENABLED) {
+          void backfillSocialPostsFromMembers().catch(() => {});
+        }
         return cachedSocialActivity;
       })
       .catch((error) => {

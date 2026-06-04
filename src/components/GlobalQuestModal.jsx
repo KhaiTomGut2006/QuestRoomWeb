@@ -46,6 +46,49 @@ function PostBadge({ badge }) {
   );
 }
 
+function isVideoEvidence(evidence) {
+  const contentType = String(evidence?.contentType || "").toLowerCase();
+  const url = String(evidence?.url || "").toLowerCase().split(/[?#]/)[0];
+  return contentType.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/.test(url);
+}
+
+function PostMedia({ post }) {
+  const [failed, setFailed] = useState(false);
+  const evidence = post.evidence || {};
+  const url = String(evidence.url || "");
+
+  if (!url || failed) {
+    return (
+      <a className="global-post-media global-post-media-fallback" href={url || undefined} target="_blank" rel="noreferrer">
+        Media unavailable
+      </a>
+    );
+  }
+
+  if (isVideoEvidence(evidence)) {
+    return (
+      <video
+        className="global-post-media"
+        src={url}
+        controls
+        preload="metadata"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      className="global-post-media"
+      src={url}
+      alt={post.title || "Quest submission"}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
   const [classes, setClasses] = useState([]);
   const [posts, setPosts] = useState([]);
@@ -146,9 +189,7 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
             <p className="global-quest-status global-quest-status--error">{error}</p>
           ) : posts.length === 0 ? (
             <p className="global-quest-status">No quest submissions in this course yet</p>
-          ) : posts.map((post) => {
-            const isVideo = String(post.evidence?.contentType || "").startsWith("video/");
-            return (
+          ) : posts.map((post) => (
               <article className="global-post" key={post.id}>
                 <div className="global-post-author">
                   <AuthorAvatar author={post.author || {}} />
@@ -156,12 +197,7 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
                   <span>| {relativeTime(post.submittedAt)}</span>
                 </div>
                 <div className="global-post-media-wrap">
-                  {isVideo ? (
-                    <video className="global-post-media" src={post.evidence.url} controls preload="metadata" />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img className="global-post-media" src={post.evidence.url} alt={post.title || "Quest submission"} loading="lazy" />
-                  )}
+                  <PostMedia post={post} />
                   <PostBadge badge={post.badge} />
                 </div>
                 <div className="global-post-actions">
@@ -187,8 +223,7 @@ export default function GlobalQuestModal({ onClose, tutorialMode = false }) {
                 <strong className="global-post-title">{post.title || "NPC Quest"}</strong>
                 {post.postText && <p className="global-post-text">{post.postText}</p>}
               </article>
-            );
-          })}
+          ))}
         </div>
       </section>
     </div>

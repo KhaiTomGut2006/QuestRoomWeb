@@ -46,16 +46,28 @@ function AccessoryDoll({ accessoryId, className = "" }) {
   );
 }
 
+function isVideoEvidence(evidence) {
+  const contentType = String(evidence?.contentType || "").toLowerCase();
+  const url = String(evidence?.url || "").toLowerCase().split(/[?#]/)[0];
+  return contentType.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/.test(url);
+}
+
 function QuestPost({ post }) {
-  const isVideo = String(post.evidence?.contentType || "").startsWith("video/");
+  const [failed, setFailed] = useState(false);
+  const evidenceUrl = String(post.evidence?.url || "");
+  const isVideo = isVideoEvidence(post.evidence);
 
   return (
     <article className="profile-quest-post">
-      {isVideo ? (
-        <video className="profile-quest-media" src={post.evidence.url} controls preload="metadata" />
+      {!evidenceUrl || failed ? (
+        <a className="profile-quest-media profile-quest-media-fallback" href={evidenceUrl || undefined} target="_blank" rel="noreferrer">
+          Media unavailable
+        </a>
+      ) : isVideo ? (
+        <video className="profile-quest-media" src={evidenceUrl} controls preload="metadata" onError={() => setFailed(true)} />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className="profile-quest-media" src={post.evidence.url} alt={post.title || "Quest submission"} loading="lazy" />
+        <img className="profile-quest-media" src={evidenceUrl} alt={post.title || "Quest submission"} loading="lazy" onError={() => setFailed(true)} />
       )}
       <div className="profile-quest-reactions" aria-label="Quest reactions">
         <span><ThumbsUp size={20} /> {post.likeCount || 0}</span>
