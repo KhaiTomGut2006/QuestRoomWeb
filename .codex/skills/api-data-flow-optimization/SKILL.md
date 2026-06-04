@@ -223,3 +223,117 @@ Use the checks that match the change risk:
 - For action endpoints, test success and error paths and verify the response is enough for the UI without unnecessary full-state refetches.
 
 If a change significantly increases requests per minute, fix the data flow design before adding server resources.
+
+## Production Operations
+
+Use this checklist after deploying game updates or when the server was recently unstable under concurrent player load.
+
+### Current QuestRoomWeb Production Shape
+
+- QuestRoomWeb runs under the `/questroom` base path.
+- QuestRoomWeb should listen on `PORT=3001`; port `3000` is used by another service.
+- Socket.IO should stay websocket-only in production unless debugging a proxy problem.
+- PM2 should run one `questroom` instance because Socket.IO room state is currently in process memory.
+- `NPC_CYCLE_RESTORE_ENABLED=false` is the emergency-safe production default while memory growth is being diagnosed. NPC cycle timers still work in memory, but persisted cycle restore/write is skipped on socket join.
+
+Expected production env knobs:
+
+```env
+PORT=3001
+NEXT_PUBLIC_BASE_PATH=/questroom
+NEXT_PUBLIC_SOCKET_ALLOW_POLLING=false
+SOCKET_ALLOW_POLLING=false
+NODE_MAX_OLD_SPACE_MB=2048
+PM2_MAX_MEMORY_RESTART=2400M
+NPC_CYCLE_RESTORE_ENABLED=false
+SERVER_METRICS_INTERVAL_MS=15000
+SERVER_METRICS_RSS_WARN_MB=512
+ALLOW_GRIDFS_UPLOADS=false
+```
+
+### Restart After A Game Update
+
+After pulling code or editing `.env.local` on the server:
+
+```bash
+cd /var/www/QuestRoomWeb
+npm run build
+pm2 startOrReload ecosystem.config.cjs --only questroom --update-env
+pm2 save
+pm2 flush questroom
+pm2 logs questroom --lines 120
+```
+
+If PM2 keeps reusing an old environment, fully recreate the app:
+
+```bash
+cd /var/www/QuestRoomWeb
+pm2 delete questroom
+unset PORT
+PORT=3001 pm2 start ecosystem.config.cjs --only questroom --update-env
+pm2 save
+pm2 flush questroom
+pm2 logs questroom --lines 120
+```
+
+Do not start QuestRoomWeb with `pm2 start npm --name questroom -- start` while also using `ecosystem.config.cjs`; that can create duplicate apps or stale env state.
+
+### Confirm The Correct Port
+
+QuestRoomWeb must bind to port `3001`.
+
+```bash
+pm2 env questroom | grep '^PORT'
+sudo ss -ltnp | grep ':3001'
+sudo ss -ltnp | grep ':3000'
+```
+
+Healthy QuestRoomWeb logs should include:
+
+```text
+QuestRoomWeb ready on http://0.0.0.0:3001
+Open on this computer: http://localhost:3001/questroom
+```
+
+If logs show `EADDRINUSE ... port: 3000`, PM2 is still starting QuestRoomWeb with the wrong or stale port. Recreate the app with `PORT=3001` and `--update-env`.
+
+### What To Watch After Restart
+
+For the first 10-20 minutes after opening the game to many players, watch:
+
+```bash
+pm2 ls
+pm2 logs questroom --lines 120
+curl -s http://127.0.0.1:3001/questroom/api/health
+```
+
+Important signs:
+
+- `restart` count should not keep increasing.
+- `mem` in `pm2 ls` should rise slowly and then stabilize, not climb continuously to the PM2 restart limit.
+- Logs should not show `JavaScript heap out of memory`.
+- Logs should not show `EADDRINUSE`.
+- `[server-metrics]` should be reviewed when present.
+
+When reading `[server-metrics]`, focus on:
+
+- `rssMb` and `heapUsedMb`: memory growth.
+- `externalMb`: native/buffer/media pressure.
+- `lagMs`: event loop delay.
+- `roomPlayers`, `socketToPlayer`, `socketPersonalTimers`: socket state size.
+- `socketCycleRestoreTimers` and `npcCycleRestoreCache`: should stay near zero when `NPC_CYCLE_RESTORE_ENABLED=false`.
+- `roomPatchBuffers` and `roomPatchTimers`: should not grow without clearing.
+
+If memory continues to climb after `NPC_CYCLE_RESTORE_ENABLED=false`, the next suspects are large Next.js responses, asset/media handling, or another retained in-memory structure. Capture the latest `[server-metrics]` lines before the restart and investigate from those numbers.
+
+### Nginx Checks
+
+The `/questroom` upstream should proxy to `127.0.0.1:3001`, including websocket upgrade for Socket.IO.
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+curl -I http://127.0.0.1:3001/questroom
+```
+
+In browser/network logs, Socket.IO should use `transport=websocket`, not long-running `transport=polling` requests.

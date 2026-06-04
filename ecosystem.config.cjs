@@ -9,7 +9,7 @@ module.exports = {
       max_memory_restart: process.env.PM2_MAX_MEMORY_RESTART || "1800M",
       env: {
         NODE_ENV: "production",
-        PORT: process.env.PORT || 3000,
+        PORT: process.env.PORT || "3001",
         NEXT_PUBLIC_SOCKET_ALLOW_POLLING: process.env.NEXT_PUBLIC_SOCKET_ALLOW_POLLING || "false",
         SOCKET_ALLOW_POLLING: process.env.SOCKET_ALLOW_POLLING || "false",
         NPC_CYCLE_RESTORE_ENABLED: process.env.NPC_CYCLE_RESTORE_ENABLED || "false",
