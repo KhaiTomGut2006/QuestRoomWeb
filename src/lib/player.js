@@ -11,6 +11,7 @@ const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 0;
 const ROOM_PLAYERS_CACHE_TTL_MS = Math.max(0, Number(process.env.ROOM_PLAYERS_CACHE_TTL_MS || 5_000));
 const ROOM_PLAYERS_CACHE_MAX_STAGES = Math.max(10, Number(process.env.ROOM_PLAYERS_CACHE_MAX_STAGES || 200));
+const ROOM_PLAYERS_LIMIT = Math.max(50, Number(process.env.ROOM_PLAYERS_LIMIT || 200));
 export const MEMBER_INTERACTION_SELECT = [
   "_id",
   "discord_id",
@@ -1034,8 +1035,7 @@ export async function upsertMemberFromDiscord(profile) {
     )
   ]);
 
-  const member = await Member.findOne({ discord_id: discordId });
-  return normalizeMember(member);
+  return true;
 }
 
 export async function getMemberByDiscordId(discordId, options = {}) {
@@ -1091,7 +1091,9 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
       })
         .select(ROOM_PLAYER_SELECT)
         .sort({ lastAuthentication: -1 })
-        .lean();
+        .limit(ROOM_PLAYERS_LIMIT)
+        .lean()
+        .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
 
       const players = members.map(roomPlayerFromMember).filter((player) => player.id);
       if (

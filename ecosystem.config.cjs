@@ -1,0 +1,20 @@
+module.exports = {
+  apps: [
+    {
+      name: "questroom",
+      script: "server.js",
+      exec_mode: "fork",
+      instances: 1,
+      node_args: "--max-old-space-size=768",
+      max_memory_restart: "900M",
+      env: {
+        NODE_ENV: "production",
+        PORT: process.env.PORT || 3000,
+        NEXT_PUBLIC_SOCKET_ALLOW_POLLING: process.env.NEXT_PUBLIC_SOCKET_ALLOW_POLLING || "false",
+        SOCKET_ALLOW_POLLING: process.env.SOCKET_ALLOW_POLLING || "false",
+        ENABLE_SERVER_METRICS: process.env.ENABLE_SERVER_METRICS || "true",
+        SERVER_METRICS_RSS_WARN_MB: process.env.SERVER_METRICS_RSS_WARN_MB || "768"
+      }
+    }
+  ]
+};

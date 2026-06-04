@@ -80,7 +80,7 @@ export default function ChallengeInfoModal({ info, view = "details", onClose, on
               )}
             </div>
             <button className="challenge-info-rewards-button" type="button" onClick={onShowRewards}>
-              <Gift size={68} fill="currentColor" strokeWidth={2.4} />
+              <Gift className="gift-line-icon" size={68} strokeWidth={2.8} />
               <span>Rewards</span>
             </button>
           </>

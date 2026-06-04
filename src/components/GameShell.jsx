@@ -775,7 +775,7 @@ export default function GameShell() {
   useEffect(() => {
     const audio = new Audio();
     audio.preload = "none";
-    audio.src = withBasePath("/assets/bgmusic.mp3");
+    audio.src = withBasePath("/assets/bgmusic-loop.m4a");
     audio.loop = true;
     audio.volume = 0.25; // 0.5 (default volume state) * 0.5 scale
     audioRef.current = audio;
@@ -1983,7 +1983,7 @@ export default function GameShell() {
             disabled={isViewingOtherRoom || isTutorialActive}
             onClick={() => setChallengeInfoView("details")}
           >
-            <Gift size={48} fill="currentColor" strokeWidth={2.4} />
+            <Gift className="gift-line-icon" size={48} strokeWidth={2.8} />
           </button>
         </div>
         <div className="action-row">
