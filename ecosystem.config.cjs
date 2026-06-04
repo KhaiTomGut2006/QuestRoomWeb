@@ -5,8 +5,8 @@ module.exports = {
       script: "server.js",
       exec_mode: "fork",
       instances: 1,
-      node_args: "--max-old-space-size=768",
-      max_memory_restart: "900M",
+      node_args: `--max-old-space-size=${process.env.NODE_MAX_OLD_SPACE_MB || 1536}`,
+      max_memory_restart: process.env.PM2_MAX_MEMORY_RESTART || "1800M",
       env: {
         NODE_ENV: "production",
         PORT: process.env.PORT || 3000,
@@ -15,7 +15,7 @@ module.exports = {
         NPC_CYCLE_RESTORE_JITTER_MS: process.env.NPC_CYCLE_RESTORE_JITTER_MS || "30000",
         NPC_CYCLE_RESTORE_CACHE_TTL_MS: process.env.NPC_CYCLE_RESTORE_CACHE_TTL_MS || "15000",
         ENABLE_SERVER_METRICS: process.env.ENABLE_SERVER_METRICS || "true",
-        SERVER_METRICS_RSS_WARN_MB: process.env.SERVER_METRICS_RSS_WARN_MB || "768"
+        SERVER_METRICS_RSS_WARN_MB: process.env.SERVER_METRICS_RSS_WARN_MB || "1200"
       }
     }
   ]
