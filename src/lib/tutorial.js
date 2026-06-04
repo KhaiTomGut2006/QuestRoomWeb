@@ -7,7 +7,7 @@ const ROLE_QUEST_REWARD = 100;
 const ROLE_QUEST_CANCEL_WAIT_MS = 2 * 60 * 1000;
 
 function currentCoins(member) {
-  return Math.max(0, Number.parseInt(member.coin || "0", 10) || 0);
+  return Math.max(0, Number.parseInt(member.questCoin ?? member.coin ?? "0", 10) || 0);
 }
 
 function assertTutorialStep(member, ...steps) {
@@ -65,7 +65,7 @@ export async function advanceTutorial(discordId, action) {
     updateStep(member, "chest-arrival");
   } else if (action === "open-chest") {
     assertTutorialStep(member, "chest-arrival");
-    member.coin = String(currentCoins(member) + 100);
+    member.questCoin = String(currentCoins(member) + 100);
     updateStep(member, "after-chest");
     reward = { kind: "coins", coins: 100, title: "Tutorial Chest" };
   } else if (action === "spawn-shop") {
@@ -75,7 +75,7 @@ export async function advanceTutorial(discordId, action) {
     assertTutorialStep(member, "shop-arrival");
     const coins = currentCoins(member);
     if (coins < ROLE_QUEST_COST) throw new Error("not_enough_coins");
-    member.coin = String(coins - ROLE_QUEST_COST);
+    member.questCoin = String(coins - ROLE_QUEST_COST);
     member.npcQuest = {
       difficulty: "role",
       title: "Quest : Challenge Role",

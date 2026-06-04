@@ -83,8 +83,8 @@ export async function PATCH(request) {
       return NextResponse.json({ error: `Coins must be an integer between 1 and ${MAX_GRANT_AMOUNT}.` }, { status: 400 });
     }
 
-    const currentCoins = Number.parseInt(member.coin, 10) || 0;
-    member.coin = String(Math.min(MAX_GRANT_AMOUNT, currentCoins + amount));
+    const currentCoins = Number.parseInt(member.questCoin ?? member.coin ?? "0", 10) || 0;
+    member.questCoin = String(Math.min(MAX_GRANT_AMOUNT, currentCoins + amount));
     await member.save();
     return NextResponse.json({ user: normalizeMember(member) });
   }
@@ -96,7 +96,7 @@ export async function PATCH(request) {
       { discord_id: targetDiscordId },
       {
         $set: {
-          coin: "0",
+          questCoin: "0",
           stage: firstStage,
           quest: { current: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสาย) จัง", status: "active", completed: [] },
           npcQuest: null,

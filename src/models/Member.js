@@ -172,6 +172,7 @@ const MemberSchema = new mongoose.Schema(
     lastAuthentication: Date,
     email: String,
     coin: { type: String, default: "0" },
+    questCoin: { type: String, default: "0" },
     code: String,
     member_id: String,
     username: {
@@ -185,6 +186,7 @@ const MemberSchema = new mongoose.Schema(
     discord_id: { type: String, index: true, sparse: true },
     profileIdentityKey: { type: String, index: true, sparse: true },
     rank: String,
+    questroomRank: { type: String, default: "Game Tester" },
     interest: String,
     experience: String,
     ticket: [String],

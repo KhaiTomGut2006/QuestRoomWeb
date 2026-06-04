@@ -27,7 +27,7 @@ export async function POST(request) {
     const member = await Member.findOne({ discord_id: String(discordId) }).select(MEMBER_INTERACTION_SELECT);
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
 
-    const currentCoins = Number.parseInt(member.coin || "0", 10);
+    const currentCoins = Number.parseInt(member.questCoin ?? member.coin ?? "0", 10);
     if (currentCoins < bet) {
       return NextResponse.json(
         { error: "not_enough_coins", coins: currentCoins },
@@ -37,7 +37,7 @@ export async function POST(request) {
 
     const won = Math.random() < 0.5;
     const delta = won ? bet : -bet;
-    member.coin = String(Math.max(0, currentCoins + delta));
+    member.questCoin = String(Math.max(0, currentCoins + delta));
     markNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.gamble);
     await member.save({ validateModifiedOnly: true });
 

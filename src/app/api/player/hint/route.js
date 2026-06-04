@@ -30,7 +30,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "hint_already_bought" }, { status: 409 });
     }
 
-    const currentCoins = Number.parseInt(member.coin || "0", 10);
+    const currentCoins = Number.parseInt(member.questCoin ?? member.coin ?? "0", 10);
     if (currentCoins < cost) {
       return NextResponse.json(
         { error: "not_enough_coins", coins: currentCoins, cost },
@@ -38,7 +38,7 @@ export async function POST(request) {
       );
     }
 
-    member.coin = String(currentCoins - cost);
+    member.questCoin = String(currentCoins - cost);
     markNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.hint);
     await member.save({ validateModifiedOnly: true });
 

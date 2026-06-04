@@ -60,7 +60,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "already_owned" }, { status: 400 });
     }
 
-    const currentCoins = Number.parseInt(member.coin || "0", 10);
+    const currentCoins = Number.parseInt(member.questCoin ?? member.coin ?? "0", 10);
     if (currentCoins < item.cost) {
       return NextResponse.json(
         { error: "not_enough_coins", coins: currentCoins, cost: item.cost },
@@ -68,7 +68,7 @@ export async function POST(request) {
       );
     }
 
-    member.coin = String(currentCoins - item.cost);
+    member.questCoin = String(currentCoins - item.cost);
 
     // Track purchases as repeated item ids so stock survives a refresh.
     if (visitId) {

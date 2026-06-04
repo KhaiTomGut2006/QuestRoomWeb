@@ -81,6 +81,14 @@ function randomInt(min, max) {
   return Math.floor(min + Math.random() * (max - min + 1));
 }
 
+function currentQuestCoins(member) {
+  return Number.parseInt(member?.questCoin ?? member?.coin ?? "0", 10) || 0;
+}
+
+function addQuestCoins(member, coins) {
+  member.questCoin = String(currentQuestCoins(member) + Math.max(0, Number(coins) || 0));
+}
+
 function pickWeighted(items) {
   const totalWeight = items.reduce((total, item) => total + item.weight, 0);
   let roll = Math.random() * totalWeight;
@@ -234,14 +242,14 @@ export async function openChestReward(member, { coinMin = 20, coinMax = 200 } = 
   const picked = pickWeighted(pool);
   if (picked.kind === "coins") {
     const coins = randomInt(coinMin, coinMax);
-    member.coin = String((Number.parseInt(member.coin || "0", 10) || 0) + coins);
+    addQuestCoins(member, coins);
     return { kind: "coins", coins };
   }
 
   const pickedItem = SHOP_ITEMS[picked.itemId];
   if (pickedItem.chestMin !== undefined) {
     const coins = randomInt(pickedItem.chestMin, pickedItem.chestMax);
-    member.coin = String((Number.parseInt(member.coin || "0", 10) || 0) + coins);
+    addQuestCoins(member, coins);
     return { kind: "coins", coins, sourceItemId: picked.itemId, sourceItemName: picked.itemName };
   }
 
@@ -251,7 +259,7 @@ export async function openChestReward(member, { coinMin = 20, coinMax = 200 } = 
   } catch (error) {
     if (error.message !== "no_quest_templates") throw error;
     const coins = randomInt(coinMin, coinMax);
-    member.coin = String((Number.parseInt(member.coin || "0", 10) || 0) + coins);
+    addQuestCoins(member, coins);
     return { kind: "coins", coins };
   }
   return {

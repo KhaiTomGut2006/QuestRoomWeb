@@ -19,7 +19,7 @@ export const MEMBER_INTERACTION_SELECT = [
   "realName",
   "username",
   "discordData",
-  "rank",
+  "questroomRank",
   "profileAchievements",
   "stage",
   "quest",
@@ -38,7 +38,7 @@ export const MEMBER_INTERACTION_SELECT = [
   "npcCycle",
   "npcVisitId",
   "npcVisitPurchases",
-  "coin",
+  "questCoin",
   "tutorial"
 ].join(" ");
 const ROOM_PLAYER_SELECT = [
@@ -63,7 +63,7 @@ const MEMBER_FRIEND_SELECT = [
   "realName",
   "username",
   "discordData",
-  "rank",
+  "questroomRank",
   "lastAuthentication",
   "profileAchievements",
   "courses"
@@ -117,6 +117,21 @@ let cachedActiveClasses = null;
 let cachedActiveClassesAt = 0;
 let pendingSocialPostBackfill = null;
 let lastSocialPostBackfillAt = 0;
+
+function questCoinValue(member) {
+  return Number.parseInt(member?.questCoin ?? member?.coin ?? DEFAULT_COINS, 10) || DEFAULT_COINS;
+}
+
+function questCoinExpression() {
+  return {
+    $convert: {
+      input: { $ifNull: ["$questCoin", { $ifNull: ["$coin", "0"] }] },
+      to: "int",
+      onError: 0,
+      onNull: 0
+    }
+  };
+}
 
 function cloneRoomPlayers(players) {
   return players.map((player) => ({ ...player }));
@@ -861,7 +876,7 @@ export function normalizeMember(member, options = {}) {
     : (member.npcQuestSubmissions || []);
   const memberObject = member.toObject?.() || member;
   const discord = member.discordData || {};
-  const coinNumber = Number.parseInt(member.coin || DEFAULT_COINS, 10);
+  const coinNumber = questCoinValue(member);
   
   const stage = member.stage || DEFAULT_STAGE;
   const stageNumber = getStageNumber(stage);
@@ -883,7 +898,7 @@ export function normalizeMember(member, options = {}) {
       "Player",
     username: discord.username || member.username || "",
     avatar: normalizeAvatarUrl(discord.avatarUrl || ""),
-    rank: member.rank || "Game Tester",
+    rank: member.questroomRank || "Game Tester",
     achievements: (member.profileAchievements || []).map(normalizeBadge),
     stage: member.stage || DEFAULT_STAGE,
     stageLabel: getSublevelLabel(member.stage, challengeFailureCount),
@@ -976,7 +991,8 @@ export async function upsertMemberFromDiscord(profile) {
         discord_id: discordId,
         fullname: globalName || username || `Discord ${discordId.slice(-4)}`,
         nick: globalName || username || "Player",
-        coin: String(DEFAULT_COINS),
+        questCoin: String(DEFAULT_COINS),
+        questroomRank: "Game Tester",
         stage: initialStage,
         quest: {
           current: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสาย) จัง",
@@ -1136,21 +1152,14 @@ export async function transferCoins(senderDiscordId, recipientDiscordId, amount)
   const recipientExists = await Member.exists({ discord_id: recipientId });
   if (!recipientExists) throw new Error("recipient_not_found");
 
-  const coinValue = {
-    $convert: {
-      input: { $ifNull: ["$coin", "0"] },
-      to: "int",
-      onError: 0,
-      onNull: 0
-    }
-  };
+  const coinValue = questCoinExpression();
 
   const sender = await Member.findOneAndUpdate(
     {
       discord_id: senderId,
       $expr: { $gte: [coinValue, coinAmount] }
     },
-    [{ $set: { coin: { $toString: { $subtract: [coinValue, coinAmount] } } } }],
+    [{ $set: { questCoin: { $toString: { $subtract: [coinValue, coinAmount] } } } }],
     { new: true }
   );
 
@@ -1163,7 +1172,7 @@ export async function transferCoins(senderDiscordId, recipientDiscordId, amount)
   try {
     const recipient = await Member.findOneAndUpdate(
       { discord_id: recipientId },
-      [{ $set: { coin: { $toString: { $add: [coinValue, coinAmount] } } } }],
+      [{ $set: { questCoin: { $toString: { $add: [coinValue, coinAmount] } } } }],
       { new: true }
     );
     if (!recipient) throw new Error("recipient_not_found");
@@ -1179,7 +1188,7 @@ export async function transferCoins(senderDiscordId, recipientDiscordId, amount)
   } catch (error) {
     await Member.updateOne(
       { discord_id: senderId },
-      [{ $set: { coin: { $toString: { $add: [coinValue, coinAmount] } } } }]
+      [{ $set: { questCoin: { $toString: { $add: [coinValue, coinAmount] } } } }]
     );
     throw error;
   }
@@ -1191,7 +1200,7 @@ export async function requestChallenge(discordId) {
   const member = await Member.findOne({ discord_id: String(discordId || "") }).select(MEMBER_INTERACTION_SELECT);
   if (!member) return null;
 
-  const currentCoins = Number.parseInt(member.coin || DEFAULT_COINS, 10);
+  const currentCoins = questCoinValue(member);
   const stage = member.stage || DEFAULT_STAGE;
   const stageNumber = getStageNumber(stage);
   const costMultiplier = member.quest?.costMultiplier || 1;
@@ -1206,7 +1215,7 @@ export async function requestChallenge(discordId) {
   }
 
   const requestedAt = new Date();
-  member.coin = String(currentCoins - cost);
+  member.questCoin = String(currentCoins - cost);
   member.questChallengeRequestedAt = requestedAt;
   member.questChallenge = {
     status: "pending",
@@ -1450,7 +1459,7 @@ export async function cancelNpcQuest(discordId) {
     throw new Error("tutorial_role_cancel_locked");
   }
 
-  const currentCoins = Math.max(0, Number.parseInt(member.coin || "0", 10) || 0);
+  const currentCoins = Math.max(0, questCoinValue(member));
   const storedPenalty = Number(member.npcQuest?.cancelPenalty) || 0;
   const fallbackPenalty = member.npcQuest?.reward
     ? Math.max(1, Math.round(Number(member.npcQuest.reward) * 0.25))
@@ -1458,7 +1467,7 @@ export async function cancelNpcQuest(discordId) {
   const penalty = member.npcQuest && questSource !== "tutorial-role"
     ? Math.min(currentCoins, Math.max(0, storedPenalty || fallbackPenalty))
     : 0;
-  member.coin = String(currentCoins - penalty);
+  member.questCoin = String(currentCoins - penalty);
   member.npcQuest = null;
   if (questSource === "tutorial-role") {
     member.tutorial = {
@@ -1484,7 +1493,7 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
   const normalizedEvidence = normalizeNpcQuestEvidence(discordId, evidence);
   const questSource = member.npcQuest.source || "";
 
-  const currentCoins = Math.max(0, Number.parseInt(member.coin || "0", 10) || 0);
+  const currentCoins = Math.max(0, questCoinValue(member));
   const reward = Math.max(0, Number(member.npcQuest.reward) || 0);
   const submittedAt = new Date();
   if (!Array.isArray(member.npcQuestSubmissions)) member.npcQuestSubmissions = [];
@@ -1504,7 +1513,7 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
     dislikes: [],
     submittedAt
   });
-  member.coin = String(currentCoins + reward);
+  member.questCoin = String(currentCoins + reward);
   member.npcQuest = null;
   if (!Array.isArray(member.profileAchievements)) member.profileAchievements = [];
   if (questSource === "tutorial-first-quest") {
@@ -1536,7 +1545,7 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
         awardedAt: submittedAt
       });
     }
-    member.rank = "Challenge Role";
+    member.questroomRank = "Challenge Role";
     member.tutorial = {
       ...(member.tutorial?.toObject?.() || member.tutorial || {}),
       status: "active",
@@ -1847,7 +1856,7 @@ export async function getClassFriends(classId) {
             name: identity.name,
             username: identity.username,
             avatar: identity.avatar,
-            rank: m.rank || "Game Tester",
+            rank: m.questroomRank || "Game Tester",
             lastAuthentication: m.lastAuthentication ? m.lastAuthentication.toISOString() : null,
             isOnline: student.isOnline || false,
             bestBadge: publicBadge(bestBadge)
@@ -1886,7 +1895,7 @@ export async function getClassFriends(classId) {
         name: identity.name,
         username: identity.username,
         avatar: identity.avatar,
-        rank: m.rank || "Game Tester",
+        rank: m.questroomRank || "Game Tester",
         lastAuthentication: m.lastAuthentication ? m.lastAuthentication.toISOString() : null,
         isOnline: false,
         bestBadge: publicBadge(bestBadge)

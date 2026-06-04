@@ -80,6 +80,7 @@ async function main() {
       },
       npcQuest: null,
       npcCycle: null,
+      questCoin: "0",
       challengeFailureStage: firstStage,
       challengeFailureCount: 0,
 
