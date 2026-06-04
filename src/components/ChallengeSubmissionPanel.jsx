@@ -32,14 +32,14 @@ export default function ChallengeSubmissionPanel({ challenge, onSubmit, onClose 
       setEvidenceFile(null);
       return;
     }
-    if (!file.type.startsWith("image/")) {
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
       setEvidenceFile(null);
-      setSubmitError("Please choose an image file.");
+      setSubmitError("Please choose an image or video file.");
       return;
     }
     if (file.size > MAX_EVIDENCE_BYTES) {
       setEvidenceFile(null);
-      setSubmitError("The image must be no larger than 100 MB.");
+      setSubmitError("The file must be no larger than 100 MB.");
       return;
     }
     setEvidenceFile(file);
@@ -92,7 +92,7 @@ export default function ChallengeSubmissionPanel({ challenge, onSubmit, onClose 
         </p>
 
         <label className="npc-quest-upload challenge-submission-upload">
-          <input type="file" accept="image/*" onChange={handleFileChange} />
+          <input type="file" accept="image/*,video/*" onChange={handleFileChange} />
           <strong>{evidenceFile ? "เปลี่ยนไฟล์งาน" : hasSubmission ? "อัปโหลดไฟล์งานใหม่" : "อัปโหลดไฟล์งาน"}</strong>
           <small>
             {evidenceFile

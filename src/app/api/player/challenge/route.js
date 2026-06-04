@@ -35,7 +35,7 @@ export async function PATCH(request) {
     if (!result) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (error) {
-    const status = ["pending_challenge_not_found", "challenge_image_required"].includes(error.message)
+    const status = ["pending_challenge_not_found", "invalid_quest_evidence_type", "invalid_quest_evidence_size"].includes(error.message)
       ? 400
       : 503;
     return NextResponse.json({ error: error.message }, { status });

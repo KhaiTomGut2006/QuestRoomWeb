@@ -1257,9 +1257,6 @@ export async function submitChallenge(discordId, evidence, postText = "") {
   if (member.questChallenge?.status !== "pending") throw new Error("pending_challenge_not_found");
 
   const normalizedEvidence = normalizeNpcQuestEvidence(discordId, evidence);
-  if (!String(normalizedEvidence.contentType || "").startsWith("image/")) {
-    throw new Error("challenge_image_required");
-  }
 
   const submittedAt = new Date();
   const submissionId = member.questChallenge.submissionId
