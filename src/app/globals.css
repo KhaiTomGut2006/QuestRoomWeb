@@ -106,10 +106,45 @@ button {
   transform: translateY(-2px) scale(1.04);
 }
 
+.stage-reward-button.is-shaking {
+  animation: stage-reward-shake 1.55s ease-in-out infinite;
+  transform-origin: 50% 72%;
+}
+
 .stage-reward-button:disabled {
   opacity: 0.38;
   cursor: not-allowed;
   transform: none;
+  animation: none;
+}
+
+@keyframes stage-reward-shake {
+  0%,
+  58%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  64% {
+    transform: translate3d(-2px, 0, 0) rotate(-7deg);
+  }
+  70% {
+    transform: translate3d(3px, 0, 0) rotate(7deg);
+  }
+  76% {
+    transform: translate3d(-3px, 0, 0) rotate(-6deg);
+  }
+  82% {
+    transform: translate3d(2px, 0, 0) rotate(5deg);
+  }
+  88% {
+    transform: translate3d(-1px, 0, 0) rotate(-3deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-reward-button.is-shaking {
+    animation: none;
+  }
 }
 
 .action-row {

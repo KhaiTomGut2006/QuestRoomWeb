@@ -763,6 +763,7 @@ export default function GameShell() {
   const [showSettings, setShowSettings] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.5);
+  const [seenRewardStages, setSeenRewardStages] = useState(() => new Set());
   const audioRef = useRef(null);
   const btnSfxRef = useRef(null);
   const settingsPanelRef = useRef(null);
@@ -926,6 +927,12 @@ export default function GameShell() {
   const currentChallengeInfo = useMemo(() => (
     challengeInfoFromLevel(currentRoomLevel, currentRoomLabel)
   ), [currentRoomLabel, currentRoomLevel]);
+  const rewardStageKey = useMemo(() => {
+    if (!activeMember || !actualStage || isViewingOtherRoom || isTutorialActive) return "";
+    const playerId = activeMember.discordId || activeMember.id || "guest";
+    return `${playerId}:${actualStage}`;
+  }, [activeMember, actualStage, isTutorialActive, isViewingOtherRoom]);
+  const shouldShakeRewardButton = Boolean(rewardStageKey && !seenRewardStages.has(rewardStageKey));
   const activeNpcVisitPurchases = useMemo(() => (
     doorNpc?.visitId && activeMember?.npcVisitId === doorNpc.visitId
       ? activeMember.npcVisitPurchases || []
@@ -1383,6 +1390,18 @@ export default function GameShell() {
     if (!actualStage) return;
     setViewedStage(actualStage);
   }, [actualStage]);
+
+  useEffect(() => {
+    if (!activeMember) return;
+    const playerId = activeMember.discordId || activeMember.id || "guest";
+    try {
+      const raw = window.localStorage.getItem(`questroom:stage-rewards-seen:${playerId}`);
+      const stages = raw ? JSON.parse(raw) : [];
+      setSeenRewardStages(new Set(Array.isArray(stages) ? stages.map((stage) => `${playerId}:${stage}`) : []));
+    } catch {
+      setSeenRewardStages(new Set());
+    }
+  }, [activeMember]);
 
   useEffect(() => {
     if (!isAuthed) return;
@@ -1980,6 +1999,26 @@ export default function GameShell() {
       .catch(() => {});
   }, [applyMember, isAuthed, reward?.id]);
 
+  const handleStageRewardOpen = useCallback(() => {
+    if (rewardStageKey) {
+      const separatorIndex = rewardStageKey.indexOf(":");
+      const playerId = separatorIndex >= 0 ? rewardStageKey.slice(0, separatorIndex) : "guest";
+      setSeenRewardStages((current) => {
+        if (current.has(rewardStageKey)) return current;
+        const next = new Set(current);
+        next.add(rewardStageKey);
+        try {
+          const stages = [...next]
+            .filter((key) => key.startsWith(`${playerId}:`))
+            .map((key) => key.slice(playerId.length + 1));
+          window.localStorage.setItem(`questroom:stage-rewards-seen:${playerId}`, JSON.stringify(stages));
+        } catch {}
+        return next;
+      });
+    }
+    setChallengeInfoView("details");
+  }, [rewardStageKey]);
+
   const visiblePlayers = useMemo(() => {
     if (!activeViewedStage) return [];
     const roomPlayers = players.filter((player) => {
@@ -2010,11 +2049,11 @@ export default function GameShell() {
         <div className="stage-title-row">
           <h1>{currentRoomLabel}</h1>
           <button
-            className="stage-reward-button"
+            className={`stage-reward-button${shouldShakeRewardButton ? " is-shaking" : ""}`}
             type="button"
             aria-label="Open challenge details"
             disabled={isViewingOtherRoom || isTutorialActive}
-            onClick={() => setChallengeInfoView("details")}
+            onClick={handleStageRewardOpen}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={withOptimizedAsset("/assets/Card.webp")} alt="" className="gift-line-icon" />
