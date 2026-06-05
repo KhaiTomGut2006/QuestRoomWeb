@@ -10,7 +10,7 @@ function normalizedMediaUrl(url) {
 }
 
 function isVideoUrl(url) {
-  return /\.(mp4|webm|ogg)(\?.*)?$/i.test(String(url || ""));
+  return /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(String(url || ""));
 }
 
 function RewardItem({ reward }) {
