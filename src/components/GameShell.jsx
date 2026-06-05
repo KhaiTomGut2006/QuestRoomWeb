@@ -19,6 +19,7 @@ import ChallengeModal from "@/components/ChallengeModal";
 import ChallengeAnnouncement from "@/components/ChallengeAnnouncement";
 import ChallengeSubmissionPanel from "@/components/ChallengeSubmissionPanel";
 import ChallengeInfoModal from "@/components/ChallengeInfoModal";
+import RoomProgressBar from "@/components/RoomProgressBar";
 import TutorialMode from "@/components/TutorialMode";
 import QuestReceivedPopup from "@/components/QuestReceivedPopup";
 import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
@@ -2463,6 +2464,18 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
         <GlobalQuestModal
           tutorialMode={["social-intro", "social-opened"].includes(activeMember?.tutorial?.step)}
           onClose={handleGlobalQuestClose}
+        />
+      )}
+      {!isTutorialActive && effectiveRoomLevels.length > 1 && (
+        <RoomProgressBar
+          levels={effectiveRoomLevels}
+          activeStage={actualStage}
+          viewedStage={activeViewedStage}
+          onSelectRoom={(stageId) => {
+            setTarget(null);
+            setViewedStage(stageId);
+          }}
+          disabled={false}
         />
       )}
     </main>
