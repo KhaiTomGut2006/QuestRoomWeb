@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Gift, Play, X } from "lucide-react";
 import { withOptimizedAsset } from "@/lib/basePath";
 
@@ -31,9 +32,15 @@ function RewardItem({ reward }) {
 }
 
 export default function ChallengeInfoModal({ info, view = "details", onClose, onShowRewards }) {
+  const [mediaError, setMediaError] = useState(false);
+  const mediaUrl = normalizedMediaUrl(info?.videoUrl);
+  const rewards = Array.isArray(info?.rewards) ? info.rewards : [];
+
+  useEffect(() => {
+    setMediaError(false);
+  }, [mediaUrl]);
+
   if (!info) return null;
-  const mediaUrl = normalizedMediaUrl(info.videoUrl);
-  const rewards = Array.isArray(info.rewards) ? info.rewards : [];
 
   return (
     <div className="challenge-info-backdrop" onClick={onClose}>
@@ -64,13 +71,33 @@ export default function ChallengeInfoModal({ info, view = "details", onClose, on
             <p className="challenge-info-description">{info.description}</p>
             <div className="challenge-info-media">
               {mediaUrl ? (
-                <video src={mediaUrl} controls preload="metadata" />
+                <>
+                  <video
+                    src={mediaUrl}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    onError={() => setMediaError(true)}
+                    onLoadedMetadata={() => setMediaError(false)}
+                  />
+                  {mediaError && (
+                    <div className="challenge-info-media-error">
+                      <p>Video preview unavailable</p>
+                      <a href={mediaUrl} target="_blank" rel="noreferrer">Open video</a>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="challenge-info-media-empty">
                   <Play size={48} fill="currentColor" />
                 </div>
               )}
             </div>
+            {mediaUrl && !mediaError && (
+              <a className="challenge-info-open-video" href={mediaUrl} target="_blank" rel="noreferrer">
+                Open video
+              </a>
+            )}
             <button className="challenge-info-rewards-button" type="button" onClick={onShowRewards}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={withOptimizedAsset("/assets/Card.webp")} alt="" className="gift-line-icon" />
