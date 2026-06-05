@@ -104,11 +104,6 @@ export default function ChallengeInfoModal({ info, view = "details", onClose, on
                 </div>
               )}
             </div>
-            {mediaUrl && !mediaError && (
-              <a className="challenge-info-open-video" href={mediaUrl} target="_blank" rel="noreferrer">
-                Open video
-              </a>
-            )}
             <button className="challenge-info-rewards-button" type="button" onClick={onShowRewards}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={withOptimizedAsset("/assets/Card.webp")} alt="" className="gift-line-icon" />
