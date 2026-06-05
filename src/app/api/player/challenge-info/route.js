@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/db";
 import Level from "@/models/Level";
+import { unlockRewards } from "@/lib/levelUnlocks";
 
 function normalizeReward(reward, index) {
   return {
@@ -48,7 +49,9 @@ function normalizeChallengeInfo(level) {
     videoUrl: publicChallengeVideoUrl(info),
     videoPath: String(info.videoPath || "").trim(),
     videoContentType: String(info.videoContentType || "").trim(),
-    rewards: Array.isArray(info.rewards) ? info.rewards.slice(0, 8).map(normalizeReward) : [],
+    rewards: Array.isArray(info.rewards) && info.rewards.length
+      ? info.rewards.slice(0, 12).map(normalizeReward)
+      : unlockRewards(level?.unlocks || {}, { realImages: false }).slice(0, 12),
   };
 }
 
@@ -62,7 +65,7 @@ export async function GET(request) {
     await connectDb();
     const level = await Level.findOne(
       { stageId: stage },
-      { _id: 0, name: 1, challengeInfo: 1 }
+      { _id: 0, name: 1, challengeInfo: 1, unlocks: 1 }
     ).lean();
 
     if (!level) {

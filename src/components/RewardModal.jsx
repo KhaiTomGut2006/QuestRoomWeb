@@ -22,6 +22,7 @@ function Badge({ badge }) {
 
 export default function RewardModal({ reward, onClose }) {
   if (!reward) return null;
+  const rewards = Array.isArray(reward.rewards) ? reward.rewards : [];
 
   return (
     <div className="reward-modal-backdrop">
@@ -34,6 +35,22 @@ export default function RewardModal({ reward, onClose }) {
         <p className="reward-earned">ได้รับ Badge</p>
         <h3>{reward.badge?.label || "Badge"}</h3>
         {reward.badge?.sublabel && <p className="reward-tier">{reward.badge.sublabel}</p>}
+        {rewards.length > 0 && (
+          <ul className="reward-unlock-list">
+            {rewards.map((item, index) => (
+              <li key={item.id || `${item.label}-${index}`} className="reward-unlock-item">
+                {item.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.image.startsWith("/") ? withOptimizedAsset(item.image) : item.image} alt="" loading="lazy" />
+                ) : (
+                  <Award size={42} />
+                )}
+                <span>{item.label || "Unlock"}</span>
+                {Number(item.quantity) > 1 && <strong>x{Number(item.quantity).toLocaleString()}</strong>}
+              </li>
+            ))}
+          </ul>
+        )}
         <button type="button" onClick={onClose}>รับรางวัล</button>
       </section>
     </div>

@@ -345,13 +345,14 @@ function enrichNpc(npc, availableCoins = 0, configuredShopItems = null) {
       ? configuredShopItems
       : null;
     const offers = configured
-      ? [...new Set(configured.map((item) => String(item.itemType || "")).filter(Boolean))]
+      ? pickConfiguredShopOffers(configured, 4)
       : [...catalog].sort(() => Math.random() - 0.5).slice(0, 4);
     const offerConfig = configured
       ? Object.fromEntries(configured.map((item) => [
           String(item.itemType || ""),
           {
             itemName: String(item.itemName || ""),
+            chance: Math.max(0, Number(item.chance) || 0),
             cost: Math.max(0, Number(item.price) || 0),
             maxQty: Math.max(1, Number(item.maxQty) || 1)
           }
@@ -360,6 +361,32 @@ function enrichNpc(npc, availableCoins = 0, configuredShopItems = null) {
     return { ...npc, visitId, offers, offerConfig };
   }
   return { ...npc, visitId };
+}
+
+function pickConfiguredShopOffers(configured, maxOffers = 4) {
+  const pool = configured
+    .map((item) => ({
+      itemType: String(item.itemType || ""),
+      weight: Math.max(0, Number(item.chance) || 0)
+    }))
+    .filter((item) => item.itemType);
+  const unique = new Map(pool.map((item) => [item.itemType, item]));
+  const remaining = [...unique.values()];
+  const offers = [];
+  while (remaining.length && offers.length < maxOffers) {
+    const total = remaining.reduce((sum, item) => sum + item.weight, 0);
+    let roll = total > 0 ? Math.random() * total : Math.random() * remaining.length;
+    let pickedIndex = remaining.length - 1;
+    for (let index = 0; index < remaining.length; index += 1) {
+      roll -= total > 0 ? remaining[index].weight : 1;
+      if (roll <= 0) {
+        pickedIndex = index;
+        break;
+      }
+    }
+    offers.push(remaining.splice(pickedIndex, 1)[0].itemType);
+  }
+  return offers;
 }
 
 function isShopNpc(npc) {

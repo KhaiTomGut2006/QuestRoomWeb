@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const ShopItemSchema = new mongoose.Schema({
   itemType: { type: String, required: true },
   itemName: { type: String, default: '' },
+  chance:   { type: Number, default: 0 },
   price:    { type: Number, default: 0 },
   maxQty:   { type: Number, default: 1 },
 }, { _id: false });
@@ -16,6 +17,30 @@ const BoxDropSchema = new mongoose.Schema({
 const NpcSpawnSchema = new mongoose.Schema({
   npcId:  { type: String, required: true },
   chance: { type: Number, default: 0 },
+}, { _id: false });
+
+const UnlockItemSchema = new mongoose.Schema({
+  itemType:    { type: String, required: true },
+  itemName:    { type: String, default: '' },
+  shopChance:  { type: Number, default: 0 },
+  boxChance:   { type: Number, default: 0 },
+  price:       { type: Number, default: 0 },
+  maxQty:      { type: Number, default: 1 },
+  shadowImage: { type: String, default: '' },
+  image:       { type: String, default: '' },
+}, { _id: false });
+
+const UnlockNpcSchema = new mongoose.Schema({
+  npcId:       { type: String, required: true },
+  name:        { type: String, default: '' },
+  shadowImage: { type: String, default: '' },
+  image:       { type: String, default: '' },
+}, { _id: false });
+
+const LevelUnlockSchema = new mongoose.Schema({
+  coinReward: { type: Number, default: 0 },
+  items:      { type: [UnlockItemSchema], default: [] },
+  npcs:       { type: [UnlockNpcSchema], default: [] },
 }, { _id: false });
 
 const ChallengeRewardSchema = new mongoose.Schema({
@@ -42,6 +67,7 @@ const LevelSchema = new mongoose.Schema({
   npcShop:  { type: [ShopItemSchema], default: [] },
   boxDrops: { type: [BoxDropSchema],  default: [] },
   npcSpawns:{ type: [NpcSpawnSchema], default: [] },
+  unlocks:  { type: LevelUnlockSchema, default: () => ({}) },
   challengeInfo: { type: ChallengeInfoSchema, default: () => ({}) },
 }, { collection: "levels" });
 

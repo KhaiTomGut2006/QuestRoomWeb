@@ -88,6 +88,9 @@ const RewardSchema = new mongoose.Schema(
     taskId: String,
     taskName: String,
     badge: BadgeSchema,
+    coins: { type: Number, default: 0 },
+    rewards: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    unlocks: mongoose.Schema.Types.Mixed,
     awardedAt: Date,
     seenAt: Date
   },

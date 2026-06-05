@@ -1259,6 +1259,43 @@ button {
   font-weight: 900;
 }
 
+.reward-unlock-list {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reward-unlock-item {
+  display: grid;
+  min-height: 118px;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  padding: 8px;
+  border: 2px solid rgba(55, 40, 23, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.reward-unlock-item img,
+.reward-unlock-item svg {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+}
+
+.reward-unlock-item span,
+.reward-unlock-item strong {
+  color: #272018;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.15;
+}
+
 .reward-modal button {
   min-width: 190px;
   height: 54px;

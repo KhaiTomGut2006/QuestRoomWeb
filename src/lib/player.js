@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import Level from "@/models/Level";
 import CourseConfig from "@/models/CourseConfig";
 import SocialPost from "@/models/SocialPost";
+import { completionRewardForLevel, normalizeLevelUnlocks, unlockRewards } from "@/lib/levelUnlocks";
 
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 0;
@@ -354,6 +355,7 @@ async function ensureLevels({ force = false } = {}) {
         npcShop:  l.npcShop  || [],
         boxDrops: l.boxDrops || [],
         npcSpawns:l.npcSpawns || [],
+        unlocks: normalizeLevelUnlocks(l.unlocks || {}),
         challengeInfo: {
           title: l.challengeInfo?.title || "",
           description: l.challengeInfo?.description || "",
@@ -366,7 +368,7 @@ async function ensureLevels({ force = false } = {}) {
             image: String(reward?.image || ""),
             quantity: Math.max(0, Number(reward?.quantity) || 0),
             kind: String(reward?.kind || "item"),
-          })) : [],
+          })) : unlockRewards(l.unlocks || {}, { realImages: false }),
         },
       }));
       cachedLevelsAt = Date.now();
@@ -761,15 +763,33 @@ export async function syncChallengeReview(discordId, { createReward = false } = 
 
   if (createReward && fallbackBadge && passedToNextRoom) {
     const nextRewardId = rewardIdForBadge(fallbackBadge);
+    const completedLevel = cachedLevels.find((level) => level.stageId === challenge?.stage) || null;
+    const completionReward = completionRewardForLevel(completedLevel);
+    const shouldGrantCoins = completionReward.coins > 0 && member.questReward?.id !== nextRewardId;
+    if (shouldGrantCoins) {
+      member.questCoin = String(questCoinValue(member) + completionReward.coins);
+      saved = true;
+    }
     if (!member.questReward?.id || member.questReward.id !== nextRewardId) {
       member.questReward = {
         id: nextRewardId,
         taskId: challenge?.taskId || member.stage || DEFAULT_STAGE,
         taskName: challenge?.taskName || fallbackBadge.label || getTaskName(member.stage),
         badge: fallbackBadge,
+        coins: shouldGrantCoins ? completionReward.coins : 0,
+        rewards: completionReward.rewards,
+        unlocks: completionReward.unlocks,
         awardedAt: fallbackBadge.awardedAt || new Date(),
         seenAt: null
       };
+      member.markModified("questReward");
+      saved = true;
+    } else if (
+      completionReward.rewards.length
+      && (!Array.isArray(member.questReward.rewards) || member.questReward.rewards.length === 0)
+    ) {
+      member.questReward.rewards = completionReward.rewards;
+      member.questReward.unlocks = completionReward.unlocks;
       member.markModified("questReward");
       saved = true;
     }
@@ -1001,10 +1021,13 @@ export function normalizeMember(member, options = {}) {
     reward: member.questReward
       ? {
           id: member.questReward.id || "",
-          taskId: member.questReward.taskId || "",
-          taskName: member.questReward.taskName || "",
-          badge: normalizeBadge(member.questReward.badge),
-          awardedAt: member.questReward.awardedAt || null,
+        taskId: member.questReward.taskId || "",
+        taskName: member.questReward.taskName || "",
+        badge: normalizeBadge(member.questReward.badge),
+        coins: Math.max(0, Number(member.questReward.coins) || 0),
+        rewards: Array.isArray(member.questReward.rewards) ? member.questReward.rewards : [],
+        unlocks: member.questReward.unlocks || null,
+        awardedAt: member.questReward.awardedAt || null,
           seenAt: member.questReward.seenAt || null
         }
       : null,
