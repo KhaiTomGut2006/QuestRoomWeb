@@ -358,6 +358,8 @@ async function ensureLevels({ force = false } = {}) {
           title: l.challengeInfo?.title || "",
           description: l.challengeInfo?.description || "",
           videoUrl: l.challengeInfo?.videoUrl || "",
+          videoPath: l.challengeInfo?.videoPath || "",
+          videoContentType: l.challengeInfo?.videoContentType || "",
           rewards: Array.isArray(l.challengeInfo?.rewards) ? l.challengeInfo.rewards.map((reward) => ({
             id: String(reward?.id || ""),
             label: String(reward?.label || ""),

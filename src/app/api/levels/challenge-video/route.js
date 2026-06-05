@@ -135,6 +135,8 @@ async function saveToGridFs(request, file, stageId) {
   return NextResponse.json({
     success: true,
     url: `${publicOrigin}${basePath}/api/levels/challenge-video?file=${fileId}`,
+    pathname: `gridfs/challenge-videos/${fileId}`,
+    contentType: file.type,
     storage: "gridfs"
   }, { headers: CORS });
 }
@@ -229,6 +231,8 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       url: r2PublicUrl(key),
+      pathname: `r2/${key}`,
+      contentType: file.type,
       storage: "r2",
       key
     }, { headers: CORS });

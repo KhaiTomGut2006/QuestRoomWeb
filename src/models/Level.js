@@ -30,6 +30,8 @@ const ChallengeInfoSchema = new mongoose.Schema({
   title:       { type: String, default: '' },
   description: { type: String, default: '' },
   videoUrl:    { type: String, default: '' },
+  videoPath:   { type: String, default: '' },
+  videoContentType: { type: String, default: '' },
   rewards:     { type: [ChallengeRewardSchema], default: [] },
 }, { _id: false });
 

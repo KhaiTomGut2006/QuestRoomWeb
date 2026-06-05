@@ -12,12 +12,36 @@ function normalizeReward(reward, index) {
   };
 }
 
+function publicChallengeVideoUrl(info) {
+  const url = String(info?.videoUrl || "").trim();
+  const publicBase = String(process.env.R2_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  if (!publicBase) return url;
+
+  const videoPath = String(info?.videoPath || "").trim();
+  if (videoPath.startsWith("r2/")) {
+    const key = videoPath.slice(3);
+    return `${publicBase}/${encodeURI(key).replace(/%2F/g, "/")}`;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.endsWith(".r2.dev") && parsed.pathname.startsWith("/challenge-videos/")) {
+      return `${publicBase}${parsed.pathname}`;
+    }
+  } catch {
+    return url;
+  }
+  return url;
+}
+
 function normalizeChallengeInfo(level) {
   const info = level?.challengeInfo || {};
   return {
     title: String(info.title || level?.name || "").trim(),
     description: String(info.description || "").trim(),
-    videoUrl: String(info.videoUrl || "").trim(),
+    videoUrl: publicChallengeVideoUrl(info),
+    videoPath: String(info.videoPath || "").trim(),
+    videoContentType: String(info.videoContentType || "").trim(),
     rewards: Array.isArray(info.rewards) ? info.rewards.slice(0, 8).map(normalizeReward) : [],
   };
 }

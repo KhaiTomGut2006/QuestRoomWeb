@@ -234,6 +234,8 @@ function challengeInfoFromLevel(level, fallbackName) {
     title,
     description: description || "Capture the final result, summarize your plan, and prepare a short presentation clip for review.",
     videoUrl: String(source.videoUrl || source.video || source.mediaUrl || "").trim(),
+    videoPath: String(source.videoPath || "").trim(),
+    videoContentType: String(source.videoContentType || source.contentType || "").trim(),
     rewards,
   };
 }
