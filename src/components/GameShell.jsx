@@ -718,12 +718,16 @@ function DevPanel({ socketRef, cycleInfo, cycleToolsEnabled, devToken, selfDisco
 }
 // ───────────────────────────────────────────────────────────────────
 
-export default function GameShell({ entryAdmissionToken = "", entryQueueClientId = "" } = {}) {
+export default function GameShell({ entryAdmissionToken = "", entryQueueClientId = "", initialData = null } = {}) {
   const { data: session, status } = useSession();
-  const [config, setConfig] = useState(null);
-  const [member, setMember] = useState(null);
-  const [players, setPlayers] = useState([]);
-  const [roomLevels, setRoomLevels] = useState([]);
+  const [config, setConfig] = useState(() => initialData?.config || null);
+  const [member, setMember] = useState(() => initialData?.member || null);
+  const [players, setPlayers] = useState(() => (
+    Array.isArray(initialData?.players) ? initialData.players : []
+  ));
+  const [roomLevels, setRoomLevels] = useState(() => (
+    Array.isArray(initialData?.levels) ? initialData.levels : []
+  ));
   const [viewedStage, setViewedStage] = useState("");
   const [previewMode, setPreviewMode] = useState(false);
   const [demoRequested, setDemoRequested] = useState(false);
@@ -1314,11 +1318,15 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     setDemoRequested(wantsDemo);
     setDevRequested(wantsDev);
     setAuthError(params.get("error") || "");
+    if (initialData?.config) {
+      setConfig(initialData.config);
+      return;
+    }
     fetch(withBasePath("/api/config"))
       .then((res) => res.json())
       .then(setConfig)
       .catch(() => setConfig({ authConfigured: false, demoGuestsEnabled: true, devToolsEnabled: false }));
-  }, []);
+  }, [initialData?.config]);
 
   useEffect(() => {
     if (!config) return;
@@ -1360,12 +1368,12 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   }, [authError, config, demoRequested, devRequested, status]);
 
   useEffect(() => {
-    if (!isAuthed) return;
+    if (!isAuthed || member) return;
     fetch(withBasePath("/api/player/me"))
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => applyMember(data.member))
       .catch(() => setMessage("DB setup needed"));
-  }, [applyMember, isAuthed]);
+  }, [applyMember, isAuthed, member]);
 
   useEffect(() => {
     if (!isAuthed) return;
@@ -1420,10 +1428,10 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
         .then(({ levels }) => setRoomLevels(Array.isArray(levels) ? levels : []))
         .catch(() => {});
     };
-    loadRoomLevels();
+    if (!roomLevels.length) loadRoomLevels();
     const interval = window.setInterval(loadRoomLevels, ROOM_LEVEL_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
-  }, [isAuthed]);
+  }, [isAuthed, roomLevels.length]);
 
   useEffect(() => {
     if (!isAuthed || !activeViewedStage) return;

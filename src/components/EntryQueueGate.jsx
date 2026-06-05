@@ -33,12 +33,26 @@ function statusText(status) {
   return "กำลังรอคิวเข้าเกม";
 }
 
+async function fetchJson(path, options = {}) {
+  const response = await fetch(withBasePath(path), { cache: "no-store", ...options });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data?.error || `Request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
 export default function EntryQueueGate() {
   const [clientId, setClientId] = useState("");
   const [queueState, setQueueState] = useState({ status: "loading", retryMs: 2000 });
   const [admission, setAdmission] = useState(null);
+  const [initialData, setInitialData] = useState(null);
+  const [preloadState, setPreloadState] = useState({ status: "idle", progress: 0, label: "" });
   const [gameMounted, setGameMounted] = useState(false);
   const releasedRef = useRef(false);
+  const preloadStartedRef = useRef(false);
 
   const shouldBypass = useMemo(() => {
     if (typeof window === "undefined") return false;
@@ -77,7 +91,6 @@ export default function EntryQueueGate() {
           setQueueState(data);
           if (data.status === "admitted" && data.token) {
             setAdmission({ token: data.token, expiresAt: data.expiresAt || "" });
-            window.setTimeout(() => setGameMounted(true), 450 + Math.floor(Math.random() * 850));
             return;
           }
           const retryMs = Math.max(1000, Number(data.retryMs) || 2000);
@@ -98,6 +111,71 @@ export default function EntryQueueGate() {
   }, [admission?.token, clientId, shouldBypass]);
 
   useEffect(() => {
+    if (!admission?.token || shouldBypass || gameMounted || preloadStartedRef.current) return undefined;
+    let cancelled = false;
+    let retryTimerId = 0;
+
+    const runPreload = async () => {
+      preloadStartedRef.current = true;
+      try {
+        setPreloadState({ status: "loading", progress: 12, label: "กำลังตรวจสอบระบบ" });
+        const config = await fetchJson("/api/config");
+        if (cancelled) return;
+
+        setPreloadState({ status: "loading", progress: 34, label: "กำลังโหลดข้อมูลผู้เล่น" });
+        let memberPayload = null;
+        try {
+          memberPayload = await fetchJson("/api/player/me");
+        } catch (error) {
+          if (error.status === 401) {
+            setInitialData({ config });
+            setGameMounted(true);
+            return;
+          }
+          throw error;
+        }
+        if (cancelled) return;
+
+        setPreloadState({ status: "loading", progress: 58, label: "กำลังโหลดรายชื่อห้อง" });
+        const roomsPayload = await fetchJson("/api/player/rooms");
+        if (cancelled) return;
+
+        const member = memberPayload?.member || null;
+        const stage = member?.stage || "";
+        let roomPlayers = [];
+        if (stage) {
+          setPreloadState({ status: "loading", progress: 78, label: "กำลังโหลดผู้เล่นในห้อง" });
+          const roomPayload = await fetchJson(`/api/player/room?stage=${encodeURIComponent(stage)}`);
+          roomPlayers = Array.isArray(roomPayload?.players) ? roomPayload.players : [];
+        }
+        if (cancelled) return;
+
+        setPreloadState({ status: "ready", progress: 100, label: "โหลดข้อมูลเสร็จแล้ว" });
+        setInitialData({
+          config,
+          member,
+          levels: Array.isArray(roomsPayload?.levels) ? roomsPayload.levels : [],
+          players: roomPlayers
+        });
+        window.setTimeout(() => {
+          if (!cancelled) setGameMounted(true);
+        }, 250);
+      } catch {
+        if (cancelled) return;
+        preloadStartedRef.current = false;
+        setPreloadState({ status: "error", progress: 22, label: "โหลดข้อมูลไม่สำเร็จ กำลังลองใหม่" });
+        retryTimerId = window.setTimeout(runPreload, 3000);
+      }
+    };
+
+    runPreload();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retryTimerId);
+    };
+  }, [admission?.token, gameMounted, shouldBypass]);
+
+  useEffect(() => {
     if (!gameMounted || !admission?.token || shouldBypass) return undefined;
     const timeoutId = window.setTimeout(() => releaseAdmission("startup-window-complete"), RELEASE_AFTER_MS);
     const handlePageHide = () => releaseAdmission("pagehide");
@@ -113,6 +191,7 @@ export default function EntryQueueGate() {
       <GameShell
         entryAdmissionToken={admission?.token || ""}
         entryQueueClientId={clientId}
+        initialData={initialData}
       />
     );
   }
@@ -122,6 +201,11 @@ export default function EntryQueueGate() {
   const active = Number(queueState.active) || 0;
   const position = Number(queueState.position) || 0;
   const paused = status === "paused";
+  const progressWidth = preloadState.status !== "idle"
+    ? preloadState.progress
+    : status === "admitted"
+      ? 100
+      : Math.max(8, Math.min(92, 100 - position * 8));
 
   return (
     <main className="entry-queue-page">
@@ -151,12 +235,13 @@ export default function EntryQueueGate() {
           </div>
         </div>
         <p>
-          {paused
+          {preloadState.label
+            || (paused
             ? "มีผู้เล่นเข้าเยอะ ระบบกำลังพักเพื่อให้ server ไม่หนักเกินไป"
-            : "กำลังทยอยเตรียมข้อมูลผู้เล่นก่อนเข้าเกม เพื่อลดโหลด server ตอนเข้าเกมพร้อมกัน"}
+            : "กำลังทยอยเตรียมข้อมูลผู้เล่นก่อนเข้าเกม เพื่อลดโหลด server ตอนเข้าเกมพร้อมกัน")}
         </p>
         <div className="entry-queue-progress" aria-hidden="true">
-          <span style={{ width: `${status === "admitted" ? 100 : Math.max(8, Math.min(92, 100 - position * 8))}%` }} />
+          <span style={{ width: `${progressWidth}%` }} />
         </div>
       </section>
     </main>
