@@ -87,6 +87,10 @@ let cachedSocialActivity = null;
 let cachedSocialActivityAt = 0;
 let pendingSocialActivityLoad = null;
 const SOCIAL_ACTIVITY_CACHE_TTL_MS = 10_000;
+const SOCIAL_ACTIVITY_STALE_TTL_MS = Math.max(
+  SOCIAL_ACTIVITY_CACHE_TTL_MS,
+  Number(process.env.SOCIAL_ACTIVITY_STALE_TTL_MS || 120_000)
+);
 const MAX_SOCIAL_ACTIVITY_ITEMS = 100;
 const GLOBAL_POSTS_CACHE_TTL_MS = Math.max(5_000, Number(process.env.GLOBAL_POSTS_CACHE_TTL_MS || 15_000));
 const GLOBAL_POSTS_CACHE_MAX_KEYS = Math.max(20, Number(process.env.GLOBAL_POSTS_CACHE_MAX_KEYS || 200));
@@ -1755,11 +1759,22 @@ function parseSocialPostCursor(cursor) {
   };
 }
 
-async function loadSocialActivity() {
+async function loadSocialActivity({ allowStale = false } = {}) {
   const cacheIsFresh =
     cachedSocialActivity &&
     Date.now() - cachedSocialActivityAt < SOCIAL_ACTIVITY_CACHE_TTL_MS;
   if (cacheIsFresh) return cachedSocialActivity;
+
+  const cacheIsStaleUsable =
+    allowStale &&
+    cachedSocialActivity &&
+    Date.now() - cachedSocialActivityAt < SOCIAL_ACTIVITY_STALE_TTL_MS;
+  if (cacheIsStaleUsable) {
+    if (!pendingSocialActivityLoad) {
+      void loadSocialActivity().catch(() => {});
+    }
+    return cachedSocialActivity;
+  }
 
   if (!pendingSocialActivityLoad) {
     pendingSocialActivityLoad = SocialPost.find({
@@ -1813,7 +1828,7 @@ export async function getSocialQuestStatus(discordId, since) {
       { discord_id: viewerId },
       { socialLastSeenAt: 1 }
     ).lean(),
-    loadSocialActivity()
+    loadSocialActivity({ allowStale: true })
   ]);
   if (!viewer) return null;
 
