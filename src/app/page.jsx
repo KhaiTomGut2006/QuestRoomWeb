@@ -1,5 +1,5 @@
-import GameShell from "@/components/GameShell";
+import EntryQueueGate from "@/components/EntryQueueGate";
 
 export default function HomePage() {
-  return <GameShell />;
+  return <EntryQueueGate />;
 }

@@ -327,7 +327,7 @@ function playerFromMember(member, stageOverride = "") {
   };
 }
 
-function playerPresencePayload(player) {
+function playerPresencePayload(player, admission = {}) {
   if (!player) return null;
   return {
     id: player.id,
@@ -342,7 +342,9 @@ function playerPresencePayload(player) {
     action: player.action,
     coins: player.coins,
     hasNpcQuest: player.hasNpcQuest,
-    permanentReductionMs: player.permanentReductionMs
+    permanentReductionMs: player.permanentReductionMs,
+    entryQueueClientId: admission.clientId || "",
+    entryAdmissionToken: admission.token || ""
   };
 }
 
@@ -716,7 +718,7 @@ function DevPanel({ socketRef, cycleInfo, cycleToolsEnabled, devToken, selfDisco
 }
 // ───────────────────────────────────────────────────────────────────
 
-export default function GameShell() {
+export default function GameShell({ entryAdmissionToken = "", entryQueueClientId = "" } = {}) {
   const { data: session, status } = useSession();
   const [config, setConfig] = useState(null);
   const [member, setMember] = useState(null);
@@ -1509,18 +1511,24 @@ export default function GameShell() {
     });
     socket.on("player:reaction", showPlayerReaction);
     socket.on("connect", () => {
-      socket.emit("player:join", playerPresencePayload(selfPlayer));
+      socket.emit("player:join", playerPresencePayload(selfPlayer, {
+        clientId: entryQueueClientId,
+        token: entryAdmissionToken
+      }));
     });
 
     if (socket.connected) {
-      socket.emit("player:join", playerPresencePayload(selfPlayer));
+      socket.emit("player:join", playerPresencePayload(selfPlayer, {
+        clientId: entryQueueClientId,
+        token: entryAdmissionToken
+      }));
     }
 
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [activeMember?.discordId, applyMember, mergePlayers, previewMode, queueDoorNpc, reloadMemberNow, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
+  }, [activeMember?.discordId, applyMember, entryAdmissionToken, entryQueueClientId, mergePlayers, previewMode, queueDoorNpc, reloadMemberNow, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
 
   useEffect(() => {
     if (!selfPlayer?.id) return;

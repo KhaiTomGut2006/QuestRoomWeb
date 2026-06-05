@@ -56,6 +56,7 @@ const HEAP_GUARD_ENABLED = process.env.HEAP_GUARD_ENABLED !== "false";
 const HEAP_GUARD_WARN_MB = Math.max(256, Number(process.env.HEAP_GUARD_WARN_MB || Math.floor(NODE_MAX_OLD_SPACE_MB * 0.72)));
 const HEAP_GUARD_CRIT_MB = Math.max(HEAP_GUARD_WARN_MB + 64, Number(process.env.HEAP_GUARD_CRIT_MB || Math.floor(NODE_MAX_OLD_SPACE_MB * 0.88)));
 const HEAP_GUARD_LOG_INTERVAL_MS = Math.max(1_000, Number(process.env.HEAP_GUARD_LOG_INTERVAL_MS || 5_000));
+const ENTRY_QUEUE_ENFORCE_SOCKET = process.env.ENTRY_QUEUE_ENFORCE_SOCKET === "true";
 let lastMetricsCheckAt = Date.now();
 let lastHeapGuardLogAt = 0;
 const apiRouteStats = new Map();
@@ -307,6 +308,7 @@ function collectRuntimeStats(memory = process.memoryUsage(), lagMs = 0) {
     levelConfigCache: levelConfigCache.size,
     npcCycleRestoreCache: npcCycleRestoreCache.size,
     api: publicApiMetrics(),
+    entryQueue: globalThis.__questRoomEntryQueueApi?.stats?.() || null,
     heapGuard: heapGuardSnapshot(memory),
     uptimeSec: Math.round(process.uptime()),
     checkedAt: new Date().toISOString()
@@ -1320,6 +1322,14 @@ app.prepare().then(() => {
     }
 
     socket.on("player:join", async (payload = {}) => {
+      if (
+        ENTRY_QUEUE_ENFORCE_SOCKET
+        && !globalThis.__questRoomEntryQueueApi?.validateToken?.(payload.entryQueueClientId, payload.entryAdmissionToken)
+      ) {
+        socket.emit("entry:denied", { reason: "entry_queue_required" });
+        socket.disconnect(true);
+        return;
+      }
       const player = compactPlayer(payload);
       if (!player.id) return;
       clearCycleRestoreTimer(socket.id);

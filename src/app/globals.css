@@ -28,6 +28,144 @@ button {
   font: inherit;
 }
 
+.entry-queue-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 48px);
+  background:
+    radial-gradient(circle at 15% 18%, rgba(255, 219, 82, 0.34), transparent 28%),
+    radial-gradient(circle at 86% 78%, rgba(255, 92, 102, 0.18), transparent 32%),
+    var(--paper);
+}
+
+.entry-queue-panel {
+  width: min(92vw, 620px);
+  padding: clamp(24px, 5vw, 44px);
+  border: 3px solid rgba(31, 31, 33, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 252, 240, 0.92);
+  box-shadow: 0 24px 80px rgba(52, 38, 22, 0.18);
+  text-align: center;
+}
+
+.entry-queue-brand {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.entry-queue-brand span {
+  color: var(--coral);
+  font-size: clamp(28px, 6vw, 52px);
+  font-weight: 950;
+  line-height: 1;
+}
+
+.entry-queue-brand strong {
+  color: var(--ink);
+  font-size: clamp(18px, 3vw, 28px);
+  font-weight: 950;
+}
+
+.entry-queue-orb {
+  width: 104px;
+  height: 104px;
+  margin: 24px auto;
+  display: grid;
+  place-items: center;
+  border: 3px solid rgba(31, 31, 33, 0.12);
+  border-radius: 50%;
+  color: var(--gold-deep);
+  background: linear-gradient(135deg, #fff7c5, #ffd95e);
+}
+
+.entry-queue-orb svg {
+  animation: queue-spin 1.4s linear infinite;
+}
+
+.entry-queue-orb.is-paused {
+  color: var(--coral);
+  background: #ffe4e6;
+}
+
+.entry-queue-orb.is-paused svg {
+  animation-play-state: paused;
+}
+
+.entry-queue-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.entry-queue-stats div {
+  min-height: 96px;
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  align-content: center;
+  border: 2px solid rgba(31, 31, 33, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.entry-queue-stats svg {
+  color: var(--coral);
+}
+
+.entry-queue-stats span {
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.entry-queue-stats strong {
+  color: var(--ink);
+  font-size: clamp(24px, 4vw, 34px);
+  font-weight: 950;
+}
+
+.entry-queue-panel p {
+  max-width: 480px;
+  margin: 20px auto 0;
+  color: var(--ink-soft);
+  font-size: clamp(15px, 2.2vw, 18px);
+  font-weight: 800;
+}
+
+.entry-queue-progress {
+  height: 12px;
+  margin-top: 24px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(31, 31, 33, 0.1);
+}
+
+.entry-queue-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--coral), var(--gold));
+  transition: width 500ms ease;
+}
+
+@keyframes queue-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .entry-queue-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .entry-queue-stats div {
+    min-height: 78px;
+  }
+}
+
 .game-shell {
   position: relative;
   width: 100vw;

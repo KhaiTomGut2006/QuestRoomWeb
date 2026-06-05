@@ -180,13 +180,16 @@ function MemoryChart({ samples }) {
 }
 
 function RuntimePanel({ runtime }) {
+  const queue = runtime?.entryQueue;
   const items = [
     ["Room Players", runtime?.roomPlayers],
     ["Rooms", runtime?.rooms],
     ["Socket Map", runtime?.socketToPlayer],
     ["NPC Visits", runtime?.activeNpcVisits],
     ["Room Patch Buffers", runtime?.roomPatchBuffers],
-    ["Cycle Timers", runtime?.socketPersonalTimers]
+    ["Cycle Timers", runtime?.socketPersonalTimers],
+    ["Entry Queue", queue ? `${queue.waiting ?? 0} waiting` : "-"],
+    ["Loading Slots", queue ? `${queue.active ?? 0}/${queue.maxActiveLoaders ?? "-"}` : "-"]
   ];
 
   return (
