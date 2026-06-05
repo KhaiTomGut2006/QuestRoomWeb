@@ -92,6 +92,14 @@ button {
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+}
+
+.stage-reward-button img.gift-line-icon {
+  width: 48px;
+  height: 48px;
 }
 
 .stage-reward-button:hover {
@@ -1512,7 +1520,8 @@ button {
     height: 44px;
   }
 
-  .stage-reward-button svg {
+  .stage-reward-button svg,
+  .stage-reward-button img.gift-line-icon {
     width: 36px;
     height: 36px;
   }
@@ -4591,7 +4600,8 @@ button {
     bottom: 24px;
   }
 
-  .challenge-info-rewards-button svg {
+  .challenge-info-rewards-button svg,
+  .challenge-info-rewards-button img.gift-line-icon {
     width: 56px;
     height: 56px;
   }

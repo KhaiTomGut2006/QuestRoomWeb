@@ -160,6 +160,28 @@ function clearRoomPlayersCache(stage = "") {
   }
 }
 
+function publicEvidenceUrl(evidence) {
+  const url = String(evidence?.url || "");
+  const publicBase = String(process.env.R2_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  if (!publicBase) return url;
+
+  const pathname = String(evidence?.pathname || "");
+  if (pathname.startsWith("r2/")) {
+    const key = pathname.slice(3);
+    return `${publicBase}/${encodeURI(key).replace(/%2F/g, "/")}`;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.endsWith(".r2.dev") && parsed.pathname.startsWith("/npc-quests/")) {
+      return `${publicBase}${parsed.pathname}`;
+    }
+  } catch {
+    return url;
+  }
+  return url;
+}
+
 function pruneGlobalPostsCache(now = Date.now()) {
   for (const [key, cached] of cachedGlobalPosts) {
     if (!cached || now - cached.cachedAt >= GLOBAL_POSTS_CACHE_TTL_MS) {
@@ -514,7 +536,7 @@ function normalizeNpcQuestSubmission(submission) {
     dislikeCount: dislikes.length,
     evidence: submission.evidence
       ? {
-          url: submission.evidence.url || "",
+          url: publicEvidenceUrl(submission.evidence),
           pathname: submission.evidence.pathname || "",
           contentType: submission.evidence.contentType || "",
           size: submission.evidence.size || 0,
@@ -544,6 +566,7 @@ function isGlobalQuestSubmissionVisible(member, submission) {
   return Boolean(
     challenge
     && challenge.submissionId === submission.id
+    && isChallengePassedToNextRoom(member, challenge)
     && (challenge.approvedAt || ["approved", "awarded"].includes(challenge.status))
   );
 }
@@ -559,6 +582,7 @@ function normalizeSocialQuestSubmissions(member) {
 function socialPublishedAt(member, submission) {
   if (submission?.source === "challenge") {
     return member?.questChallenge?.submissionId === submission.id
+      && isChallengePassedToNextRoom(member, member.questChallenge)
       ? member.questChallenge.approvedAt || submission.submittedAt || null
       : null;
   }
@@ -613,7 +637,7 @@ function socialPostDocumentFromMemberSubmission(member, submission) {
       ? submission.badge || member?.questChallenge?.badge
       : submission.badge),
     evidence: {
-      url: submission.evidence.url || "",
+      url: publicEvidenceUrl(submission.evidence),
       pathname: submission.evidence.pathname || "",
       contentType: submission.evidence.contentType || "",
       size: Math.max(0, Number(submission.evidence.size) || 0),
@@ -646,7 +670,7 @@ function serializeSocialPost(post, viewerId = "") {
     badge: normalizeBadge(raw.badge),
     evidence: raw.evidence
       ? {
-          url: raw.evidence.url || "",
+          url: publicEvidenceUrl(raw.evidence),
           pathname: raw.evidence.pathname || "",
           contentType: raw.evidence.contentType || "",
           size: Math.max(0, Number(raw.evidence.size) || 0),
@@ -701,6 +725,21 @@ function rewardIdForBadge(badge) {
   return `badge:${badge.id || badge.label || "badge"}:${awardedAt}`;
 }
 
+function configuredStageOrder(stage) {
+  const stageId = String(stage || "");
+  if (!stageId || !cachedLevels?.length) return 0;
+  const index = cachedLevels.findIndex((level) => level.stageId === stageId);
+  return index >= 0 ? index + 1 : 0;
+}
+
+function isChallengePassedToNextRoom(member, challenge = member?.questChallenge) {
+  if (!challenge?.stage || !member?.stage) return false;
+  const challengeOrder = configuredStageOrder(challenge.stage);
+  const currentOrder = configuredStageOrder(member.stage);
+  if (challengeOrder && currentOrder) return currentOrder > challengeOrder;
+  return false;
+}
+
 export async function syncChallengeReview(discordId, { createReward = false } = {}) {
   await connectDb();
   await ensureLevels();
@@ -715,8 +754,10 @@ export async function syncChallengeReview(discordId, { createReward = false } = 
     : null;
   const challengeBadge = normalizeBadge(challenge?.badge) || normalizeBadge(challengeSubmission?.badge);
   const fallbackBadge = challengeBadge || normalizeBadge(newestBadge(member.profileAchievements));
+  const passedToNextRoom = isChallengePassedToNextRoom(member, challenge);
+  const approvedAt = challenge?.approvedAt || fallbackBadge?.awardedAt || new Date();
 
-  if (createReward && fallbackBadge) {
+  if (createReward && fallbackBadge && passedToNextRoom) {
     const nextRewardId = rewardIdForBadge(fallbackBadge);
     if (!member.questReward?.id || member.questReward.id !== nextRewardId) {
       member.questReward = {
@@ -732,12 +773,33 @@ export async function syncChallengeReview(discordId, { createReward = false } = 
     }
   }
 
-  if (challengeSubmission) {
-    await upsertSocialPostForSubmission(member, challengeSubmission);
+  if (challenge && challengeSubmission && passedToNextRoom) {
+    if (!challenge.approvedAt) {
+      member.questChallenge.approvedAt = approvedAt;
+      saved = true;
+    }
+    if (!["approved", "awarded"].includes(String(challenge.status || "").toLowerCase())) {
+      member.questChallenge.status = "approved";
+      saved = true;
+    }
+    if (fallbackBadge && !challenge.badge?.id && !challenge.badge?.label) {
+      member.questChallenge.badge = fallbackBadge;
+      saved = true;
+    }
+    if (fallbackBadge && (!challengeSubmission.badge?.id && !challengeSubmission.badge?.label)) {
+      challengeSubmission.badge = fallbackBadge;
+      member.markModified("npcQuestSubmissions");
+      saved = true;
+    }
+    member.markModified("questChallenge");
   }
 
   if (saved) {
     await member.save({ validateModifiedOnly: true });
+  }
+
+  if (challengeSubmission) {
+    await upsertSocialPostForSubmission(member, challengeSubmission);
   }
 
   return {

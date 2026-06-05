@@ -5,6 +5,7 @@ const next = require("next");
 const { Server } = require("socket.io");
 const mongoose = require("mongoose");
 const { createHmac, timingSafeEqual } = require("node:crypto");
+const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 
 loadEnvConfig(process.cwd());
 
@@ -19,6 +20,7 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 const mongoUri = process.env.MONGODB_URI;
 const mongoDbName = process.env.MONGODB_DB || undefined;
+let r2ReadClient = null;
 
 const rooms = new Map();
 const playerStages = new Map();   // playerId → current stage (cross-socket tracking)
@@ -260,6 +262,89 @@ function startServerMetricsLogger() {
 }
 
 startServerMetricsLogger();
+
+function isR2ReadConfigured() {
+  return Boolean(
+    process.env.R2_ACCOUNT_ID &&
+    process.env.R2_ACCESS_KEY_ID &&
+    process.env.R2_SECRET_ACCESS_KEY &&
+    process.env.R2_BUCKET
+  );
+}
+
+function getR2ReadClient() {
+  if (r2ReadClient) return r2ReadClient;
+  r2ReadClient = new S3Client({
+    region: "auto",
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    },
+  });
+  return r2ReadClient;
+}
+
+function mediaHeaders(extra = {}) {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "Range, Content-Type",
+    "Cache-Control": "public, max-age=31536000, immutable",
+    ...extra
+  };
+}
+
+async function handleR2MediaRequest(req, res) {
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, mediaHeaders());
+    res.end();
+    return;
+  }
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405, mediaHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
+    res.end("Method not allowed");
+    return;
+  }
+  if (!isR2ReadConfigured()) {
+    res.writeHead(503, mediaHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
+    res.end("R2 is not configured");
+    return;
+  }
+
+  const requestUrl = new URL(req.url || "/", "http://localhost");
+  const key = decodeURIComponent(requestUrl.pathname.replace(/^\/+/, ""));
+  if (!key.startsWith("npc-quests/") || key.includes("..")) {
+    res.writeHead(404, mediaHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
+    res.end("Not found");
+    return;
+  }
+
+  try {
+    const object = await getR2ReadClient().send(new GetObjectCommand({
+      Bucket: process.env.R2_BUCKET,
+      Key: key,
+      Range: req.headers.range
+    }));
+    const headers = mediaHeaders({
+      "Content-Type": object.ContentType || "application/octet-stream",
+      "ETag": object.ETag || "",
+      "Accept-Ranges": "bytes"
+    });
+    if (object.ContentLength !== undefined) headers["Content-Length"] = String(object.ContentLength);
+    if (object.ContentRange) headers["Content-Range"] = object.ContentRange;
+    res.writeHead(object.ContentRange ? 206 : 200, headers);
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+    object.Body.pipe(res);
+  } catch (error) {
+    const status = error?.$metadata?.httpStatusCode === 404 || error?.name === "NoSuchKey" ? 404 : 502;
+    res.writeHead(status, mediaHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
+    res.end(status === 404 ? "Not found" : "R2 read failed");
+  }
+}
 
 async function getMembersCollection() {
   if (!mongoUri) throw new Error("MONGODB_URI is not configured");
@@ -664,7 +749,14 @@ function publicPlayerPresence(player) {
 }
 
 app.prepare().then(() => {
-  const httpServer = createServer((req, res) => handle(req, res));
+  const httpServer = createServer((req, res) => {
+    const pathname = new URL(req.url || "/", "http://localhost").pathname;
+    if (pathname.startsWith("/npc-quests/")) {
+      void handleR2MediaRequest(req, res);
+      return;
+    }
+    handle(req, res);
+  });
   const io = new Server(httpServer, {
     path: `${basePath}/socket.io`,
     addTrailingSlash: false,
