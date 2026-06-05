@@ -24,7 +24,7 @@ const ALLOWED_VIDEO_TYPES = [
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Game-Api-Token",
 };
 
 let r2Client = null;
@@ -32,7 +32,9 @@ let r2Client = null;
 function isAuthorized(request) {
   const expectedToken = process.env.GAME_API_TOKEN || process.env.ADMIN_API_TOKEN || "";
   if (!expectedToken) return process.env.NODE_ENV !== "production";
-  return request.headers.get("authorization") === `Bearer ${expectedToken}`;
+  const bearer = request.headers.get("authorization") || "";
+  const headerToken = request.headers.get("x-game-api-token") || "";
+  return bearer === `Bearer ${expectedToken}` || headerToken === expectedToken;
 }
 
 function isR2Configured() {
@@ -171,7 +173,10 @@ export async function GET(request) {
 
 export async function POST(request) {
   if (!isAuthorized(request)) {
-    return NextResponse.json({ success: false, error: "unauthorized" }, { status: 401, headers: CORS });
+    return NextResponse.json(
+      { success: false, error: "missing_or_invalid_game_api_token" },
+      { status: 401, headers: CORS }
+    );
   }
 
   try {
