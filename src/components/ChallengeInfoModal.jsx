@@ -80,7 +80,8 @@ export default function ChallengeInfoModal({ info, view = "details", onClose, on
               )}
             </div>
             <button className="challenge-info-rewards-button" type="button" onClick={onShowRewards}>
-              <Gift className="gift-line-icon" size={68} strokeWidth={2.8} />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={withOptimizedAsset("/assets/Card.webp")} alt="" className="gift-line-icon" />
               <span>Rewards</span>
             </button>
           </>

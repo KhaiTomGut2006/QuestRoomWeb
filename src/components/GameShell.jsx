@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { ChevronLeft, ChevronRight, Coins, Gift, Zap, Volume2, VolumeX, LogOut, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Coins, Zap, Volume2, VolumeX, LogOut, Settings } from "lucide-react";
 import { io } from "socket.io-client";
 import { upload } from "@vercel/blob/client";
 import RoomCanvas from "@/components/RoomCanvas";
@@ -2016,7 +2016,8 @@ export default function GameShell() {
             disabled={isViewingOtherRoom || isTutorialActive}
             onClick={() => setChallengeInfoView("details")}
           >
-            <Gift className="gift-line-icon" size={48} strokeWidth={2.8} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={withOptimizedAsset("/assets/Card.webp")} alt="" className="gift-line-icon" />
           </button>
         </div>
         <div className="action-row">
