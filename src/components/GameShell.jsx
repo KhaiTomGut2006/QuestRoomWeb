@@ -753,6 +753,7 @@ export default function GameShell() {
   const [showGlobalQuest, setShowGlobalQuest] = useState(false);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [challengeInfoView, setChallengeInfoView] = useState(null);
+  const [challengeInfoOverrides, setChallengeInfoOverrides] = useState({});
   const [showChallengeSubmission, setShowChallengeSubmission] = useState(false);
   const [challengeAnnouncement, setChallengeAnnouncement] = useState(null);
   const [socialUnreadCount, setSocialUnreadCount] = useState(0);
@@ -924,9 +925,12 @@ export default function GameShell() {
   const currentRoomLevel = useMemo(() => (
     effectiveRoomLevels.find((level) => level.stageId === actualStage) || null
   ), [actualStage, effectiveRoomLevels]);
+  const latestChallengeInfo = actualStage ? challengeInfoOverrides[actualStage] : null;
   const currentChallengeInfo = useMemo(() => (
-    challengeInfoFromLevel(currentRoomLevel, currentRoomLabel)
-  ), [currentRoomLabel, currentRoomLevel]);
+    latestChallengeInfo
+      ? challengeInfoFromLevel({ challengeInfo: latestChallengeInfo }, currentRoomLabel)
+      : challengeInfoFromLevel(currentRoomLevel, currentRoomLabel)
+  ), [currentRoomLabel, currentRoomLevel, latestChallengeInfo]);
   const rewardStageKey = useMemo(() => {
     if (!activeMember || !actualStage || isViewingOtherRoom || isTutorialActive) return "";
     const playerId = activeMember.discordId || activeMember.id || "guest";
@@ -2017,7 +2021,21 @@ export default function GameShell() {
       });
     }
     setChallengeInfoView("details");
-  }, [rewardStageKey]);
+    if (!actualStage || !isAuthed) return;
+
+    fetch(withBasePath(`/api/player/challenge-info?stage=${encodeURIComponent(actualStage)}`), {
+      cache: "no-store"
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        if (!data?.challengeInfo) return;
+        setChallengeInfoOverrides((current) => ({
+          ...current,
+          [actualStage]: data.challengeInfo
+        }));
+      })
+      .catch(() => {});
+  }, [actualStage, isAuthed, rewardStageKey]);
 
   const visiblePlayers = useMemo(() => {
     if (!activeViewedStage) return [];
