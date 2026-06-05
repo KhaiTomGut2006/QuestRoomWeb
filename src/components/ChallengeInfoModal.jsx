@@ -9,10 +9,6 @@ function normalizedMediaUrl(url) {
   return value.startsWith("/") ? withOptimizedAsset(value) : value;
 }
 
-function isVideoUrl(url) {
-  return /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(String(url || ""));
-}
-
 function RewardItem({ reward }) {
   const image = String(reward?.image || "");
   const hasImage = Boolean(image);
@@ -67,12 +63,8 @@ export default function ChallengeInfoModal({ info, view = "details", onClose, on
             <h2 className="challenge-info-title">{info.title}</h2>
             <p className="challenge-info-description">{info.description}</p>
             <div className="challenge-info-media">
-              {mediaUrl && isVideoUrl(mediaUrl) ? (
+              {mediaUrl ? (
                 <video src={mediaUrl} controls preload="metadata" />
-              ) : mediaUrl ? (
-                <a className="challenge-info-media-link" href={mediaUrl} target="_blank" rel="noreferrer">
-                  <Play size={42} fill="currentColor" />
-                </a>
               ) : (
                 <div className="challenge-info-media-empty">
                   <Play size={48} fill="currentColor" />

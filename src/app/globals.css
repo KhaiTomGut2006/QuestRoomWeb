@@ -5139,27 +5139,30 @@ button {
 .challenge-info-title {
   margin: 0;
   color: #a75307;
-  font-size: clamp(42px, 6.1vw, 78px);
-  line-height: 1.02;
+  font-size: clamp(34px, 4.1vw, 58px);
+  line-height: 1.08;
   font-weight: 950;
   letter-spacing: 0;
   text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .challenge-info-description {
   width: min(860px, 100%);
-  margin: clamp(18px, 2.8dvh, 30px) 0 clamp(24px, 4dvh, 46px);
+  margin: clamp(14px, 2dvh, 24px) 0 clamp(18px, 3dvh, 34px);
   white-space: pre-line;
   color: #a75307;
-  font-size: clamp(22px, 2.5vw, 34px);
+  font-size: clamp(18px, 1.8vw, 27px);
   font-weight: 650;
-  line-height: 1.35;
+  line-height: 1.42;
 }
 
 .challenge-info-media {
   width: min(540px, 68%);
   aspect-ratio: 16 / 9;
   margin: 0 auto;
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5174,6 +5177,7 @@ button {
   display: block;
   object-fit: contain;
   background: #111116;
+  pointer-events: auto;
 }
 
 .challenge-info-media-link,
@@ -5200,7 +5204,8 @@ button {
   background: transparent;
   color: #ef3f62;
   cursor: pointer;
-  filter: drop-shadow(0 5px 0 #ce8a16);
+  filter: none;
+  text-shadow: none;
 }
 
 @media (max-height: 760px) {
@@ -5211,14 +5216,14 @@ button {
   }
 
   .challenge-info-title {
-    font-size: clamp(38px, 7dvh, 54px);
+    font-size: clamp(32px, 6dvh, 46px);
   }
 
   .challenge-info-description {
     width: min(760px, 100%);
-    margin: 16px 0 22px;
-    font-size: clamp(20px, 3.4dvh, 28px);
-    line-height: 1.28;
+    margin: 14px 0 20px;
+    font-size: clamp(18px, 2.8dvh, 24px);
+    line-height: 1.34;
   }
 
   .challenge-info-media {
@@ -5279,8 +5284,10 @@ button {
 
 .challenge-info-rewards-button span {
   color: #a75307;
-  font-size: clamp(18px, 1.7vw, 24px);
+  font-size: clamp(16px, 1.35vw, 20px);
   font-weight: 950;
+  line-height: 1.05;
+  text-shadow: none;
 }
 
 .challenge-info-rewards-button:hover {
