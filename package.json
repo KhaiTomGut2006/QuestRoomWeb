@@ -7,7 +7,8 @@
     "dev:next": "next dev",
     "build": "next build",
     "start": "NODE_ENV=production node server.js",
-    "check": "next build"
+    "check": "next build",
+    "repair:r2-evidence": "node scripts/repair_r2_evidence_paths.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1057.0",
