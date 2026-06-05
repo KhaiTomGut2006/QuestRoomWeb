@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>Quest Room Ops</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="ops-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-icon">QR</span>
+          <div>
+            <strong>Quest Room</strong>
+            <small>External Ops</small>
+          </div>
+        </div>
+        <nav>
+          <a href="#overview">Overview</a>
+          <a href="#memory">Memory</a>
+          <a href="#api">API Pressure</a>
+          <a href="#runtime">Runtime</a>
+          <a href="#samples">Samples</a>
+        </nav>
+        <section class="endpoint">
+          <span>Target</span>
+          <code id="target-url">loading...</code>
+        </section>
+      </aside>
+
+      <section class="content">
+        <header class="topbar" id="overview">
+          <div>
+            <h1>Quest Room Ops</h1>
+            <p>Standalone health dashboard</p>
+          </div>
+          <div class="actions">
+            <span id="live-status" class="live ok">Live</span>
+            <button id="refresh-btn" type="button">Refresh</button>
+            <button id="pause-btn" type="button">Pause</button>
+          </div>
+        </header>
+
+        <p id="error-banner" class="error-banner" hidden></p>
+
+        <section class="metrics-grid">
+          <article class="metric coral">
+            <span class="metric-label">Heap Used</span>
+            <strong id="heap-used">-</strong>
+            <small id="heap-detail">-</small>
+            <div class="meter"><span id="heap-meter"></span></div>
+          </article>
+          <article class="metric gold">
+            <span class="metric-label">RSS Memory</span>
+            <strong id="rss-used">-</strong>
+            <small id="rss-detail">-</small>
+            <div class="meter"><span id="rss-meter"></span></div>
+          </article>
+          <article class="metric teal">
+            <span class="metric-label">Database</span>
+            <strong id="db-status">-</strong>
+            <small id="db-detail">-</small>
+            <div class="meter"><span id="db-meter"></span></div>
+          </article>
+          <article class="metric blue">
+            <span class="metric-label">Uptime</span>
+            <strong id="uptime">-</strong>
+            <small id="checked-at">-</small>
+            <div class="meter"><span style="width: 100%"></span></div>
+          </article>
+        </section>
+
+        <section class="grid-two" id="memory">
+          <article class="panel chart-panel">
+            <div class="section-heading">
+              <div>
+                <h2>Memory Trend</h2>
+                <p id="sample-count">No samples yet</p>
+              </div>
+              <span id="proxy-latency">Proxy -</span>
+            </div>
+            <svg id="memory-chart" viewBox="0 0 760 280" role="img" aria-label="Memory trend"></svg>
+            <div class="legend">
+              <span class="dot heap"></span> Heap
+              <span class="dot rss"></span> RSS
+              <span class="dot total"></span> Heap Total
+              <span class="dot external"></span> External
+            </div>
+          </article>
+
+          <article class="panel runtime" id="runtime">
+            <div class="section-heading">
+              <div>
+                <h2>Runtime</h2>
+                <p>Socket and room state</p>
+              </div>
+            </div>
+            <div id="runtime-grid" class="runtime-grid"></div>
+          </article>
+        </section>
+
+        <section class="panel api-panel" id="api">
+          <div class="section-heading">
+            <div>
+              <h2>API Pressure</h2>
+              <p>Routes with count, latency, in-flight requests, and heap delta</p>
+            </div>
+            <span id="api-summary">-</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Route</th>
+                  <th>Status</th>
+                  <th>Count</th>
+                  <th>In Flight</th>
+                  <th>Avg</th>
+                  <th>P95</th>
+                  <th>Max</th>
+                  <th>Slow</th>
+                  <th>5xx</th>
+                  <th>Max Heap Delta</th>
+                  <th>Last</th>
+                </tr>
+              </thead>
+              <tbody id="api-rows"></tbody>
+            </table>
+          </div>
+
+          <h3>Active Requests</h3>
+          <div id="active-requests" class="active-list"></div>
+        </section>
+
+        <section class="panel samples-panel" id="samples">
+          <div class="section-heading">
+            <div>
+              <h2>Recent Samples</h2>
+              <p>Stored only in this dashboard tab</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Status</th>
+                  <th>Heap</th>
+                  <th>RSS</th>
+                  <th>DB</th>
+                  <th>Uptime</th>
+                </tr>
+              </thead>
+              <tbody id="sample-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

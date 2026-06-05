@@ -3,6 +3,7 @@ const { loadEnvConfig } = require("@next/env");
 loadEnvConfig(process.cwd());
 
 const questroomPort = process.env.QUESTROOM_PORT || "3001";
+const questroomOpsPort = process.env.OPS_DASHBOARD_PORT || "3003";
 const nodeMaxOldSpaceMb = process.env.NODE_MAX_OLD_SPACE_MB || "1536";
 const pm2MaxMemoryRestart = process.env.PM2_MAX_MEMORY_RESTART || "1800M";
 
@@ -41,6 +42,21 @@ module.exports = {
         SOCIAL_POST_AUTO_BACKFILL_ENABLED: process.env.SOCIAL_POST_AUTO_BACKFILL_ENABLED || "false",
         SOCIAL_POST_BACKFILL_SUBMISSIONS_PER_MEMBER: process.env.SOCIAL_POST_BACKFILL_SUBMISSIONS_PER_MEMBER || "5",
         SOCIAL_POST_BACKFILL_MAX_OPERATIONS: process.env.SOCIAL_POST_BACKFILL_MAX_OPERATIONS || "500"
+      }
+    },
+    {
+      name: "questroom-ops",
+      script: "ops-dashboard/server.mjs",
+      exec_mode: "fork",
+      instances: 1,
+      max_memory_restart: process.env.OPS_DASHBOARD_MAX_MEMORY_RESTART || "256M",
+      env: {
+        NODE_ENV: "production",
+        OPS_DASHBOARD_HOST: process.env.OPS_DASHBOARD_HOST || "127.0.0.1",
+        OPS_DASHBOARD_PORT: questroomOpsPort,
+        QUESTROOM_HEALTH_URL: process.env.QUESTROOM_HEALTH_URL || `http://127.0.0.1:${questroomPort}/questroom/api/health`,
+        OPS_DASHBOARD_BASIC_AUTH: process.env.OPS_DASHBOARD_BASIC_AUTH || "",
+        OPS_DASHBOARD_POLL_MS: process.env.OPS_DASHBOARD_POLL_MS || "15000"
       }
     }
   ]

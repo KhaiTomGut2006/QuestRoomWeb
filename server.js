@@ -51,7 +51,13 @@ const API_METRICS_MAX_ROUTES = Math.max(20, Number(process.env.API_METRICS_MAX_R
 const API_METRICS_SAMPLE_SIZE = Math.max(20, Number(process.env.API_METRICS_SAMPLE_SIZE || 80));
 const API_SLOW_REQUEST_MS = Math.max(250, Number(process.env.API_SLOW_REQUEST_MS || 1_500));
 const API_STUCK_REQUEST_MS = Math.max(1_000, Number(process.env.API_STUCK_REQUEST_MS || 15_000));
+const NODE_MAX_OLD_SPACE_MB = Math.max(512, Number(process.env.NODE_MAX_OLD_SPACE_MB || 1536));
+const HEAP_GUARD_ENABLED = process.env.HEAP_GUARD_ENABLED !== "false";
+const HEAP_GUARD_WARN_MB = Math.max(256, Number(process.env.HEAP_GUARD_WARN_MB || Math.floor(NODE_MAX_OLD_SPACE_MB * 0.72)));
+const HEAP_GUARD_CRIT_MB = Math.max(HEAP_GUARD_WARN_MB + 64, Number(process.env.HEAP_GUARD_CRIT_MB || Math.floor(NODE_MAX_OLD_SPACE_MB * 0.88)));
+const HEAP_GUARD_LOG_INTERVAL_MS = Math.max(1_000, Number(process.env.HEAP_GUARD_LOG_INTERVAL_MS || 5_000));
 let lastMetricsCheckAt = Date.now();
+let lastHeapGuardLogAt = 0;
 const apiRouteStats = new Map();
 const activeApiRequests = new Map();
 let nextApiRequestId = 1;
@@ -72,6 +78,81 @@ function normalizeApiPath(reqUrl = "") {
 
 function isTrackedApiPath(pathname = "") {
   return pathname === "/api/health" || pathname.startsWith("/api/");
+}
+
+function currentHeapUsedMb(memory = process.memoryUsage()) {
+  return Math.round(memory.heapUsed / 1024 / 1024);
+}
+
+function heapGuardSnapshot(memory = process.memoryUsage()) {
+  const heapUsedMb = currentHeapUsedMb(memory);
+  return {
+    enabled: HEAP_GUARD_ENABLED,
+    heapUsedMb,
+    warnMb: HEAP_GUARD_WARN_MB,
+    criticalMb: HEAP_GUARD_CRIT_MB,
+    warning: heapUsedMb >= HEAP_GUARD_WARN_MB,
+    critical: heapUsedMb >= HEAP_GUARD_CRIT_MB
+  };
+}
+
+function logHeapGuard(snapshot, reason, pathname = "") {
+  const now = Date.now();
+  if (now - lastHeapGuardLogAt < HEAP_GUARD_LOG_INTERVAL_MS) return;
+  lastHeapGuardLogAt = now;
+  console.warn("[heap-guard]", JSON.stringify({
+    reason,
+    pathname,
+    ...snapshot,
+    runtime: collectRuntimeStats(process.memoryUsage(), 0)
+  }));
+}
+
+function shouldShedRequest(pathname) {
+  if (!HEAP_GUARD_ENABLED) return false;
+  const snapshot = heapGuardSnapshot();
+  if (!snapshot.critical) {
+    if (snapshot.warning) logHeapGuard(snapshot, "warning", pathname);
+    return false;
+  }
+  const normalizedPath = normalizeApiPath(pathname);
+  const allowed =
+    normalizedPath === "/api/health"
+    || normalizedPath.startsWith("/_next/static/")
+    || normalizedPath.startsWith("/assets/")
+    || normalizedPath === "/favicon.ico";
+  if (!allowed) logHeapGuard(snapshot, "shed-http", normalizedPath);
+  return !allowed;
+}
+
+function sendOverloadedResponse(req, res, pathname) {
+  const normalizedPath = normalizeApiPath(pathname || req.url || "");
+  const isApi = normalizedPath.startsWith("/api/");
+  res.statusCode = 503;
+  res.setHeader("Retry-After", "5");
+  res.setHeader("Cache-Control", "no-store");
+  if (isApi) {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.end(JSON.stringify({
+      error: "server_busy",
+      reason: "heap_guard",
+      retryAfterSec: 5
+    }));
+    return;
+  }
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.end("Quest Room is busy. Please retry in a few seconds.");
+}
+
+function shouldShedSocketConnection() {
+  if (!HEAP_GUARD_ENABLED) return false;
+  const snapshot = heapGuardSnapshot();
+  if (!snapshot.critical) {
+    if (snapshot.warning) logHeapGuard(snapshot, "warning-socket");
+    return false;
+  }
+  logHeapGuard(snapshot, "shed-socket");
+  return true;
 }
 
 function apiRouteStat(pathname) {
@@ -226,6 +307,7 @@ function collectRuntimeStats(memory = process.memoryUsage(), lagMs = 0) {
     levelConfigCache: levelConfigCache.size,
     npcCycleRestoreCache: npcCycleRestoreCache.size,
     api: publicApiMetrics(),
+    heapGuard: heapGuardSnapshot(memory),
     uptimeSec: Math.round(process.uptime()),
     checkedAt: new Date().toISOString()
   };
@@ -426,7 +508,7 @@ function startServerMetricsLogger() {
     lastMetricsCheckAt = now;
     const runtimeStats = publishRuntimeStats(memory, lagMs);
 
-    if (rssMb < SERVER_METRICS_RSS_WARN_MB && lagMs < 1000) return;
+    if (rssMb < SERVER_METRICS_RSS_WARN_MB && heapUsedMb < HEAP_GUARD_WARN_MB && lagMs < 1000) return;
     console.warn("[server-metrics]", JSON.stringify(runtimeStats));
   }, SERVER_METRICS_INTERVAL_MS).unref?.();
 }
@@ -922,6 +1004,10 @@ function publicPlayerPresence(player) {
 app.prepare().then(() => {
   const httpServer = createServer((req, res) => {
     const pathname = new URL(req.url || "/", "http://localhost").pathname;
+    if (shouldShedRequest(pathname)) {
+      sendOverloadedResponse(req, res, pathname);
+      return;
+    }
     const apiRequestId = recordApiRequestStart(req);
     if (apiRequestId) {
       res.once("finish", () => recordApiRequestEnd(apiRequestId, res));
@@ -940,6 +1026,13 @@ app.prepare().then(() => {
     transports: SOCKET_TRANSPORTS
   });
   globalThis.__questRoomIo = io;
+  io.use((socket, next) => {
+    if (shouldShedSocketConnection()) {
+      next(new Error("server_busy"));
+      return;
+    }
+    next();
+  });
 
   // ─── Per-socket personal NPC cycle ────────────────────────────
   // Returns the effective full-cycle duration for a socket (with permanent reductions)
