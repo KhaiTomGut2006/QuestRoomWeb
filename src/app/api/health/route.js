@@ -10,6 +10,9 @@ const readyStateLabels = {
 
 export async function GET() {
   const memory = process.memoryUsage();
+  const runtime = typeof globalThis.__questRoomCollectRuntimeStats === "function"
+    ? globalThis.__questRoomCollectRuntimeStats(memory)
+    : globalThis.__questRoomRuntimeStats || null;
   return NextResponse.json({
     ok: true,
     uptimeSec: Math.round(process.uptime()),
@@ -23,7 +26,7 @@ export async function GET() {
       readyState: mongoose.connection.readyState,
       status: readyStateLabels[mongoose.connection.readyState] || "unknown"
     },
-    runtime: globalThis.__questRoomRuntimeStats || null,
+    runtime,
     checkedAt: new Date().toISOString()
   });
 }

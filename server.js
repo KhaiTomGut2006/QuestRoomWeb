@@ -47,7 +47,163 @@ const activeNpcVisits = globalThis.__questRoomActiveNpcVisits || new Map();
 globalThis.__questRoomActiveNpcVisits = activeNpcVisits;
 const SERVER_METRICS_INTERVAL_MS = Math.max(10_000, Number(process.env.SERVER_METRICS_INTERVAL_MS || 60_000));
 const SERVER_METRICS_RSS_WARN_MB = Math.max(256, Number(process.env.SERVER_METRICS_RSS_WARN_MB || 1536));
+const API_METRICS_MAX_ROUTES = Math.max(20, Number(process.env.API_METRICS_MAX_ROUTES || 120));
+const API_METRICS_SAMPLE_SIZE = Math.max(20, Number(process.env.API_METRICS_SAMPLE_SIZE || 80));
+const API_SLOW_REQUEST_MS = Math.max(250, Number(process.env.API_SLOW_REQUEST_MS || 1_500));
+const API_STUCK_REQUEST_MS = Math.max(1_000, Number(process.env.API_STUCK_REQUEST_MS || 15_000));
 let lastMetricsCheckAt = Date.now();
+const apiRouteStats = new Map();
+const activeApiRequests = new Map();
+let nextApiRequestId = 1;
+
+function normalizeApiPath(reqUrl = "") {
+  let pathname = "/";
+  try {
+    pathname = new URL(reqUrl || "/", "http://localhost").pathname;
+  } catch {
+    pathname = String(reqUrl || "/").split("?")[0] || "/";
+  }
+  const normalizedBasePath = basePath ? `${basePath}/` : "";
+  if (normalizedBasePath && pathname.startsWith(normalizedBasePath)) {
+    pathname = `/${pathname.slice(normalizedBasePath.length)}`;
+  }
+  return pathname.replace(/\/+/g, "/");
+}
+
+function isTrackedApiPath(pathname = "") {
+  return pathname === "/api/health" || pathname.startsWith("/api/");
+}
+
+function apiRouteStat(pathname) {
+  if (!apiRouteStats.has(pathname)) {
+    if (apiRouteStats.size >= API_METRICS_MAX_ROUTES) {
+      const oldestKey = [...apiRouteStats.entries()]
+        .sort(([, a], [, b]) => Number(a.lastAt || 0) - Number(b.lastAt || 0))[0]?.[0];
+      if (oldestKey) apiRouteStats.delete(oldestKey);
+    }
+    apiRouteStats.set(pathname, {
+      path: pathname,
+      count: 0,
+      inflight: 0,
+      totalMs: 0,
+      maxMs: 0,
+      slowCount: 0,
+      totalHeapDeltaMb: 0,
+      maxHeapDeltaMb: 0,
+      status2xx: 0,
+      status3xx: 0,
+      status4xx: 0,
+      status5xx: 0,
+      samples: [],
+      lastStatus: 0,
+      lastMs: 0,
+      lastAt: 0
+    });
+  }
+  return apiRouteStats.get(pathname);
+}
+
+function recordApiRequestStart(req) {
+  const pathname = normalizeApiPath(req.url);
+  if (!isTrackedApiPath(pathname)) return null;
+  const id = nextApiRequestId++;
+  const stat = apiRouteStat(pathname);
+  stat.inflight += 1;
+  activeApiRequests.set(id, {
+    id,
+    path: pathname,
+    method: String(req.method || "GET").slice(0, 12),
+    startedAt: Date.now(),
+    startHeapUsed: process.memoryUsage().heapUsed
+  });
+  return id;
+}
+
+function recordApiRequestEnd(id, res) {
+  if (!id) return;
+  const active = activeApiRequests.get(id);
+  if (!active) return;
+  activeApiRequests.delete(id);
+
+  const stat = apiRouteStat(active.path);
+  const durationMs = Math.max(0, Date.now() - active.startedAt);
+  const heapDeltaMb = Math.max(0, (process.memoryUsage().heapUsed - active.startHeapUsed) / 1024 / 1024);
+  const statusCode = Number(res.statusCode) || 0;
+
+  stat.count += 1;
+  stat.inflight = Math.max(0, stat.inflight - 1);
+  stat.totalMs += durationMs;
+  stat.maxMs = Math.max(stat.maxMs, durationMs);
+  stat.slowCount += durationMs >= API_SLOW_REQUEST_MS ? 1 : 0;
+  stat.totalHeapDeltaMb += heapDeltaMb;
+  stat.maxHeapDeltaMb = Math.max(stat.maxHeapDeltaMb, heapDeltaMb);
+  stat.lastStatus = statusCode;
+  stat.lastMs = durationMs;
+  stat.lastAt = Date.now();
+  stat.samples.push(durationMs);
+  if (stat.samples.length > API_METRICS_SAMPLE_SIZE) stat.samples.shift();
+
+  if (statusCode >= 500) stat.status5xx += 1;
+  else if (statusCode >= 400) stat.status4xx += 1;
+  else if (statusCode >= 300) stat.status3xx += 1;
+  else if (statusCode >= 200) stat.status2xx += 1;
+}
+
+function percentile(values = [], percentileValue = 0.95) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * percentileValue) - 1));
+  return sorted[index];
+}
+
+function publicApiMetrics() {
+  const now = Date.now();
+  const routes = [...apiRouteStats.values()]
+    .map((stat) => ({
+      path: stat.path,
+      count: stat.count,
+      inflight: stat.inflight,
+      avgMs: stat.count ? Math.round(stat.totalMs / stat.count) : 0,
+      p95Ms: Math.round(percentile(stat.samples, 0.95)),
+      maxMs: Math.round(stat.maxMs),
+      slowCount: stat.slowCount,
+      avgHeapDeltaMb: stat.count ? Math.round((stat.totalHeapDeltaMb / stat.count) * 10) / 10 : 0,
+      maxHeapDeltaMb: Math.round(stat.maxHeapDeltaMb * 10) / 10,
+      status2xx: stat.status2xx,
+      status3xx: stat.status3xx,
+      status4xx: stat.status4xx,
+      status5xx: stat.status5xx,
+      lastStatus: stat.lastStatus,
+      lastMs: Math.round(stat.lastMs),
+      lastAt: stat.lastAt ? new Date(stat.lastAt).toISOString() : null
+    }))
+    .sort((a, b) => (
+      b.inflight - a.inflight
+      || b.slowCount - a.slowCount
+      || b.count - a.count
+      || b.maxMs - a.maxMs
+    ))
+    .slice(0, 20);
+  const active = [...activeApiRequests.values()]
+    .map((request) => ({
+      id: request.id,
+      path: request.path,
+      method: request.method,
+      ageMs: now - request.startedAt,
+      startedAt: new Date(request.startedAt).toISOString(),
+      stuck: now - request.startedAt >= API_STUCK_REQUEST_MS
+    }))
+    .sort((a, b) => b.ageMs - a.ageMs)
+    .slice(0, 20);
+  return {
+    slowRequestMs: API_SLOW_REQUEST_MS,
+    stuckRequestMs: API_STUCK_REQUEST_MS,
+    trackedRoutes: apiRouteStats.size,
+    activeCount: activeApiRequests.size,
+    routes,
+    active
+  };
+}
 
 function collectRuntimeStats(memory = process.memoryUsage(), lagMs = 0) {
   const roomPlayerCount = Array.from(rooms.values()).reduce((sum, room) => sum + room.size, 0);
@@ -69,6 +225,7 @@ function collectRuntimeStats(memory = process.memoryUsage(), lagMs = 0) {
     roomPatchTimers: roomPatchTimers.size,
     levelConfigCache: levelConfigCache.size,
     npcCycleRestoreCache: npcCycleRestoreCache.size,
+    api: publicApiMetrics(),
     uptimeSec: Math.round(process.uptime()),
     checkedAt: new Date().toISOString()
   };
@@ -78,6 +235,8 @@ function publishRuntimeStats(memory, lagMs = 0) {
   globalThis.__questRoomRuntimeStats = collectRuntimeStats(memory, lagMs);
   return globalThis.__questRoomRuntimeStats;
 }
+
+globalThis.__questRoomCollectRuntimeStats = collectRuntimeStats;
 
 // ─── NPC Cycle Timer (per-socket personal timers) ───────────────────
 const CYCLE_MS = 30 * 60 * 1000;
@@ -763,6 +922,11 @@ function publicPlayerPresence(player) {
 app.prepare().then(() => {
   const httpServer = createServer((req, res) => {
     const pathname = new URL(req.url || "/", "http://localhost").pathname;
+    const apiRequestId = recordApiRequestStart(req);
+    if (apiRequestId) {
+      res.once("finish", () => recordApiRequestEnd(apiRequestId, res));
+      res.once("close", () => recordApiRequestEnd(apiRequestId, res));
+    }
     if (pathname.startsWith("/npc-quests/")) {
       void handleR2MediaRequest(req, res);
       return;

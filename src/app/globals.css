@@ -4323,6 +4323,7 @@ button {
 .ops-runtime,
 .ops-thresholds,
 .ops-endpoint-card,
+.ops-api-card,
 .ops-table-card {
   padding: 18px;
 }
@@ -4495,6 +4496,40 @@ button {
   margin-top: 14px;
 }
 
+.ops-api-card {
+  margin-top: 14px;
+}
+
+.ops-api-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.ops-api-summary div {
+  min-height: 76px;
+  padding: 12px;
+  border: 1px solid rgba(24, 32, 43, 0.09);
+  border-radius: 8px;
+  background: #f8faf8;
+}
+
+.ops-api-summary span {
+  display: block;
+  color: #64727e;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ops-api-summary strong {
+  display: block;
+  margin-top: 8px;
+  color: #18202b;
+  font-size: 24px;
+  font-weight: 950;
+}
+
 .ops-table-wrap {
   overflow-x: auto;
 }
@@ -4505,25 +4540,101 @@ button {
   border-collapse: collapse;
 }
 
+.ops-api-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+}
+
 .ops-table-card th,
-.ops-table-card td {
+.ops-table-card td,
+.ops-api-table th,
+.ops-api-table td {
   padding: 12px 10px;
   border-bottom: 1px solid rgba(24, 32, 43, 0.08);
   text-align: left;
   white-space: nowrap;
 }
 
-.ops-table-card th {
+.ops-table-card th,
+.ops-api-table th {
   color: #64727e;
   font-size: 12px;
   font-weight: 950;
   text-transform: uppercase;
 }
 
-.ops-table-card td {
+.ops-table-card td,
+.ops-api-table td {
   color: #27323d;
   font-size: 13px;
   font-weight: 750;
+}
+
+.ops-api-table code {
+  color: #1f242b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ops-active-requests {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(24, 32, 43, 0.08);
+}
+
+.ops-active-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ops-active-item {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 100px;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid rgba(24, 32, 43, 0.09);
+  border-left: 5px solid #35b6a4;
+  border-radius: 8px;
+  background: #f8faf8;
+}
+
+.ops-active-item.ops-status-warning {
+  border-left-color: #ffbd3f;
+}
+
+.ops-active-item.ops-status-critical {
+  border-left-color: #c83349;
+}
+
+.ops-active-item span {
+  color: #64727e;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.ops-active-item code {
+  overflow-wrap: anywhere;
+  color: #18202b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ops-active-item strong {
+  justify-self: end;
+  color: #18202b;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.ops-empty-note {
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8faf8;
+  color: #64727e;
+  font-size: 13px;
+  font-weight: 850;
 }
 
 .ops-error,
@@ -4557,7 +4668,8 @@ button {
   }
 
   .ops-metrics-grid,
-  .ops-content-grid {
+  .ops-content-grid,
+  .ops-api-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -4583,8 +4695,17 @@ button {
 
   .ops-metrics-grid,
   .ops-content-grid,
-  .ops-runtime-grid {
+  .ops-runtime-grid,
+  .ops-api-summary {
     grid-template-columns: 1fr;
+  }
+
+  .ops-active-item {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-active-item strong {
+    justify-self: start;
   }
 
   .ops-metric {

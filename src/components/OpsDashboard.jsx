@@ -12,7 +12,9 @@ import {
   HardDrive,
   MemoryStick,
   RefreshCw,
+  Route,
   Server,
+  Timer,
   Wifi
 } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
@@ -60,6 +62,24 @@ function statusForHealth(health) {
   const rss = Number(memory.rssMb) || 0;
   if (!health?.ok || heap >= THRESHOLDS.heapCritMb || rss >= THRESHOLDS.rssCritMb) return "critical";
   if (heap >= THRESHOLDS.heapWarnMb || rss >= THRESHOLDS.rssWarnMb) return "warning";
+  return "ok";
+}
+
+function statusForApiRoute(route, thresholds = {}) {
+  const stuckMs = Number(thresholds.stuckRequestMs) || 15_000;
+  const slowMs = Number(thresholds.slowRequestMs) || 1_500;
+  const isHealthSelfRequest = route?.path === "/api/health";
+  if (!isHealthSelfRequest && route?.inflight > 0 && route?.maxMs >= stuckMs) return "critical";
+  if (route?.status5xx > 0 || route?.p95Ms >= stuckMs || route?.maxHeapDeltaMb >= 80) return "critical";
+  if ((!isHealthSelfRequest && route?.inflight > 0) || route?.slowCount > 0 || route?.p95Ms >= slowMs || route?.status4xx > 0 || route?.maxHeapDeltaMb >= 20) {
+    return "warning";
+  }
+  return "ok";
+}
+
+function statusForActiveRequest(request) {
+  if (request?.stuck) return "critical";
+  if ((Number(request?.ageMs) || 0) >= 5_000) return "warning";
   return "ok";
 }
 
@@ -185,6 +205,116 @@ function RuntimePanel({ runtime }) {
             <strong>{value ?? "-"}</strong>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function ApiRoutesPanel({ api }) {
+  const routes = Array.isArray(api?.routes) ? api.routes : [];
+  const active = Array.isArray(api?.active)
+    ? api.active.filter((request) => request.path !== "/api/health" || request.stuck)
+    : [];
+  const slowMs = Number(api?.slowRequestMs) || 1500;
+  const stuckMs = Number(api?.stuckRequestMs) || 15000;
+
+  return (
+    <section className="ops-card ops-api-card">
+      <div className="ops-section-heading">
+        <div>
+          <h2>API Pressure</h2>
+          <p>Count, latency, in-flight requests, and rough heap delta by route</p>
+        </div>
+        <Route size={22} />
+      </div>
+
+      <div className="ops-api-summary">
+        <div>
+          <span>Tracked Routes</span>
+          <strong>{api?.trackedRoutes ?? routes.length}</strong>
+        </div>
+        <div>
+          <span>In Flight</span>
+          <strong>{api?.activeCount ?? active.length}</strong>
+        </div>
+        <div>
+          <span>Slow</span>
+          <strong>&gt; {formatNumber(slowMs)}ms</strong>
+        </div>
+        <div>
+          <span>Stuck</span>
+          <strong>&gt; {formatNumber(stuckMs)}ms</strong>
+        </div>
+      </div>
+
+      <div className="ops-table-wrap">
+        <table className="ops-api-table">
+          <thead>
+            <tr>
+              <th>Route</th>
+              <th>Status</th>
+              <th>Count</th>
+              <th>In Flight</th>
+              <th>Avg</th>
+              <th>P95</th>
+              <th>Max</th>
+              <th>Slow</th>
+              <th>5xx</th>
+              <th>Max Heap Delta</th>
+              <th>Last</th>
+            </tr>
+          </thead>
+          <tbody>
+            {routes.length ? routes.map((route) => {
+              const status = statusForApiRoute(route, api);
+              return (
+                <tr key={route.path}>
+                  <td><code>{route.path}</code></td>
+                  <td><span className={`ops-status-pill ops-status-${status}`}>{statusLabel(status)}</span></td>
+                  <td>{formatNumber(route.count)}</td>
+                  <td>{formatNumber(route.inflight)}</td>
+                  <td>{formatNumber(route.avgMs)}ms</td>
+                  <td>{formatNumber(route.p95Ms)}ms</td>
+                  <td>{formatNumber(route.maxMs)}ms</td>
+                  <td>{formatNumber(route.slowCount)}</td>
+                  <td>{formatNumber(route.status5xx)}</td>
+                  <td>{formatNumber(route.maxHeapDeltaMb)} MB</td>
+                  <td>{route.lastAt ? timeLabel(route.lastAt) : "-"}</td>
+                </tr>
+              );
+            }) : (
+              <tr>
+                <td colSpan={11}>No API requests observed yet</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="ops-active-requests">
+        <div className="ops-section-heading">
+          <div>
+            <h2>Active Requests</h2>
+            <p>Useful for spotting requests that are currently hanging</p>
+          </div>
+          <Timer size={20} />
+        </div>
+        {active.length ? (
+          <div className="ops-active-list">
+            {active.map((request) => {
+              const status = statusForActiveRequest(request);
+              return (
+                <div className={`ops-active-item ops-status-${status}`} key={request.id}>
+                  <span>{request.method}</span>
+                  <code>{request.path}</code>
+                  <strong>{formatNumber(request.ageMs)}ms</strong>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="ops-empty-note">No active API requests right now</p>
+        )}
       </div>
     </section>
   );
@@ -336,6 +466,7 @@ export default function OpsDashboard() {
           <a href="#overview">Overview</a>
           <a href="#memory">Memory</a>
           <a href="#runtime">Runtime</a>
+          <a href="#api">API</a>
           <a href="#samples">Samples</a>
         </nav>
         <div className="ops-sidebar-foot">
@@ -427,6 +558,10 @@ export default function OpsDashboard() {
                 </section>
               </div>
             </section>
+
+            <div id="api">
+              <ApiRoutesPanel api={latest.runtime?.api} />
+            </div>
 
             <div id="samples">
               <RecentSamples samples={samples} />
