@@ -57,8 +57,10 @@ const HEAP_GUARD_WARN_MB = Math.max(256, Number(process.env.HEAP_GUARD_WARN_MB |
 const HEAP_GUARD_CRIT_MB = Math.max(HEAP_GUARD_WARN_MB + 64, Number(process.env.HEAP_GUARD_CRIT_MB || Math.floor(NODE_MAX_OLD_SPACE_MB * 0.88)));
 const HEAP_GUARD_LOG_INTERVAL_MS = Math.max(1_000, Number(process.env.HEAP_GUARD_LOG_INTERVAL_MS || 5_000));
 const ENTRY_QUEUE_ENFORCE_SOCKET = process.env.ENTRY_QUEUE_ENFORCE_SOCKET === "true";
+const LOAD_TEST_PLAYER_PREFIXES = ["loadtest-", "queue-loadtest-", "queue_loadtest-"];
 let lastMetricsCheckAt = Date.now();
 let lastHeapGuardLogAt = 0;
+let lastRuntimePressureReliefAt = 0;
 const apiRouteStats = new Map();
 const activeApiRequests = new Map();
 let nextApiRequestId = 1;
@@ -148,12 +150,20 @@ function sendOverloadedResponse(req, res, pathname) {
 function shouldShedSocketConnection() {
   if (!HEAP_GUARD_ENABLED) return false;
   const snapshot = heapGuardSnapshot();
-  if (!snapshot.critical) {
+  if (!snapshot.warning && !snapshot.critical) {
+    return false;
+  }
+  if (snapshot.warning && !snapshot.critical) {
     if (snapshot.warning) logHeapGuard(snapshot, "warning-socket");
     return false;
   }
   logHeapGuard(snapshot, "shed-socket");
   return true;
+}
+
+function isLoadTestPlayerId(playerId = "") {
+  const value = String(playerId || "");
+  return LOAD_TEST_PLAYER_PREFIXES.some((prefix) => value.startsWith(prefix));
 }
 
 function apiRouteStat(pathname) {
@@ -536,6 +546,9 @@ function startServerMetricsLogger() {
     const lagMs = Math.max(0, now - lastMetricsCheckAt - SERVER_METRICS_INTERVAL_MS);
     lastMetricsCheckAt = now;
     const runtimeStats = publishRuntimeStats(memory, lagMs);
+    if (heapUsedMb >= HEAP_GUARD_WARN_MB) {
+      globalThis.__questRoomRuntimePressureRelief?.(heapGuardSnapshot(memory));
+    }
 
     if (rssMb < SERVER_METRICS_RSS_WARN_MB && heapUsedMb < HEAP_GUARD_WARN_MB && lagMs < 1000) return;
     console.warn("[server-metrics]", JSON.stringify(runtimeStats));
@@ -1055,6 +1068,35 @@ app.prepare().then(() => {
     transports: SOCKET_TRANSPORTS
   });
   globalThis.__questRoomIo = io;
+  globalThis.__questRoomRuntimePressureRelief = (snapshot = heapGuardSnapshot()) => {
+    const now = Date.now();
+    if (now - lastRuntimePressureReliefAt < 3_000) return;
+    lastRuntimePressureReliefAt = now;
+
+    for (const timerId of roomPatchTimers.values()) clearTimeout(timerId);
+    roomPatchTimers.clear();
+    roomPatchBuffers.clear();
+    npcCycleRestoreCache.clear();
+
+    let disconnectedLoadTests = 0;
+    if (snapshot.warning || snapshot.critical) {
+      for (const socket of io.sockets.sockets.values()) {
+        if (!socket.data?.loadTest) continue;
+        socket.disconnect(true);
+        disconnectedLoadTests += 1;
+      }
+    }
+
+    console.warn("[runtime-pressure-relief]", JSON.stringify({
+      heapUsedMb: snapshot.heapUsedMb,
+      warning: snapshot.warning,
+      critical: snapshot.critical,
+      disconnectedLoadTests,
+      sockets: io.sockets.sockets.size,
+      rooms: rooms.size,
+      roomPlayers: Array.from(rooms.values()).reduce((sum, room) => sum + room.size, 0)
+    }));
+  };
   io.use((socket, next) => {
     if (shouldShedSocketConnection()) {
       next(new Error("server_busy"));
@@ -1332,6 +1374,7 @@ app.prepare().then(() => {
       }
       const player = compactPlayer(payload);
       if (!player.id) return;
+      socket.data.loadTest = socket.data.loadTest || isLoadTestPlayerId(player.id);
       clearCycleRestoreTimer(socket.id);
 
       // Track socket → player mapping
@@ -1384,7 +1427,7 @@ app.prepare().then(() => {
       const nextPublicPlayer = publicPlayer(room.get(activePlayerId));
       socket.emit("room:state", selectPublicRoomPlayers(room, activePlayerId));
       queueRoomPatch(io, activeStage, nextPublicPlayer, { volatile: false });
-      if (activeStage.startsWith("tutorial-room-")) {
+      if (activeStage.startsWith("tutorial-room-") || socket.data.loadTest) {
         clearPersonalTimer(socket.id);
         socketFrozenMs.delete(socket.id);
         return;
