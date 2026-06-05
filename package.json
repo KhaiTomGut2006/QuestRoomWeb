@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "NODE_ENV=production node server.js",
     "check": "next build",
+    "monitor:health": "node scripts/monitor-health.mjs",
     "repair:r2-evidence": "node scripts/repair_r2_evidence_paths.js"
   },
   "dependencies": {
