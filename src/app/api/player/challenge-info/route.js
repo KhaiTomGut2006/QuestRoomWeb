@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 import Level from "@/models/Level";
 
@@ -25,11 +23,6 @@ function normalizeChallengeInfo(level) {
 }
 
 export async function GET(request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.discordId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
   const stage = String(request.nextUrl.searchParams.get("stage") || "").trim();
   if (!stage) {
     return NextResponse.json({ error: "stage_required" }, { status: 400 });

@@ -2021,7 +2021,7 @@ export default function GameShell() {
       });
     }
     setChallengeInfoView("details");
-    if (!actualStage || !isAuthed) return;
+    if (!actualStage) return;
 
     fetch(withBasePath(`/api/player/challenge-info?stage=${encodeURIComponent(actualStage)}`), {
       cache: "no-store"
@@ -2035,7 +2035,7 @@ export default function GameShell() {
         }));
       })
       .catch(() => {});
-  }, [actualStage, isAuthed, rewardStageKey]);
+  }, [actualStage, rewardStageKey]);
 
   const visiblePlayers = useMemo(() => {
     if (!activeViewedStage) return [];
