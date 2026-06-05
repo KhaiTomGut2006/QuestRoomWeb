@@ -873,6 +873,9 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   const npcSwapTimerRef = useRef(null);
   const memberRefreshInFlightRef = useRef(false);
   const socialStatusInFlightRef = useRef(false);
+  const initialRoomSnapshotStageRef = useRef(initialData?.member?.stage && Array.isArray(initialData?.players)
+    ? initialData.member.stage
+    : "");
   const latestPositionRef = useRef(null);
   const lastPersistedPositionRef = useRef(null);
   const persistedPositionOwnerRef = useRef("");
@@ -1437,6 +1440,10 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     if (!isAuthed || !activeViewedStage) return;
     const controller = new AbortController();
     const stage = activeViewedStage;
+    if (!isViewingOtherRoom && initialRoomSnapshotStageRef.current === stage) {
+      initialRoomSnapshotStageRef.current = "";
+      return undefined;
+    }
 
     const loadRoomSnapshot = () => {
       fetch(withBasePath(`/api/player/room?stage=${encodeURIComponent(stage)}`), {

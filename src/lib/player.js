@@ -119,6 +119,7 @@ const SOCIAL_POST_FEED_LIMIT = Math.max(1, Number(process.env.SOCIAL_POST_FEED_L
 const SOCIAL_POST_FEED_MAX_LIMIT = Math.max(SOCIAL_POST_FEED_LIMIT, Number(process.env.SOCIAL_POST_FEED_MAX_LIMIT || 30));
 const FRIENDS_PAGE_LIMIT = Math.max(1, Number(process.env.FRIENDS_PAGE_LIMIT || 10));
 const FRIENDS_PAGE_MAX_LIMIT = Math.max(FRIENDS_PAGE_LIMIT, Number(process.env.FRIENDS_PAGE_MAX_LIMIT || 50));
+const MEMBER_READ_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.MEMBER_READ_QUERY_MAX_TIME_MS || 3_000));
 const cachedStageRankings = new Map();
 const pendingStageRankings = new Map();
 const roomPlayersCache = new Map();
@@ -1136,6 +1137,8 @@ export async function getMemberByDiscordId(discordId, options = {}) {
   await connectDb();
   await ensureLevels();
   const includeSubmissions = options.includeSubmissions !== false;
+  const lean = Boolean(options.lean);
+  const reconcile = options.reconcile !== false && !lean;
   const selectFields = options.selectFields || (includeSubmissions
     ? null
     : MEMBER_INTERACTION_SELECT);
@@ -1144,21 +1147,23 @@ export async function getMemberByDiscordId(discordId, options = {}) {
   let member = null;
   // If it's a 24-character hex string, search by _id first
   if (/^[0-9a-fA-F]{24}$/.test(discordId)) {
-    const query = Member.findById(discordId);
+    const query = Member.findById(discordId).maxTimeMS(MEMBER_READ_QUERY_MAX_TIME_MS);
     if (selectFields) query.select(selectFields);
     if (submissionLimit) query.slice("npcQuestSubmissions", -submissionLimit);
+    if (lean) query.lean();
     member = await query;
   }
 
   if (!member) {
-    const query = Member.findOne({ discord_id: String(discordId || "") });
+    const query = Member.findOne({ discord_id: String(discordId || "") }).maxTimeMS(MEMBER_READ_QUERY_MAX_TIME_MS);
     if (selectFields) query.select(selectFields);
     if (submissionLimit) query.slice("npcQuestSubmissions", -submissionLimit);
+    if (lean) query.lean();
     member = await query;
   }
 
   if (!member) return null;
-  const reconciled = await reconcileChallengeSublevel(member);
+  const reconciled = reconcile ? await reconcileChallengeSublevel(member) : member;
   return includeSubmissions
     ? normalizeMember(reconciled, { submissionLimit })
     : normalizeMemberInteraction(reconciled);

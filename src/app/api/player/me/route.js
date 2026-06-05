@@ -12,7 +12,11 @@ export async function GET() {
   }
 
   try {
-    const member = await getMemberByDiscordId(discordId, { includeSubmissions: false });
+    const member = await getMemberByDiscordId(discordId, {
+      includeSubmissions: false,
+      lean: true,
+      reconcile: false
+    });
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     return NextResponse.json({ member });
   } catch (error) {

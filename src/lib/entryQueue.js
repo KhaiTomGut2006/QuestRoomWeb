@@ -15,8 +15,8 @@ function queueConfig() {
   return {
     enabled: process.env.ENTRY_QUEUE_ENABLED !== "false",
     maxQueue: Math.max(20, Number(process.env.ENTRY_QUEUE_MAX_WAITING || DEFAULT_MAX_QUEUE)),
-    maxActiveLoaders: Math.max(1, Number(process.env.ENTRY_QUEUE_MAX_ACTIVE_LOADERS || 12)),
-    admitPerTick: Math.max(1, Number(process.env.ENTRY_QUEUE_ADMIT_PER_TICK || 3)),
+    maxActiveLoaders: Math.max(1, Number(process.env.ENTRY_QUEUE_MAX_ACTIVE_LOADERS || 4)),
+    admitPerTick: Math.max(1, Number(process.env.ENTRY_QUEUE_ADMIT_PER_TICK || 1)),
     clientTtlMs: Math.max(10_000, Number(process.env.ENTRY_QUEUE_CLIENT_TTL_MS || DEFAULT_CLIENT_TTL_MS)),
     activeTtlMs: Math.max(10_000, Number(process.env.ENTRY_QUEUE_ACTIVE_TTL_MS || DEFAULT_ACTIVE_TTL_MS)),
     retryMs: Math.max(1_000, Number(process.env.ENTRY_QUEUE_RETRY_MS || 2_000))
@@ -90,7 +90,7 @@ function entryQueueStats() {
     active: state.active.size,
     maxActiveLoaders: config.maxActiveLoaders,
     admitPerTick: config.admitPerTick,
-    paused: Boolean(guard?.critical),
+    paused: Boolean(guard?.warning || guard?.critical),
     heapGuard: guard,
     lastAdmittedAt: state.lastAdmittedAt ? new Date(state.lastAdmittedAt).toISOString() : null
   };
@@ -100,10 +100,10 @@ function advanceQueue(config = queueConfig()) {
   cleanupQueue(config);
   if (!config.enabled) return;
   const guard = heapGuardStatus();
-  if (guard?.critical) return;
+  if (guard?.warning || guard?.critical) return;
 
   const activeCapacity = Math.max(0, config.maxActiveLoaders - state.active.size);
-  const heapAwareAdmitLimit = guard?.warning ? 1 : config.admitPerTick;
+  const heapAwareAdmitLimit = config.admitPerTick;
   const admitCount = Math.min(activeCapacity, heapAwareAdmitLimit, state.waiting.size);
   if (admitCount <= 0) return;
 
@@ -197,7 +197,7 @@ function joinEntryQueue(clientId, metadata = {}) {
   const guard = heapGuardStatus();
   return {
     ok: true,
-    status: guard?.critical ? "paused" : "waiting",
+    status: guard?.warning || guard?.critical ? "paused" : "waiting",
     position: queuePosition(normalizedClientId),
     waiting: state.waiting.size,
     active: state.active.size,
