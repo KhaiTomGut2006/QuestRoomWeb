@@ -29,12 +29,21 @@ const CORS = {
 
 let r2Client = null;
 
-function isAuthorized(request) {
+function getAuthStatus(request) {
   const expectedToken = process.env.GAME_API_TOKEN || process.env.ADMIN_API_TOKEN || "";
-  if (!expectedToken) return process.env.NODE_ENV !== "production";
+  if (!expectedToken) {
+    return {
+      ok: process.env.NODE_ENV !== "production",
+      error: "server_game_api_token_not_configured"
+    };
+  }
   const bearer = request.headers.get("authorization") || "";
   const headerToken = request.headers.get("x-game-api-token") || "";
-  return bearer === `Bearer ${expectedToken}` || headerToken === expectedToken;
+  const hasSubmittedToken = Boolean(bearer || headerToken);
+  return {
+    ok: bearer === `Bearer ${expectedToken}` || headerToken === expectedToken,
+    error: hasSubmittedToken ? "invalid_game_api_token" : "missing_game_api_token"
+  };
 }
 
 function isR2Configured() {
@@ -172,9 +181,10 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  if (!isAuthorized(request)) {
+  const authStatus = getAuthStatus(request);
+  if (!authStatus.ok) {
     return NextResponse.json(
-      { success: false, error: "missing_or_invalid_game_api_token" },
+      { success: false, error: authStatus.error },
       { status: 401, headers: CORS }
     );
   }
