@@ -25,7 +25,13 @@ function publicChallengeVideoUrl(info) {
 
   try {
     const parsed = new URL(url);
-    if (parsed.hostname.endsWith(".r2.dev") && parsed.pathname.startsWith("/challenge-videos/")) {
+    if (
+      parsed.hostname.endsWith(".r2.dev")
+      && (
+        parsed.pathname.startsWith("/challenge-videos/")
+        || parsed.pathname.startsWith("/npc-quests/challenge-videos/")
+      )
+    ) {
       return `${publicBase}${parsed.pathname}`;
     }
   } catch {

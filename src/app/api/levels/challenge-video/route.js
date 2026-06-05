@@ -82,7 +82,7 @@ function buildR2Key(stageId, fileName) {
   const safeStage = safeSegment(stageId, "stage");
   const stamp = new Date().toISOString().slice(0, 10);
   const nonce = crypto.randomBytes(6).toString("hex");
-  return `challenge-videos/${safeStage}/${stamp}/${base}-${nonce}${ext}`;
+  return `npc-quests/challenge-videos/${safeStage}/${stamp}/${base}-${nonce}${ext}`;
 }
 
 function r2PublicUrl(key) {
