@@ -5446,11 +5446,12 @@ button {
 .challenge-info-description {
   width: min(860px, 100%);
   margin: clamp(14px, 2dvh, 24px) 0 clamp(18px, 3dvh, 34px);
+  padding-right: clamp(80px, 9vw, 130px);
   white-space: pre-line;
-  color: #a75307;
-  font-size: clamp(18px, 1.8vw, 27px);
-  font-weight: 650;
-  line-height: 1.42;
+  color: #6b3200;
+  font-size: clamp(20px, 2vw, 30px);
+  font-weight: 800;
+  line-height: 1.55;
 }
 
 .challenge-info-media {
@@ -5529,8 +5530,8 @@ button {
 
 .challenge-info-rewards-button {
   position: absolute;
-  right: clamp(28px, 4.4vw, 58px);
-  bottom: clamp(22px, 3.6dvh, 42px);
+  right: clamp(16px, 4vw, 52px);
+  top: calc(clamp(14px, 3.5dvh, 40px) + clamp(48px, 5vw, 64px) + 10px);
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -5568,7 +5569,7 @@ button {
 
   .challenge-info-rewards-button {
     right: 34px;
-    bottom: 24px;
+    top: calc(30px + 46px + 10px);
   }
 
   .challenge-info-rewards-button svg,
