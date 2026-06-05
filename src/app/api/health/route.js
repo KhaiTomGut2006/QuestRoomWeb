@@ -23,6 +23,7 @@ export async function GET() {
       readyState: mongoose.connection.readyState,
       status: readyStateLabels[mongoose.connection.readyState] || "unknown"
     },
+    runtime: globalThis.__questRoomRuntimeStats || null,
     checkedAt: new Date().toISOString()
   });
 }

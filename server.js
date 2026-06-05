@@ -49,6 +49,36 @@ const SERVER_METRICS_INTERVAL_MS = Math.max(10_000, Number(process.env.SERVER_ME
 const SERVER_METRICS_RSS_WARN_MB = Math.max(256, Number(process.env.SERVER_METRICS_RSS_WARN_MB || 1536));
 let lastMetricsCheckAt = Date.now();
 
+function collectRuntimeStats(memory = process.memoryUsage(), lagMs = 0) {
+  const roomPlayerCount = Array.from(rooms.values()).reduce((sum, room) => sum + room.size, 0);
+  return {
+    rssMb: Math.round(memory.rss / 1024 / 1024),
+    heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024),
+    externalMb: Math.round(memory.external / 1024 / 1024),
+    lagMs,
+    rooms: rooms.size,
+    roomPlayers: roomPlayerCount,
+    socketPersonalTimers: socketPersonalTimer.size,
+    socketCycleRestoreTimers: socketCycleRestoreTimers.size,
+    socketFrozen: socketFrozenMs.size,
+    activeNpcVisits: activeNpcVisits.size,
+    socketToPlayer: socketToPlayer.size,
+    playerStages: playerStages.size,
+    playerNpcQuest: playerNpcQuest.size,
+    roomPatchBuffers: roomPatchBuffers.size,
+    roomPatchTimers: roomPatchTimers.size,
+    levelConfigCache: levelConfigCache.size,
+    npcCycleRestoreCache: npcCycleRestoreCache.size,
+    uptimeSec: Math.round(process.uptime()),
+    checkedAt: new Date().toISOString()
+  };
+}
+
+function publishRuntimeStats(memory, lagMs = 0) {
+  globalThis.__questRoomRuntimeStats = collectRuntimeStats(memory, lagMs);
+  return globalThis.__questRoomRuntimeStats;
+}
+
 // ─── NPC Cycle Timer (per-socket personal timers) ───────────────────
 const CYCLE_MS = 30 * 60 * 1000;
 
@@ -235,32 +265,14 @@ function startServerMetricsLogger() {
     const heapUsedMb = Math.round(memory.heapUsed / 1024 / 1024);
     const lagMs = Math.max(0, now - lastMetricsCheckAt - SERVER_METRICS_INTERVAL_MS);
     lastMetricsCheckAt = now;
+    const runtimeStats = publishRuntimeStats(memory, lagMs);
 
     if (rssMb < SERVER_METRICS_RSS_WARN_MB && lagMs < 1000) return;
-    const roomPlayerCount = Array.from(rooms.values()).reduce((sum, room) => sum + room.size, 0);
-    console.warn("[server-metrics]", JSON.stringify({
-      rssMb,
-      heapUsedMb,
-      externalMb: Math.round(memory.external / 1024 / 1024),
-      lagMs,
-      rooms: rooms.size,
-      roomPlayers: roomPlayerCount,
-      socketPersonalTimers: socketPersonalTimer.size,
-      socketCycleRestoreTimers: socketCycleRestoreTimers.size,
-      socketFrozen: socketFrozenMs.size,
-      activeNpcVisits: activeNpcVisits.size,
-      socketToPlayer: socketToPlayer.size,
-      playerStages: playerStages.size,
-      playerNpcQuest: playerNpcQuest.size,
-      roomPatchBuffers: roomPatchBuffers.size,
-      roomPatchTimers: roomPatchTimers.size,
-      levelConfigCache: levelConfigCache.size,
-      npcCycleRestoreCache: npcCycleRestoreCache.size,
-      uptimeSec: Math.round(process.uptime())
-    }));
+    console.warn("[server-metrics]", JSON.stringify(runtimeStats));
   }, SERVER_METRICS_INTERVAL_MS).unref?.();
 }
 
+publishRuntimeStats();
 startServerMetricsLogger();
 
 function isR2ReadConfigured() {
