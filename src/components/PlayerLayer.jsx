@@ -111,11 +111,6 @@ const PlayerToken = memo(function PlayerToken({ player, selfId, reactions, onOpe
         onPointerUp={clearLongPress}
         onPointerCancel={clearLongPress}
       >
-        {player.challengeFailureCount > 0 && (
-          <span className="player-challenge-failures" aria-label={`${player.challengeFailureCount} failed challenges`}>
-            💀{player.challengeFailureCount}
-          </span>
-        )}
         <div className="player-avatar">
           {accessoryImagePath && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -160,7 +155,6 @@ const PlayerToken = memo(function PlayerToken({ player, selfId, reactions, onOpe
     prevPlayer.name !== nextPlayer.name ||
     prevPlayer.avatar !== nextPlayer.avatar ||
     prevPlayer.equippedAccessory !== nextPlayer.equippedAccessory ||
-    prevPlayer.challengeFailureCount !== nextPlayer.challengeFailureCount ||
     prevPlayer.online !== nextPlayer.online ||
     prevPlayer.x !== nextPlayer.x ||
     prevPlayer.y !== nextPlayer.y ||
