@@ -98,6 +98,7 @@ const GLOBAL_POSTS_CACHE_MAX_KEYS = Math.max(20, Number(process.env.GLOBAL_POSTS
 const ACTIVE_CLASSES_CACHE_TTL_MS = Math.max(30_000, Number(process.env.ACTIVE_CLASSES_CACHE_TTL_MS || 60_000));
 const RANKING_CACHE_TTL_MS = Math.max(10_000, Number(process.env.RANKING_CACHE_TTL_MS || 60_000));
 const RANKING_LIMIT = Math.max(10, Number(process.env.RANKING_LIMIT || 100));
+const RANKING_CACHE_MAX_KEYS = Math.max(10, Number(process.env.RANKING_CACHE_MAX_KEYS || 50));
 const FRIENDS_CACHE_TTL_MS = Math.max(10_000, Number(process.env.FRIENDS_CACHE_TTL_MS || 60_000));
 const FRIENDS_STALE_CACHE_TTL_MS = Math.max(
   FRIENDS_CACHE_TTL_MS,
@@ -116,6 +117,7 @@ const SOCIAL_POST_BACKFILL_SUBMISSIONS_PER_MEMBER = Math.max(
 const SOCIAL_POST_BACKFILL_MAX_OPERATIONS = Math.max(50, Number(process.env.SOCIAL_POST_BACKFILL_MAX_OPERATIONS || 500));
 const SOCIAL_POST_BACKFILL_INTERVAL_MS = Math.max(30_000, Number(process.env.SOCIAL_POST_BACKFILL_INTERVAL_MS || 300_000));
 const SOCIAL_POST_FEED_LIMIT = Math.max(1, Number(process.env.SOCIAL_POST_FEED_LIMIT || 10));
+const MAX_NPC_QUEST_SUBMISSIONS = Math.max(10, Number(process.env.MAX_NPC_QUEST_SUBMISSIONS || 50));
 const SOCIAL_POST_FEED_MAX_LIMIT = Math.max(SOCIAL_POST_FEED_LIMIT, Number(process.env.SOCIAL_POST_FEED_MAX_LIMIT || 30));
 const FRIENDS_PAGE_LIMIT = Math.max(1, Number(process.env.FRIENDS_PAGE_LIMIT || 10));
 const FRIENDS_PAGE_MAX_LIMIT = Math.max(FRIENDS_PAGE_LIMIT, Number(process.env.FRIENDS_PAGE_MAX_LIMIT || 50));
@@ -227,6 +229,10 @@ function pruneRoomPlayersCache(now = Date.now()) {
     .slice(0, overflow)
     .map(([stage]) => stage);
   for (const stage of oldestStages) roomPlayersCache.delete(stage);
+
+  for (const key of roomPlayersCacheVersions.keys()) {
+    if (!roomPlayersCache.has(key)) roomPlayersCacheVersions.delete(key);
+  }
 }
 
 function roomPlayerFromMember(member) {
@@ -340,6 +346,21 @@ function pruneClassFriendsCache(now = Date.now()) {
     .slice(0, overflow)
     .map(([key]) => key);
   for (const key of oldestKeys) cachedClassFriends.delete(key);
+}
+
+function pruneStageRankingsCache(now = Date.now()) {
+  for (const [key, cached] of cachedStageRankings) {
+    if (!cached || now - cached.loadedAt >= RANKING_CACHE_TTL_MS) {
+      cachedStageRankings.delete(key);
+    }
+  }
+  if (cachedStageRankings.size <= RANKING_CACHE_MAX_KEYS) return;
+  const overflow = cachedStageRankings.size - RANKING_CACHE_MAX_KEYS;
+  const oldestKeys = [...cachedStageRankings.entries()]
+    .sort(([, a], [, b]) => Number(a?.loadedAt || 0) - Number(b?.loadedAt || 0))
+    .slice(0, overflow)
+    .map(([key]) => key);
+  for (const key of oldestKeys) cachedStageRankings.delete(key);
 }
 
 async function ensureLevels({ force = false } = {}) {
@@ -1107,29 +1128,6 @@ export async function upsertMemberFromDiscord(profile) {
     { new: true, upsert: true }
   );
 
-  await Promise.all([
-    Member.updateOne(
-      { discord_id: discordId, stage: { $exists: false } },
-      { $set: { stage: initialStage } }
-    ),
-    Member.updateOne(
-      { discord_id: discordId, quest: { $exists: false } },
-      {
-        $set: {
-          quest: {
-            current: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสย) จัง",
-            status: "active",
-            completed: []
-          }
-        }
-      }
-    ),
-    Member.updateOne(
-      { discord_id: discordId, roomPosition: { $exists: false } },
-      { $set: { roomPosition: initialPosition } }
-    )
-  ]);
-
   return true;
 }
 
@@ -1370,6 +1368,10 @@ export async function submitChallenge(discordId, evidence, postText = "") {
   };
 
   if (!Array.isArray(member.npcQuestSubmissions)) member.npcQuestSubmissions = [];
+  if (member.npcQuestSubmissions.length >= MAX_NPC_QUEST_SUBMISSIONS) {
+    member.npcQuestSubmissions = member.npcQuestSubmissions.slice(-MAX_NPC_QUEST_SUBMISSIONS + 1);
+    member.markModified("npcQuestSubmissions");
+  }
   const existingIndex = member.npcQuestSubmissions.findIndex((item) => item.id === submissionId);
   if (existingIndex >= 0) {
     submission.likes = member.npcQuestSubmissions[existingIndex].likes || [];
@@ -1417,6 +1419,7 @@ export async function getAvailableLevels({ force = false } = {}) {
 export async function getStageRanking(stageId) {
   await connectDb();
   await ensureLevels();
+  pruneStageRankingsCache();
   
   const level = cachedLevels.find(l => l.stageId === stageId) || cachedLevels[0];
   if (!level) return [];
@@ -1445,6 +1448,7 @@ export async function getStageRanking(stageId) {
     })
       .select(MEMBER_RANKING_SELECT)
       .lean()
+      .limit(RANKING_LIMIT * 3)
       .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
 
     const gradeValues = {
@@ -1595,6 +1599,10 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
   const reward = Math.max(0, Number(member.npcQuest.reward) || 0);
   const submittedAt = new Date();
   if (!Array.isArray(member.npcQuestSubmissions)) member.npcQuestSubmissions = [];
+  if (member.npcQuestSubmissions.length >= MAX_NPC_QUEST_SUBMISSIONS) {
+    member.npcQuestSubmissions = member.npcQuestSubmissions.slice(-MAX_NPC_QUEST_SUBMISSIONS + 1);
+    member.markModified("npcQuestSubmissions");
+  }
   member.npcQuestSubmissions.push({
     id: `${String(discordId || "")}-${submittedAt.getTime()}`,
     title: member.npcQuest.title || "NPC Quest",

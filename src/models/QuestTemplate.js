@@ -9,5 +9,7 @@ const QuestTemplateSchema = new mongoose.Schema({
   npcCharacter: { type: String, default: null }, // optional: overrides visiting NPC image
 }, { timestamps: true, collection: "quest_templates" });
 
+QuestTemplateSchema.index({ difficulty: 1 });
+
 export default mongoose.models.QuestTemplate ||
   mongoose.model("QuestTemplate", QuestTemplateSchema);

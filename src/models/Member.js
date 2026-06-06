@@ -258,5 +258,7 @@ MemberSchema.index({ stage: 1, lastAuthentication: -1 });
 MemberSchema.index({ discord_id: 1, socialLastSeenAt: 1 });
 MemberSchema.index({ "npcQuestSubmissions.submittedAt": -1 });
 MemberSchema.index({ "questChallenge.approvedAt": -1 });
+MemberSchema.index({ "profileAchievements.label": 1 });
+MemberSchema.index({ courses: 1 });
 
 export default mongoose.models.Member || mongoose.model("Member", MemberSchema);

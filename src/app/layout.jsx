@@ -1,5 +1,4 @@
 import "./globals.css";
-import Providers from "@/components/Providers";
 
 const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 const basePath = rawBasePath ? `/${rawBasePath.replace(/^\/+|\/+$/g, "")}` : "";
@@ -16,7 +15,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        {children}
       </body>
     </html>
   );

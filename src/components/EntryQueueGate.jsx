@@ -1,9 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Clock3, LoaderCircle, ShieldCheck, Users } from "lucide-react";
 import { withBasePath } from "@/lib/basePath";
-import GameShell from "@/components/GameShell";
+import Providers from "@/components/Providers";
+
+const GameShell = dynamic(() => import("@/components/GameShell"), {
+  ssr: false,
+  loading: () => (
+    <main className="entry-queue-page">
+      <section className="entry-queue-panel" aria-live="polite">
+        <div className="entry-queue-brand">
+          <span>Quest Room</span>
+          <strong>กำลังเข้าเกม</strong>
+        </div>
+        <div className="entry-queue-orb">
+          <LoaderCircle size={56} />
+        </div>
+        <p>กำลังเปิดห้องเกม</p>
+        <div className="entry-queue-progress" aria-hidden="true">
+          <span style={{ width: "100%" }} />
+        </div>
+      </section>
+    </main>
+  )
+});
 
 const CLIENT_ID_KEY = "questroom:entry-client-id";
 const RELEASE_AFTER_MS = 24_000;
@@ -188,11 +210,13 @@ export default function EntryQueueGate() {
 
   if (gameMounted) {
     return (
-      <GameShell
-        entryAdmissionToken={admission?.token || ""}
-        entryQueueClientId={clientId}
-        initialData={initialData}
-      />
+      <Providers>
+        <GameShell
+          entryAdmissionToken={admission?.token || ""}
+          entryQueueClientId={clientId}
+          initialData={initialData}
+        />
+      </Providers>
     );
   }
 

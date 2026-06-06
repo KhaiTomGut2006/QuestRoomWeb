@@ -29,7 +29,7 @@ const socketPlayerCoins = new Map(); // socketId → last client-synced balance 
 const playerNpcQuest = new Map(); // playerId → bool (has active NPC quest)
 const MAX_ROOM_PLAYERS = Math.max(50, Number(process.env.MAX_ROOM_PLAYERS || 300));
 const ROOM_STATE_LIMIT = Math.max(50, Number(process.env.ROOM_STATE_LIMIT || 200));
-const ROOM_PATCH_INTERVAL_MS = 100;
+const ROOM_PATCH_INTERVAL_MS = 250;
 const SOCKET_TRANSPORTS = process.env.SOCKET_ALLOW_POLLING === "true"
   ? ["websocket", "polling"]
   : ["websocket"];
@@ -38,6 +38,8 @@ const NPC_CYCLE_RESTORE_ENABLED = process.env.NPC_CYCLE_RESTORE_ENABLED !== "fal
 const NPC_CYCLE_RESTORE_JITTER_MS = Math.max(0, Number(process.env.NPC_CYCLE_RESTORE_JITTER_MS || 30_000));
 const NPC_CYCLE_RESTORE_CACHE_TTL_MS = Math.max(1_000, Number(process.env.NPC_CYCLE_RESTORE_CACHE_TTL_MS || 15_000));
 const NPC_CYCLE_RESTORE_CACHE_MAX = Math.max(100, Number(process.env.NPC_CYCLE_RESTORE_CACHE_MAX || 1_000));
+const ACTIVE_NPC_VISITS_MAX = Math.max(100, Number(process.env.ACTIVE_NPC_VISITS_MAX || 2_000));
+const ACTIVE_NPC_VISITS_TTL_MS = Math.max(60_000, Number(process.env.ACTIVE_NPC_VISITS_TTL_MS || 300_000));
 const roomPatchBuffers = new Map();
 const roomPatchTimers = new Map();
 const levelConfigCache = new Map();
@@ -520,6 +522,7 @@ function rememberActiveNpcVisit(playerId, npc) {
   const playerKey = String(playerId || "");
   const visitId = String(npc?.visitId || "");
   if (!playerKey || !visitId) return;
+  pruneActiveNpcVisits();
   activeNpcVisits.set(playerKey, {
     visitId,
     npc: { ...npc },
@@ -718,6 +721,21 @@ function pruneNpcCycleRestoreCache(now = Date.now()) {
     .slice(0, overflow)
     .map(([key]) => key);
   for (const key of oldestKeys) npcCycleRestoreCache.delete(key);
+}
+
+function pruneActiveNpcVisits(now = Date.now()) {
+  for (const [playerId, visit] of activeNpcVisits) {
+    if (!visit || now - (visit.rememberedAt || 0) >= ACTIVE_NPC_VISITS_TTL_MS) {
+      activeNpcVisits.delete(playerId);
+    }
+  }
+  if (activeNpcVisits.size <= ACTIVE_NPC_VISITS_MAX) return;
+  const overflow = activeNpcVisits.size - ACTIVE_NPC_VISITS_MAX;
+  const oldestKeys = [...activeNpcVisits.entries()]
+    .sort(([, a], [, b]) => Number(a?.rememberedAt || 0) - Number(b?.rememberedAt || 0))
+    .slice(0, overflow)
+    .map(([key]) => key);
+  for (const key of oldestKeys) activeNpcVisits.delete(key);
 }
 
 async function getPersistedNpcCycle(playerId) {
@@ -1077,6 +1095,7 @@ app.prepare().then(() => {
     roomPatchTimers.clear();
     roomPatchBuffers.clear();
     npcCycleRestoreCache.clear();
+    pruneActiveNpcVisits();
 
     let disconnectedLoadTests = 0;
     if (snapshot.warning || snapshot.critical) {
@@ -1563,7 +1582,7 @@ app.prepare().then(() => {
       if (!activePlayerId) return;
       const postId = String(payload.id || "").slice(0, 160);
       if (!postId) return;
-      socket.broadcast.emit("social:notification", {
+      socket.to(activeStage).emit("social:notification", {
         id: postId,
         type: payload.type === "challenge" ? "challenge" : "npc-quest",
         title: String(payload.title || "NPC Quest").slice(0, 96),
