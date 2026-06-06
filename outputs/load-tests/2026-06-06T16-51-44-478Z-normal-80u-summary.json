@@ -1,0 +1,116 @@
+{
+  "event": "load_test_summary",
+  "config": {
+    "scenario": "normal",
+    "baseUrl": "http://127.0.0.1:3101",
+    "basePath": "/questroom",
+    "users": 80,
+    "durationMs": 60000,
+    "rampMs": 10000,
+    "stages": [
+      "game-demo-1",
+      "game-demo-2",
+      "game-demo-3"
+    ],
+    "uploadAbuse": false,
+    "queueTransport": "sse",
+    "auth": false
+  },
+  "health": {
+    "samples": 14,
+    "failures": 0,
+    "maxRssMb": 193,
+    "maxHeapUsedMb": 80,
+    "maxExternalMb": 22,
+    "maxLagMs": 0,
+    "maxSockets": 0,
+    "maxRoomPlayers": 0,
+    "maxCpuLoad1": 5.3173828125,
+    "maxApiActiveCount": 1,
+    "maxPendingNpcPoolLoads": 0,
+    "maxActiveNpcVisits": 0,
+    "last": {
+      "at": 65544,
+      "rssMb": 142,
+      "heapUsedMb": 56,
+      "externalMb": 22,
+      "lagMs": 0,
+      "sockets": 0,
+      "rooms": 0,
+      "roomPlayers": 0,
+      "dbStatus": "connected",
+      "dbPingMs": 38,
+      "cpuLoad1": 4.34033203125,
+      "apiActiveCount": 1,
+      "entryQueueWaiting": 76,
+      "entryQueueActive": 0,
+      "pendingNpcPoolLoads": 0,
+      "activeNpcVisits": 0
+    }
+  },
+  "socket": {
+    "connected": 80,
+    "connectError": 0,
+    "disconnected": 80,
+    "npcVisits": 0,
+    "roomStates": 0,
+    "patches": 0
+  },
+  "uploadAbuse": {
+    "attempts": 0,
+    "rejected": 0,
+    "unauthorized": 0,
+    "skipped": false,
+    "results": []
+  },
+  "api": {
+    "entry-queue-sse": {
+      "count": 80,
+      "ok": 80,
+      "fail": 0,
+      "avgMs": 3,
+      "p95Ms": 4,
+      "maxMs": 29
+    },
+    "config": {
+      "count": 80,
+      "ok": 80,
+      "fail": 0,
+      "avgMs": 2,
+      "p95Ms": 3,
+      "maxMs": 11
+    },
+    "levels": {
+      "count": 80,
+      "ok": 80,
+      "fail": 0,
+      "avgMs": 105,
+      "p95Ms": 874,
+      "maxMs": 1375
+    },
+    "room": {
+      "count": 80,
+      "ok": 0,
+      "fail": 80,
+      "avgMs": 3,
+      "p95Ms": 18,
+      "maxMs": 20
+    },
+    "quest-templates": {
+      "count": 81,
+      "ok": 81,
+      "fail": 0,
+      "avgMs": 3,
+      "p95Ms": 4,
+      "maxMs": 47
+    },
+    "hint-templates": {
+      "count": 62,
+      "ok": 62,
+      "fail": 0,
+      "avgMs": 3,
+      "p95Ms": 4,
+      "maxMs": 40
+    }
+  }
+}

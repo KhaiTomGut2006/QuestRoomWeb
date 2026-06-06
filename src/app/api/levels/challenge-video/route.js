@@ -4,9 +4,14 @@ import path from "node:path";
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { connectDb } from "@/lib/db";
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+const SERVER_UPLOAD_MAX_BYTES = Math.min(
+  MAX_UPLOAD_BYTES,
+  Math.max(1, Number(process.env.SERVER_UPLOAD_MAX_MB || 2)) * 1024 * 1024
+);
 const GRIDFS_MAX_UPLOAD_BYTES = Math.min(
   MAX_UPLOAD_BYTES,
   Math.max(1, Number(process.env.GRIDFS_MAX_UPLOAD_MB || 8)) * 1024 * 1024
@@ -90,6 +95,17 @@ function r2PublicUrl(key) {
   return `${base}/${encodeURI(key).replace(/%2F/g, "/")}`;
 }
 
+async function createR2PresignedUrl(stageId, mimeType, fileName) {
+  const key = buildR2Key(stageId, fileName);
+  const command = new PutObjectCommand({
+    Bucket: process.env.R2_BUCKET,
+    Key: key,
+    ContentType: mimeType || "application/octet-stream",
+  });
+  const uploadUrl = await getSignedUrl(getR2Client(), command, { expiresIn: 900 });
+  return { key, uploadUrl, publicUrl: r2PublicUrl(key) };
+}
+
 function getGridFsBucket() {
   return new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
     bucketName: "challengeVideos"
@@ -120,10 +136,10 @@ async function saveToGridFs(request, file, stageId) {
     }
   });
 
-  await new Promise(async (resolve, reject) => {
+  await new Promise((resolve, reject) => {
     uploadStream.on("finish", resolve);
     uploadStream.on("error", reject);
-    Readable.from(Buffer.from(await file.arrayBuffer())).pipe(uploadStream);
+    Readable.fromWeb(file.stream()).pipe(uploadStream);
   });
 
   const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
@@ -146,6 +162,48 @@ export async function OPTIONS() {
 }
 
 export async function GET(request) {
+  if (request.nextUrl.searchParams.get("config") === "1") {
+    const authStatus = getAuthStatus(request);
+    if (!authStatus.ok) {
+      return NextResponse.json(
+        { success: false, error: authStatus.error },
+        { status: 401, headers: CORS }
+      );
+    }
+    if (!isR2Configured()) {
+      return NextResponse.json(
+        { success: false, error: "direct_upload_required" },
+        { status: 503, headers: CORS }
+      );
+    }
+    const requestedSize = Number(request.nextUrl.searchParams.get("size") || 0);
+    if (requestedSize > MAX_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { success: false, error: "file_too_large", maximumSizeInBytes: MAX_UPLOAD_BYTES },
+        { status: 413, headers: CORS }
+      );
+    }
+    const mimeType = request.nextUrl.searchParams.get("type") || "application/octet-stream";
+    const fileName = request.nextUrl.searchParams.get("name") || "challenge-video";
+    const stageId = safeSegment(request.nextUrl.searchParams.get("stageId"), "stage");
+    if (!ALLOWED_VIDEO_TYPES.includes(mimeType)) {
+      return NextResponse.json({ success: false, error: "unsupported_file_type" }, { status: 400, headers: CORS });
+    }
+    const { key, uploadUrl, publicUrl } = await createR2PresignedUrl(stageId, mimeType, fileName);
+    return NextResponse.json({
+      success: true,
+      storage: "r2",
+      uploadUrl,
+      publicUrl,
+      key,
+      pathname: `r2/${key}`,
+      method: "PUT",
+      headers: { "Content-Type": mimeType },
+      maximumSizeInBytes: MAX_UPLOAD_BYTES,
+      contentType: mimeType
+    }, { headers: CORS });
+  }
+
   const rawId = request.nextUrl.searchParams.get("file");
   if (!rawId || !mongoose.Types.ObjectId.isValid(rawId)) {
     return NextResponse.json({ success: false, error: "file_not_found" }, { status: 404, headers: CORS });
@@ -193,6 +251,12 @@ export async function POST(request) {
 
   try {
     const contentLength = Number(request.headers.get("content-length") || 0);
+    if (process.env.NODE_ENV === "production" && contentLength > SERVER_UPLOAD_MAX_BYTES) {
+      return NextResponse.json(
+        { success: false, error: "direct_upload_required", maximumServerUploadSizeInBytes: SERVER_UPLOAD_MAX_BYTES },
+        { status: 413, headers: CORS }
+      );
+    }
     if (contentLength > MAX_UPLOAD_BYTES + 1024 * 1024) {
       return NextResponse.json(
         { success: false, error: "file_too_large", maximumSizeInBytes: MAX_UPLOAD_BYTES },
@@ -216,15 +280,21 @@ export async function POST(request) {
         { status: 413, headers: CORS }
       );
     }
+    if (process.env.NODE_ENV === "production" && file.size > SERVER_UPLOAD_MAX_BYTES) {
+      return NextResponse.json(
+        { success: false, error: "direct_upload_required", maximumServerUploadSizeInBytes: SERVER_UPLOAD_MAX_BYTES },
+        { status: 413, headers: CORS }
+      );
+    }
 
     if (!isR2Configured()) return saveToGridFs(request, file, stageId);
 
     const key = buildR2Key(stageId, file.name);
-    const bytes = Buffer.from(await file.arrayBuffer());
     await getR2Client().send(new PutObjectCommand({
       Bucket: process.env.R2_BUCKET,
       Key: key,
-      Body: bytes,
+      Body: Readable.fromWeb(file.stream()),
+      ContentLength: file.size,
       ContentType: file.type,
     }));
 

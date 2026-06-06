@@ -1,7 +1,8 @@
 export const NPC_VISIT_ACTIONS = {
   chest: "__chest__",
   gamble: "__gamble__",
-  hint: "__hint__"
+  hint: "__hint__",
+  quest: "__quest__"
 };
 
 export function assertActiveNpcVisit(member, visitId) {
@@ -10,7 +11,15 @@ export function assertActiveNpcVisit(member, visitId) {
   const activeVisit = memberId ? globalThis.__questRoomActiveNpcVisits?.get(memberId) : null;
   const activeVisitId = String(activeVisit?.visitId || "");
   const persistedVisitId = String(member?.npcCycle?.pendingNpc?.visitId || "");
-  if (!normalizedVisitId || (activeVisitId !== normalizedVisitId && persistedVisitId !== normalizedVisitId)) {
+  const persistedVisitRefId = String(member?.npcCycle?.pendingNpcRef?.visitId || "");
+  if (
+    !normalizedVisitId ||
+    (
+      activeVisitId !== normalizedVisitId &&
+      persistedVisitId !== normalizedVisitId &&
+      persistedVisitRefId !== normalizedVisitId
+    )
+  ) {
     throw new Error("npc_visit_expired");
   }
   return normalizedVisitId;

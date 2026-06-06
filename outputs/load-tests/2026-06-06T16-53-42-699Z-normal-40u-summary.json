@@ -1,0 +1,116 @@
+{
+  "event": "load_test_summary",
+  "config": {
+    "scenario": "normal",
+    "baseUrl": "http://127.0.0.1:3101",
+    "basePath": "/questroom",
+    "users": 40,
+    "durationMs": 60000,
+    "rampMs": 10000,
+    "stages": [
+      "game-demo-1",
+      "game-demo-2",
+      "game-demo-3"
+    ],
+    "uploadAbuse": false,
+    "queueTransport": "sse",
+    "auth": false
+  },
+  "health": {
+    "samples": 13,
+    "failures": 0,
+    "maxRssMb": 153,
+    "maxHeapUsedMb": 58,
+    "maxExternalMb": 21,
+    "maxLagMs": 0,
+    "maxSockets": 4,
+    "maxRoomPlayers": 4,
+    "maxCpuLoad1": 5.41162109375,
+    "maxApiActiveCount": 37,
+    "maxPendingNpcPoolLoads": 0,
+    "maxActiveNpcVisits": 0,
+    "last": {
+      "at": 60948,
+      "rssMb": 136,
+      "heapUsedMb": 50,
+      "externalMb": 21,
+      "lagMs": 0,
+      "sockets": 3,
+      "rooms": 3,
+      "roomPlayers": 3,
+      "dbStatus": "connected",
+      "dbPingMs": 35,
+      "cpuLoad1": 5.12255859375,
+      "apiActiveCount": 1,
+      "entryQueueWaiting": 36,
+      "entryQueueActive": 0,
+      "pendingNpcPoolLoads": 0,
+      "activeNpcVisits": 0
+    }
+  },
+  "socket": {
+    "connected": 40,
+    "connectError": 0,
+    "disconnected": 40,
+    "npcVisits": 0,
+    "roomStates": 4,
+    "patches": 90
+  },
+  "uploadAbuse": {
+    "attempts": 0,
+    "rejected": 0,
+    "unauthorized": 0,
+    "skipped": false,
+    "results": []
+  },
+  "api": {
+    "entry-queue-sse": {
+      "count": 40,
+      "ok": 4,
+      "fail": 36,
+      "avgMs": 18002,
+      "p95Ms": 20003,
+      "maxMs": 20003
+    },
+    "config": {
+      "count": 40,
+      "ok": 40,
+      "fail": 0,
+      "avgMs": 2,
+      "p95Ms": 3,
+      "maxMs": 3
+    },
+    "levels": {
+      "count": 40,
+      "ok": 40,
+      "fail": 0,
+      "avgMs": 1,
+      "p95Ms": 3,
+      "maxMs": 3
+    },
+    "room": {
+      "count": 40,
+      "ok": 0,
+      "fail": 40,
+      "avgMs": 2,
+      "p95Ms": 3,
+      "maxMs": 3
+    },
+    "quest-templates": {
+      "count": 27,
+      "ok": 27,
+      "fail": 0,
+      "avgMs": 2,
+      "p95Ms": 4,
+      "maxMs": 6
+    },
+    "hint-templates": {
+      "count": 21,
+      "ok": 21,
+      "fail": 0,
+      "avgMs": 2,
+      "p95Ms": 3,
+      "maxMs": 3
+    }
+  }
+}

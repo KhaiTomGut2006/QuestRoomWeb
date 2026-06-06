@@ -6,13 +6,26 @@ import mongoose from "mongoose";
 import Level from "@/models/Level";
 import CourseConfig from "@/models/CourseConfig";
 import SocialPost from "@/models/SocialPost";
+import SocialPostReaction from "@/models/SocialPostReaction";
 import { completionRewardForLevel, normalizeLevelUnlocks, unlockRewards } from "@/lib/levelUnlocks";
+import { markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
 
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 0;
+const MAX_ROMAN_NUMBER = 3999;
 const ROOM_PLAYERS_CACHE_TTL_MS = Math.max(0, Number(process.env.ROOM_PLAYERS_CACHE_TTL_MS || 5_000));
+const ROOM_PLAYERS_STALE_CACHE_TTL_MS = Math.max(
+  ROOM_PLAYERS_CACHE_TTL_MS,
+  Number(process.env.ROOM_PLAYERS_STALE_CACHE_TTL_MS || 60_000)
+);
 const ROOM_PLAYERS_CACHE_MAX_STAGES = Math.max(10, Number(process.env.ROOM_PLAYERS_CACHE_MAX_STAGES || 200));
-const ROOM_PLAYERS_LIMIT = Math.max(50, Number(process.env.ROOM_PLAYERS_LIMIT || 200));
+const ROOM_PLAYERS_LIMIT = Math.max(50, Number(process.env.ROOM_PLAYERS_LIMIT || process.env.MAX_ROOM_PLAYERS || 300));
+const ROOM_SUBLEVEL_DISCOVERY_TTL_MS = Math.max(
+  30_000,
+  Number(process.env.ROOM_SUBLEVEL_DISCOVERY_TTL_MS || 120_000)
+);
+const ROOM_SUBLEVEL_DISCOVERY_LIMIT = Math.max(50, Number(process.env.ROOM_SUBLEVEL_DISCOVERY_LIMIT || 500));
+const ROOM_FAILURE_COUNT_MAX = 99;
 export const MEMBER_INTERACTION_SELECT = [
   "_id",
   "discord_id",
@@ -122,11 +135,16 @@ const SOCIAL_POST_FEED_MAX_LIMIT = Math.max(SOCIAL_POST_FEED_LIMIT, Number(proce
 const FRIENDS_PAGE_LIMIT = Math.max(1, Number(process.env.FRIENDS_PAGE_LIMIT || 10));
 const FRIENDS_PAGE_MAX_LIMIT = Math.max(FRIENDS_PAGE_LIMIT, Number(process.env.FRIENDS_PAGE_MAX_LIMIT || 50));
 const MEMBER_READ_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.MEMBER_READ_QUERY_MAX_TIME_MS || 3_000));
+const LEVEL_LIST_LIMIT = Math.max(10, Number(process.env.LEVEL_LIST_LIMIT || 500));
+const LEVEL_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.LEVEL_QUERY_MAX_TIME_MS || 3_000));
 const cachedStageRankings = new Map();
 const pendingStageRankings = new Map();
 const roomPlayersCache = new Map();
 const pendingRoomPlayersLoad = new Map();
 const roomPlayersCacheVersions = new Map();
+let cachedRoomLevels = null;
+let cachedRoomLevelsAt = 0;
+let pendingRoomLevelsLoad = null;
 const cachedGlobalPosts = new Map();
 const pendingGlobalPosts = new Map();
 const cachedClassFriends = new Map();
@@ -155,6 +173,10 @@ function cloneRoomPlayers(players) {
   return players.map((player) => ({ ...player }));
 }
 
+function cloneRoomLevels(levels) {
+  return levels.map((level) => ({ ...level }));
+}
+
 function clearRoomPlayersCache(stage = "") {
   if (stage) {
     const stageKey = String(stage);
@@ -166,6 +188,12 @@ function clearRoomPlayersCache(stage = "") {
   for (const stageKey of roomPlayersCacheVersions.keys()) {
     roomPlayersCacheVersions.set(stageKey, (roomPlayersCacheVersions.get(stageKey) || 0) + 1);
   }
+}
+
+function clearRoomLevelsCache() {
+  cachedRoomLevels = null;
+  cachedRoomLevelsAt = 0;
+  pendingRoomLevelsLoad = null;
 }
 
 function publicEvidenceUrl(evidence) {
@@ -212,6 +240,22 @@ export function clearGlobalQuestPostsCache() {
   pendingSocialActivityLoad = null;
 }
 
+function patchGlobalPostReactionCache(postId, counts = {}) {
+  const normalizedPostId = String(postId || "");
+  if (!normalizedPostId) return;
+  for (const cached of cachedGlobalPosts.values()) {
+    if (!Array.isArray(cached?.posts)) continue;
+    cached.posts = cached.posts.map((post) => {
+      if (String(post?.postId || post?.id || "") !== normalizedPostId) return post;
+      return {
+        ...post,
+        likeCount: Math.max(0, Number(counts.likeCount) || 0),
+        dislikeCount: Math.max(0, Number(counts.dislikeCount) || 0)
+      };
+    });
+  }
+}
+
 function pruneRoomPlayersCache(now = Date.now()) {
   if (ROOM_PLAYERS_CACHE_TTL_MS <= 0) {
     roomPlayersCache.clear();
@@ -238,6 +282,7 @@ function pruneRoomPlayersCache(now = Date.now()) {
 function roomPlayerFromMember(member) {
   const discord = member?.discordData || {};
   const stage = member?.stage || DEFAULT_STAGE;
+  const roomState = roomStateForMember(member);
   return {
     id: member?.discord_id || "",
     name:
@@ -251,9 +296,9 @@ function roomPlayerFromMember(member) {
     avatar: normalizeAvatarUrl(discord.avatarUrl || ""),
     equippedAccessory: String(member?.equippedAccessory || ""),
     stage,
-    challengeFailureCount: member?.challengeFailureStage === stage
-      ? Math.max(0, Number(member?.challengeFailureCount) || 0)
-      : 0,
+    roomKey: roomState.roomKey,
+    roomLabel: roomState.roomLabel,
+    challengeFailureCount: roomState.failureCount,
     x: Number(member?.roomPosition?.x || 50),
     y: Number(member?.roomPosition?.y || 70),
     action: "idle",
@@ -373,7 +418,12 @@ async function ensureLevels({ force = false } = {}) {
   if (!pendingLevelsLoad) {
     pendingLevelsLoad = (async () => {
       await connectDb();
-      const levels = await Level.find().sort({ order: 1 }).lean();
+      const levels = await Level.find({})
+        .select("stageId name order npcShop boxDrops npcSpawns unlocks challengeInfo")
+        .sort({ order: 1, _id: 1 })
+        .limit(LEVEL_LIST_LIMIT)
+        .lean()
+        .maxTimeMS(LEVEL_QUERY_MAX_TIME_MS);
       cachedLevels = levels.map(l => ({
         stageId:  l.stageId,
         name:     l.name,
@@ -426,7 +476,7 @@ function toRoman(number) {
   const values = [
     [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]
   ];
-  let remaining = Math.max(1, Number(number) || 1);
+  let remaining = Math.min(MAX_ROMAN_NUMBER, Math.max(1, Number(number) || 1));
   let result = "";
   for (const [value, numeral] of values) {
     while (remaining >= value) {
@@ -438,11 +488,14 @@ function toRoman(number) {
 }
 
 function getStageNumber(stage = DEFAULT_STAGE) {
+  const stageKey = String(stage || DEFAULT_STAGE);
   if (cachedLevels && cachedLevels.length > 0) {
-    const idx = cachedLevels.findIndex(l => l.stageId === stage);
+    const idx = cachedLevels.findIndex(l => l.stageId === stageKey);
     if (idx !== -1) return idx + 1;
   }
-  return Number.parseInt(String(stage).split("-").pop(), 10) || 1;
+  const match = /^(?:stage|game-demo)-([1-9]\d{0,3})$/i.exec(stageKey);
+  if (!match) return 1;
+  return Math.min(MAX_ROMAN_NUMBER, Number.parseInt(match[1], 10) || 1);
 }
 
 function getTaskName(stage = DEFAULT_STAGE) {
@@ -455,8 +508,57 @@ function getTaskName(stage = DEFAULT_STAGE) {
 
 function getSublevelLabel(stage, failureCount = 0) {
   const label = getTaskName(stage);
-  const count = Math.max(0, Number(failureCount) || 0);
-  return count > 0 ? `${label}-${toRoman(count + 1)}` : label;
+  const count = Math.min(ROOM_FAILURE_COUNT_MAX, Math.max(0, Number(failureCount) || 0));
+  return count > 0 ? `${label}-${toRoman(count)}` : label;
+}
+
+export function makeRoomKey(stage = DEFAULT_STAGE, failureCount = 0) {
+  const stageKey = String(stage || DEFAULT_STAGE).trim().slice(0, 96) || DEFAULT_STAGE;
+  const count = Math.min(ROOM_FAILURE_COUNT_MAX, Math.max(0, Number(failureCount) || 0));
+  return count > 0 ? `${stageKey}::fail-${count}` : stageKey;
+}
+
+export function parseRoomKey(roomKey = DEFAULT_STAGE) {
+  const value = String(roomKey || DEFAULT_STAGE).trim().slice(0, 128) || DEFAULT_STAGE;
+  const canonical = /^(.+?)::fail-([1-9]\d{0,2})$/i.exec(value);
+  if (canonical) {
+    return {
+      stage: canonical[1].slice(0, 96) || DEFAULT_STAGE,
+      failureCount: Math.min(ROOM_FAILURE_COUNT_MAX, Number(canonical[2]) || 0)
+    };
+  }
+
+  // Backward compatibility for the temporary socket-only key used before roomKey became API contract.
+  const legacy = /^(.+?):challenge-([2-9]\d{0,2})$/i.exec(value);
+  if (legacy) {
+    return {
+      stage: legacy[1].slice(0, 96) || DEFAULT_STAGE,
+      failureCount: Math.min(ROOM_FAILURE_COUNT_MAX, Math.max(0, (Number(legacy[2]) || 1) - 1))
+    };
+  }
+
+  return { stage: value.slice(0, 96) || DEFAULT_STAGE, failureCount: 0 };
+}
+
+function challengeFailureCountForMember(member, stage = member?.stage || DEFAULT_STAGE) {
+  return member?.challengeFailureStage === stage
+    ? Math.min(ROOM_FAILURE_COUNT_MAX, Math.max(0, Number(member?.challengeFailureCount) || 0))
+    : 0;
+}
+
+function roomStateFor(stage = DEFAULT_STAGE, failureCount = 0) {
+  const count = Math.min(ROOM_FAILURE_COUNT_MAX, Math.max(0, Number(failureCount) || 0));
+  return {
+    stage,
+    failureCount: count,
+    roomKey: makeRoomKey(stage, count),
+    roomLabel: getSublevelLabel(stage, count)
+  };
+}
+
+function roomStateForMember(member) {
+  const stage = member?.stage || DEFAULT_STAGE;
+  return roomStateFor(stage, challengeFailureCountForMember(member, stage));
 }
 
 function getChallengeReviewBadge(member) {
@@ -531,7 +633,11 @@ async function reconcileChallengeSublevel(member) {
     changed = true;
   }
 
-  if (changed) await member.save({ validateModifiedOnly: true });
+  if (changed) {
+    clearRoomPlayersCache();
+    clearRoomLevelsCache();
+    await member.save({ validateModifiedOnly: true });
+  }
   return member;
 }
 
@@ -675,6 +781,8 @@ function socialPostDocumentFromMemberSubmission(member, submission) {
     },
     likes,
     dislikes,
+    likeCount: likes.length,
+    dislikeCount: dislikes.length,
     submittedAt: submission.submittedAt || publishedAt || null,
     publishedAt: publishedAt || null,
     visible
@@ -686,6 +794,8 @@ function serializeSocialPost(post, viewerId = "") {
   const likes = Array.isArray(raw.likes) ? raw.likes.map(String) : [];
   const dislikes = Array.isArray(raw.dislikes) ? raw.dislikes.map(String) : [];
   const viewer = String(viewerId || "");
+  const likeCount = Number.isFinite(Number(raw.likeCount)) ? Number(raw.likeCount) : likes.length;
+  const dislikeCount = Number.isFinite(Number(raw.dislikeCount)) ? Number(raw.dislikeCount) : dislikes.length;
   return {
     id: raw.postId || raw.id || "",
     title: raw.title || (raw.source === "challenge" ? "Challenge" : "NPC Quest"),
@@ -707,8 +817,8 @@ function serializeSocialPost(post, viewerId = "") {
           originalName: raw.evidence.originalName || ""
         }
       : null,
-    likeCount: likes.length,
-    dislikeCount: dislikes.length,
+    likeCount,
+    dislikeCount,
     submittedAt: raw.publishedAt || raw.submittedAt || null,
     author: raw.author
       ? {
@@ -723,12 +833,28 @@ function serializeSocialPost(post, viewerId = "") {
           username: "",
           avatar: ""
         },
-    viewerReaction: viewer && likes.includes(viewer)
+    viewerReaction: raw.viewerReaction || (viewer && likes.includes(viewer)
       ? "like"
       : viewer && dislikes.includes(viewer)
         ? "dislike"
-        : ""
+        : "")
   };
+}
+
+async function attachViewerReactions(posts = [], viewerId = "") {
+  const viewer = String(viewerId || "");
+  if (!viewer || !posts.length) return posts;
+  const postIds = posts.map((post) => String(post?.postId || post?.id || "")).filter(Boolean);
+  if (!postIds.length) return posts;
+  const reactions = await SocialPostReaction.find({ postId: { $in: postIds }, userId: viewer })
+    .select("-_id postId reaction")
+    .lean()
+    .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
+  const reactionByPost = new Map(reactions.map((item) => [String(item.postId), String(item.reaction || "")]));
+  return posts.map((post) => ({
+    ...post,
+    viewerReaction: reactionByPost.get(String(post?.postId || post?.id || "")) || ""
+  }));
 }
 
 async function upsertSocialPostForSubmission(member, submission) {
@@ -994,9 +1120,8 @@ export function normalizeMember(member, options = {}) {
   
   const stage = member.stage || DEFAULT_STAGE;
   const stageNumber = getStageNumber(stage);
-  const challengeFailureCount = member.challengeFailureStage === stage
-    ? Math.max(0, Number(member.challengeFailureCount) || 0)
-    : 0;
+  const roomState = roomStateForMember(member);
+  const challengeFailureCount = roomState.failureCount;
   const costMultiplier = member.quest?.costMultiplier || 1;
   const currentChallengeCost = Math.round(250 * Math.pow(1.35, Math.max(0, stageNumber - 1))) * costMultiplier;
 
@@ -1015,7 +1140,9 @@ export function normalizeMember(member, options = {}) {
     rank: member.questroomRank || "Game Tester",
     achievements: (member.profileAchievements || []).map(normalizeBadge),
     stage: member.stage || DEFAULT_STAGE,
-    stageLabel: getSublevelLabel(member.stage, challengeFailureCount),
+    roomKey: roomState.roomKey,
+    roomLabel: roomState.roomLabel,
+    stageLabel: roomState.roomLabel,
     challengeFailureCount,
     coins: Number.isFinite(coinNumber) ? coinNumber : DEFAULT_COINS,
     quest: member.quest || {},
@@ -1073,6 +1200,81 @@ export function normalizeMember(member, options = {}) {
 
 export function normalizeMemberInteraction(member) {
   return normalizeMember(member, { includeSubmissions: false });
+}
+
+export function normalizeMemberSummary(member) {
+  if (!member) return null;
+  const discord = member.discordData || {};
+  const stage = member.stage || DEFAULT_STAGE;
+  const stageNumber = getStageNumber(stage);
+  const roomState = roomStateForMember(member);
+  const challengeFailureCount = roomState.failureCount;
+  const costMultiplier = member.quest?.costMultiplier || 1;
+  return {
+    id: String(member._id),
+    discordId: member.discord_id || "",
+    name:
+      member.nick ||
+      member.nickname ||
+      member.realName ||
+      discord.globalName ||
+      discord.username ||
+      "Player",
+    username: discord.username || member.username || "",
+    avatar: normalizeAvatarUrl(discord.avatarUrl || ""),
+    rank: member.questroomRank || "Game Tester",
+    achievements: [],
+    stage,
+    roomKey: roomState.roomKey,
+    roomLabel: roomState.roomLabel,
+    stageLabel: roomState.roomLabel,
+    challengeFailureCount,
+    coins: questCoinValue(member),
+    quest: member.quest || {},
+    npcQuest: member.npcQuest
+      ? {
+          difficulty: member.npcQuest.difficulty || "",
+          title: member.npcQuest.title || "",
+          description: member.npcQuest.description || "",
+          reward: member.npcQuest.reward || 0,
+          cancelPenalty: member.npcQuest.cancelPenalty || 0,
+          source: member.npcQuest.source || (member.npcQuest.npcType === "quest" ? "shop" : "visitor"),
+          npcType: member.npcQuest.npcType || "",
+          npcName: member.npcQuest.npcName || "",
+          npcCharacter: member.npcQuest.npcCharacter || null,
+          acceptedAt: member.npcQuest.acceptedAt || null,
+          cancelAvailableAt: member.npcQuest.cancelAvailableAt || null,
+        }
+      : null,
+    npcQuestSubmissions: [],
+    socialQuestSubmissions: [],
+    tutorial: normalizeTutorial(member.tutorial),
+    challenge: member.questChallenge || null,
+    reward: member.questReward
+      ? {
+          id: member.questReward.id || "",
+          taskId: member.questReward.taskId || "",
+          taskName: member.questReward.taskName || "",
+          badge: normalizeBadge(member.questReward.badge),
+          coins: Math.max(0, Number(member.questReward.coins) || 0),
+          rewards: Array.isArray(member.questReward.rewards) ? member.questReward.rewards : [],
+          unlocks: member.questReward.unlocks || null,
+          awardedAt: member.questReward.awardedAt || null,
+          seenAt: member.questReward.seenAt || null
+        }
+      : null,
+    position: member.roomPosition || { x: 50, y: 70 },
+    currentChallengeCost: Math.round(250 * Math.pow(1.35, Math.max(0, stageNumber - 1))) * costMultiplier,
+    costMultiplier,
+    shopCooldownT1: member.shopCooldownT1 || 0,
+    shopCooldownT2: member.shopCooldownT2 || 0,
+    shopLimitBreak: Boolean(member.shopLimitBreak),
+    shopAssetTickets: member.shopAssetTickets || 0,
+    ownedAccessories: Array.isArray(member.ownedAccessories) ? member.ownedAccessories.map(String) : [],
+    equippedAccessory: String(member.equippedAccessory || ""),
+    npcVisitId: String(member.npcVisitId || ""),
+    npcVisitPurchases: Array.isArray(member.npcVisitPurchases) ? member.npcVisitPurchases.map(String) : [],
+  };
 }
 
 export async function upsertMemberFromDiscord(profile) {
@@ -1167,25 +1369,54 @@ export async function getMemberByDiscordId(discordId, options = {}) {
     : normalizeMemberInteraction(reconciled);
 }
 
-export async function getRoomPlayers(stage = DEFAULT_STAGE) {
+function roomPlayersQueryFor(roomKey = DEFAULT_STAGE) {
+  const { stage, failureCount } = parseRoomKey(roomKey);
+  const base = {
+    stage,
+    discord_id: { $exists: true, $ne: "" },
+    lastAuthentication: { $exists: true, $ne: null }
+  };
+  if (failureCount > 0) {
+    return {
+      roomKey: makeRoomKey(stage, failureCount),
+      query: {
+        ...base,
+        challengeFailureStage: stage,
+        challengeFailureCount: failureCount
+      }
+    };
+  }
+  return {
+    roomKey: makeRoomKey(stage, 0),
+    query: {
+      ...base,
+      $or: [
+        { challengeFailureCount: { $exists: false } },
+        { challengeFailureCount: { $lte: 0 } },
+        { challengeFailureStage: { $ne: stage } }
+      ]
+    }
+  };
+}
+
+export async function getRoomPlayers(roomKey = DEFAULT_STAGE) {
   await connectDb();
   await ensureLevels();
-  const stageKey = String(stage || DEFAULT_STAGE);
+  const { roomKey: normalizedRoomKey, query } = roomPlayersQueryFor(roomKey);
   pruneRoomPlayersCache();
-  const cached = roomPlayersCache.get(stageKey);
+  const cached = roomPlayersCache.get(normalizedRoomKey);
   if (cached && Date.now() - cached.cachedAt < ROOM_PLAYERS_CACHE_TTL_MS) {
     return cloneRoomPlayers(cached.players);
   }
 
-  let pendingLoad = pendingRoomPlayersLoad.get(stageKey);
+  let pendingLoad = pendingRoomPlayersLoad.get(normalizedRoomKey);
+  if (pendingLoad && cached && Date.now() - cached.cachedAt < ROOM_PLAYERS_STALE_CACHE_TTL_MS) {
+    return cloneRoomPlayers(cached.players);
+  }
   if (!pendingLoad) {
-    const cacheVersion = roomPlayersCacheVersions.get(stageKey) || 0;
+    const cacheVersion = roomPlayersCacheVersions.get(normalizedRoomKey) || 0;
     pendingLoad = (async () => {
-      const members = await Member.find({
-        stage: stageKey,
-        discord_id: { $exists: true, $ne: "" },
-        lastAuthentication: { $exists: true, $ne: null }
-      })
+      const members = await Member.find(query)
         .select(ROOM_PLAYER_SELECT)
         .sort({ lastAuthentication: -1 })
         .limit(ROOM_PLAYERS_LIMIT)
@@ -1195,18 +1426,18 @@ export async function getRoomPlayers(stage = DEFAULT_STAGE) {
       const players = members.map(roomPlayerFromMember).filter((player) => player.id);
       if (
         ROOM_PLAYERS_CACHE_TTL_MS > 0
-        && (roomPlayersCacheVersions.get(stageKey) || 0) === cacheVersion
+        && (roomPlayersCacheVersions.get(normalizedRoomKey) || 0) === cacheVersion
       ) {
-        roomPlayersCache.set(stageKey, {
+        roomPlayersCache.set(normalizedRoomKey, {
           cachedAt: Date.now(),
           players: cloneRoomPlayers(players)
         });
       }
       return players;
     })().finally(() => {
-      pendingRoomPlayersLoad.delete(stageKey);
+      pendingRoomPlayersLoad.delete(normalizedRoomKey);
     });
-    pendingRoomPlayersLoad.set(stageKey, pendingLoad);
+    pendingRoomPlayersLoad.set(normalizedRoomKey, pendingLoad);
   }
 
   return cloneRoomPlayers(await pendingLoad);
@@ -1228,10 +1459,9 @@ export async function updateMemberPosition(discordId, position) {
         }
       }
     },
-    { projection: { stage: 1 } }
+    { projection: { stage: 1 }, maxTimeMS: MEMBER_READ_QUERY_MAX_TIME_MS }
   );
 
-  if (member) clearRoomPlayersCache(member.stage || "");
   return member ? { ok: true, position: nextPosition } : null;
 }
 
@@ -1314,26 +1544,53 @@ export async function requestChallenge(discordId) {
   }
 
   const requestedAt = new Date();
-  member.questCoin = String(currentCoins - cost);
-  member.questChallengeRequestedAt = requestedAt;
-  member.questChallenge = {
-    status: "pending",
-    taskId: stage,
-    taskName: getTaskName(stage),
-    stage,
-    cost,
-    requestedAt
-  };
-  member.quest = {
-    current: member.quest?.current || getTaskName(stage),
-    status: "pending",
-    completed: member.quest?.completed || [],
-    cooldownUntil: member.quest?.cooldownUntil,
-    costMultiplier: costMultiplier
-  };
-  await member.save({ validateModifiedOnly: true });
+  const coinExpr = questCoinExpression();
+  const updated = await Member.findOneAndUpdate(
+    {
+      discord_id: String(discordId || ""),
+      $expr: { $gte: [coinExpr, cost] },
+      $or: [
+        { questChallenge: null },
+        { "questChallenge.status": { $ne: "pending" } },
+        { "questChallenge.stage": { $ne: stage } }
+      ]
+    },
+    [
+      {
+        $set: {
+          questCoin: { $toString: { $subtract: [coinExpr, cost] } },
+          questChallengeRequestedAt: requestedAt,
+          questChallenge: {
+            status: "pending",
+            taskId: stage,
+            taskName: getTaskName(stage),
+            stage,
+            cost,
+            requestedAt
+          },
+          quest: {
+            $mergeObjects: [
+              { $ifNull: ["$quest", {}] },
+              {
+                current: { $ifNull: ["$quest.current", getTaskName(stage)] },
+                status: "pending",
+                completed: { $ifNull: ["$quest.completed", []] },
+                cooldownUntil: "$quest.cooldownUntil",
+                costMultiplier: { $ifNull: ["$quest.costMultiplier", 1] }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    { new: true, projection: MEMBER_INTERACTION_SELECT }
+  );
 
-  return { ok: true, pending: true, cost, member: normalizeMemberInteraction(member) };
+  if (!updated) {
+    return { ok: false, reason: "not_enough_coins", cost, member: normalizeMemberInteraction(member) };
+  }
+
+  return { ok: true, pending: true, cost, member: normalizeMemberInteraction(updated) };
 }
 
 export async function submitChallenge(discordId, evidence, postText = "") {
@@ -1385,13 +1642,24 @@ export async function submitChallenge(discordId, evidence, postText = "") {
   member.questChallenge.evidence = normalizedEvidence;
   member.questChallenge.postText = normalizedPostText;
   member.questChallenge.submittedAt = submittedAt;
-  member.markModified("questChallenge");
-  member.markModified("npcQuestSubmissions");
-  await member.save({ validateModifiedOnly: true });
-  await upsertSocialPostForSubmission(member, submission);
+  const updated = await Member.findOneAndUpdate(
+    {
+      discord_id: String(discordId || ""),
+      "questChallenge.status": "pending"
+    },
+    {
+      $set: {
+        questChallenge: member.questChallenge,
+        npcQuestSubmissions: member.npcQuestSubmissions
+      }
+    },
+    { new: true, projection: `${MEMBER_INTERACTION_SELECT} npcQuestSubmissions`, maxTimeMS: MEMBER_READ_QUERY_MAX_TIME_MS }
+  );
+  if (!updated) throw new Error("pending_challenge_not_found");
+  await upsertSocialPostForSubmission(updated, submission);
 
   return {
-    member: normalizeMemberInteraction(member),
+    member: normalizeMemberInteraction(updated),
     submission: normalizeNpcQuestSubmission(submission)
   };
 }
@@ -1414,6 +1682,97 @@ export async function getAvailableLevels({ force = false } = {}) {
   await connectDb();
   await ensureLevels({ force });
   return cachedLevels || [];
+}
+
+function roomLevelFromStage(level, index = 0) {
+  const stageId = String(level?.stageId || DEFAULT_STAGE);
+  const order = Number.isFinite(Number(level?.order)) ? Number(level.order) : index + 1;
+  const name = String(level?.name || getTaskName(stageId));
+  return {
+    roomKey: makeRoomKey(stageId, 0),
+    stageId,
+    kind: "main",
+    failureCount: 0,
+    order,
+    name,
+    baseName: name,
+    activePlayers: 0,
+    isSubroom: false
+  };
+}
+
+export async function getAvailableRoomLevels({ force = false } = {}) {
+  await connectDb();
+  await ensureLevels({ force });
+  const now = Date.now();
+  if (
+    !force
+    && cachedRoomLevels
+    && now - cachedRoomLevelsAt < ROOM_SUBLEVEL_DISCOVERY_TTL_MS
+  ) {
+    return cloneRoomLevels(cachedRoomLevels);
+  }
+  if (!pendingRoomLevelsLoad) {
+    pendingRoomLevelsLoad = (async () => {
+      const mainRooms = (cachedLevels || []).map(roomLevelFromStage);
+      const mainByStage = new Map(mainRooms.map((level) => [level.stageId, level]));
+      const subroomCounts = new Map();
+
+      const members = await Member.find({
+        discord_id: { $exists: true, $ne: "" },
+        stage: { $exists: true, $ne: "" },
+        challengeFailureCount: { $gt: 0 },
+        lastAuthentication: { $exists: true, $ne: null }
+      })
+        .select("stage challengeFailureStage challengeFailureCount")
+        .sort({ lastAuthentication: -1 })
+        .limit(ROOM_SUBLEVEL_DISCOVERY_LIMIT)
+        .lean()
+        .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
+
+      for (const member of members) {
+        const stage = String(member?.stage || "");
+        const failureCount = challengeFailureCountForMember(member, stage);
+        if (!stage || failureCount <= 0) continue;
+        const key = makeRoomKey(stage, failureCount);
+        subroomCounts.set(key, (subroomCounts.get(key) || 0) + 1);
+      }
+
+      const subRooms = [...subroomCounts.entries()].map(([roomKey, activePlayers]) => {
+        const { stage, failureCount } = parseRoomKey(roomKey);
+        const main = mainByStage.get(stage);
+        const baseOrder = Number(main?.order ?? getStageNumber(stage));
+        const baseName = String(main?.baseName || main?.name || getTaskName(stage));
+        return {
+          roomKey,
+          stageId: stage,
+          kind: "challenge-subroom",
+          failureCount,
+          order: baseOrder + failureCount / 1000,
+          name: getSublevelLabel(stage, failureCount),
+          baseName,
+          activePlayers,
+          isSubroom: true
+        };
+      });
+
+      const levels = [...mainRooms, ...subRooms]
+        .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+      cachedRoomLevels = cloneRoomLevels(levels);
+      cachedRoomLevelsAt = Date.now();
+      return levels;
+    })().catch((error) => {
+      console.error("Failed to load available room levels:", error.message);
+      const fallback = (cachedLevels || []).map(roomLevelFromStage);
+      cachedRoomLevels = cloneRoomLevels(fallback);
+      cachedRoomLevelsAt = Date.now();
+      return fallback;
+    }).finally(() => {
+      pendingRoomLevelsLoad = null;
+    });
+  }
+
+  return cloneRoomLevels(await pendingRoomLevelsLoad);
 }
 
 export async function getStageRanking(stageId) {
@@ -1584,7 +1943,7 @@ export async function cancelNpcQuest(discordId) {
   return { member: normalizeMemberInteraction(member), penalty };
 }
 
-export async function submitNpcQuest(discordId, evidence, postText = "") {
+export async function submitNpcQuest(discordId, evidence, postText = "", visitId = "") {
   await connectDb();
   await ensureLevels();
   const member = await Member.findOne({ discord_id: String(discordId || "") })
@@ -1659,12 +2018,34 @@ export async function submitNpcQuest(discordId, evidence, postText = "") {
       updatedAt: submittedAt
     };
   }
+  if (visitId) {
+    markNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.quest);
+  }
   member.markModified("tutorial");
   member.markModified("profileAchievements");
-  await member.save();
+  const updated = await Member.findOneAndUpdate(
+    {
+      discord_id: String(discordId || ""),
+      npcQuest: { $ne: null }
+    },
+    {
+      $set: {
+        questCoin: member.questCoin,
+        npcQuest: member.npcQuest,
+        npcQuestSubmissions: member.npcQuestSubmissions,
+        profileAchievements: member.profileAchievements,
+        tutorial: member.tutorial,
+        questroomRank: member.questroomRank,
+        npcVisitId: member.npcVisitId,
+        npcVisitPurchases: member.npcVisitPurchases
+      }
+    },
+    { new: true, projection: `${MEMBER_INTERACTION_SELECT} npcQuestSubmissions`, maxTimeMS: MEMBER_READ_QUERY_MAX_TIME_MS }
+  );
+  if (!updated) throw new Error("active_quest_not_found");
   const submission = member.npcQuestSubmissions.at(-1);
-  await upsertSocialPostForSubmission(member, submission);
-  return { member: normalizeMemberInteraction(member), reward, submission: normalizeNpcQuestSubmission(submission) };
+  await upsertSocialPostForSubmission(updated, submission);
+  return { member: normalizeMemberInteraction(updated), reward, submission: normalizeNpcQuestSubmission(submission) };
 }
 
 export async function getActiveClasses() {
@@ -1691,8 +2072,9 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId, options = {}
   pruneGlobalPostsCache();
   const cached = cachedGlobalPosts.get(cacheKey);
   if (cached && Date.now() - cached.cachedAt < GLOBAL_POSTS_CACHE_TTL_MS) {
+    const posts = await attachViewerReactions(cached.posts, viewerId);
     return {
-      posts: cached.posts.map((post) => serializeSocialPost(post, viewerId)),
+      posts: posts.map((post) => serializeSocialPost(post, viewerId)),
       nextCursor: cached.nextCursor,
       hasMore: cached.hasMore
     };
@@ -1700,8 +2082,9 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId, options = {}
   const pending = pendingGlobalPosts.get(cacheKey);
   if (pending) {
     const page = await pending;
+    const posts = await attachViewerReactions(page.posts, viewerId);
     return {
-      posts: page.posts.map((post) => serializeSocialPost(post, viewerId)),
+      posts: posts.map((post) => serializeSocialPost(post, viewerId)),
       nextCursor: page.nextCursor,
       hasMore: page.hasMore
     };
@@ -1733,7 +2116,7 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId, options = {}
     }
 
     let posts = await SocialPost.find(query)
-      .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likes dislikes publishedAt submittedAt author authorId")
+      .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likeCount dislikeCount publishedAt submittedAt author authorId")
       .sort({ publishedAt: -1, postId: -1 })
       .limit(limit + 1)
       .lean()
@@ -1742,7 +2125,7 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId, options = {}
     if (posts.length === 0 && SOCIAL_POST_AUTO_BACKFILL_ENABLED) {
       await backfillSocialPostsFromMembers({ force: true });
       posts = await SocialPost.find(query)
-        .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likes dislikes publishedAt submittedAt author authorId")
+        .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likeCount dislikeCount publishedAt submittedAt author authorId")
         .sort({ publishedAt: -1, postId: -1 })
         .limit(limit + 1)
         .lean()
@@ -1766,8 +2149,9 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId, options = {}
   pendingGlobalPosts.set(cacheKey, nextLoad);
 
   const page = await nextLoad;
+  const posts = await attachViewerReactions(page.posts, viewerId);
   return {
-    posts: page.posts.map((post) => serializeSocialPost(post, viewerId)),
+    posts: posts.map((post) => serializeSocialPost(post, viewerId)),
     nextCursor: page.nextCursor,
     hasMore: page.hasMore
   };
@@ -1903,40 +2287,66 @@ export async function reactToGlobalQuestPost(discordId, postId, reaction) {
   const normalizedPostId = String(postId || "");
   const viewerId = String(discordId || "");
   const post = await SocialPost.findOne({ postId: normalizedPostId, visible: true })
-    .select("postId likes dislikes visible")
+    .select("postId likes dislikes likeCount dislikeCount visible")
     .lean()
     .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
 
   if (post) {
-    const likes = (post.likes || []).map(String).filter((id) => id !== viewerId);
-    const dislikes = (post.dislikes || []).map(String).filter((id) => id !== viewerId);
-    if (normalizedReaction === "like") likes.push(viewerId);
-    if (normalizedReaction === "dislike") dislikes.push(viewerId);
-    await SocialPost.updateOne(
-      { postId: normalizedPostId },
-      { $set: { likes, dislikes } }
-    );
+    const legacyLikes = (post.likes || []).map(String);
+    const legacyDislikes = (post.dislikes || []).map(String);
+    let previous = null;
+    if (normalizedReaction) {
+      previous = await SocialPostReaction.findOneAndUpdate(
+        { postId: normalizedPostId, userId: viewerId },
+        { $set: { reaction: normalizedReaction, reactedAt: new Date() } },
+        { upsert: true, new: false, projection: { reaction: 1 }, maxTimeMS: SOCIAL_POSTS_QUERY_MAX_TIME_MS }
+      ).lean();
+    } else {
+      previous = await SocialPostReaction.findOneAndDelete(
+        { postId: normalizedPostId, userId: viewerId },
+        { projection: { reaction: 1 }, maxTimeMS: SOCIAL_POSTS_QUERY_MAX_TIME_MS }
+      ).lean();
+    }
+    const previousReaction = String(previous?.reaction || (
+      legacyLikes.includes(viewerId)
+        ? "like"
+        : legacyDislikes.includes(viewerId)
+          ? "dislike"
+          : ""
+    ));
+    const inc = {};
+    if (previousReaction === "like") inc.likeCount = (inc.likeCount || 0) - 1;
+    if (previousReaction === "dislike") inc.dislikeCount = (inc.dislikeCount || 0) - 1;
+    if (normalizedReaction === "like") inc.likeCount = (inc.likeCount || 0) + 1;
+    if (normalizedReaction === "dislike") inc.dislikeCount = (inc.dislikeCount || 0) + 1;
 
-    void Member.findOne({ "npcQuestSubmissions.id": normalizedPostId })
-      .select("npcQuestSubmissions")
-      .then(async (member) => {
-        const submission = member?.npcQuestSubmissions?.find((item) => item.id === normalizedPostId);
-        if (!submission) return;
-        submission.likes = likes;
-        submission.dislikes = dislikes;
-        member.markModified("npcQuestSubmissions");
-        await member.save({ validateModifiedOnly: true });
-      })
-      .catch((error) => {
-        console.warn("Failed to mirror social reaction to legacy member submission:", error.message);
-      });
+    const initializedCounts = {};
+    if (!Number.isFinite(Number(post.likeCount))) initializedCounts.likeCount = legacyLikes.length;
+    if (!Number.isFinite(Number(post.dislikeCount))) initializedCounts.dislikeCount = legacyDislikes.length;
+    if (Object.keys(initializedCounts).length) {
+      await SocialPost.updateOne({ postId: normalizedPostId }, { $set: initializedCounts });
+    }
+    const updatedPost = Object.keys(inc).length
+      ? await SocialPost.findOneAndUpdate(
+          { postId: normalizedPostId, visible: true },
+          { $inc: inc },
+          {
+            new: true,
+            projection: { likeCount: 1, dislikeCount: 1 },
+            maxTimeMS: SOCIAL_POSTS_QUERY_MAX_TIME_MS
+          }
+        ).lean()
+      : {
+          likeCount: Number.isFinite(Number(post.likeCount)) ? post.likeCount : initializedCounts.likeCount,
+          dislikeCount: Number.isFinite(Number(post.dislikeCount)) ? post.dislikeCount : initializedCounts.dislikeCount
+        };
 
-    clearGlobalQuestPostsCache();
+    patchGlobalPostReactionCache(normalizedPostId, updatedPost || {});
     return {
       postId: normalizedPostId,
       viewerReaction: normalizedReaction,
-      likeCount: likes.length,
-      dislikeCount: dislikes.length
+      likeCount: Math.max(0, Number(updatedPost?.likeCount) || 0),
+      dislikeCount: Math.max(0, Number(updatedPost?.dislikeCount) || 0)
     };
   }
 

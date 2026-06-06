@@ -1,0 +1,175 @@
+{
+  "event": "load_test_summary",
+  "config": {
+    "scenario": "upload-abuse",
+    "baseUrl": "http://127.0.0.1:3101",
+    "basePath": "/questroom",
+    "users": 60,
+    "durationMs": 90000,
+    "rampMs": 15000,
+    "stages": [
+      "game-demo-1",
+      "game-demo-2",
+      "game-demo-3"
+    ],
+    "uploadAbuse": true,
+    "queueTransport": "sse",
+    "auth": false
+  },
+  "health": {
+    "samples": 19,
+    "failures": 0,
+    "maxRssMb": 258,
+    "maxHeapUsedMb": 116,
+    "maxExternalMb": 35,
+    "maxLagMs": 0,
+    "maxSockets": 60,
+    "maxRoomPlayers": 60,
+    "maxCpuLoad1": 3.8349609375,
+    "maxApiActiveCount": 1,
+    "maxPendingNpcPoolLoads": 0,
+    "maxActiveNpcVisits": 0,
+    "last": {
+      "at": 90887,
+      "rssMb": 163,
+      "heapUsedMb": 59,
+      "externalMb": 22,
+      "lagMs": 0,
+      "sockets": 41,
+      "rooms": 3,
+      "roomPlayers": 41,
+      "dbStatus": "connected",
+      "dbPingMs": 37,
+      "cpuLoad1": 2.736328125,
+      "apiActiveCount": 1,
+      "entryQueueWaiting": 56,
+      "entryQueueActive": 0,
+      "pendingNpcPoolLoads": 0,
+      "activeNpcVisits": 0
+    }
+  },
+  "socket": {
+    "connected": 60,
+    "connectError": 0,
+    "disconnected": 60,
+    "npcVisits": 0,
+    "roomStates": 60,
+    "patches": 11125
+  },
+  "uploadAbuse": {
+    "attempts": 12,
+    "rejected": 12,
+    "unauthorized": 0,
+    "skipped": false,
+    "results": [
+      {
+        "ok": false,
+        "status": 413,
+        "ms": 7
+      },
+      {
+        "ok": false,
+        "status": 413,
+        "ms": 13
+      },
+      {
+        "ok": false,
+        "status": 413,
+        "ms": 11
+      },
+      {
+        "ok": false,
+        "status": 413,
+        "ms": 14
+      },
+      {
+        "ok": false,
+        "status": 413,
+        "ms": 10
+      },
+      {
+        "ok": false,
+        "status": 413,
+        "ms": 7
+      },
+      {
+        "ok": false,
+        "status": 413,
+        "ms": 11
+      },
+      {
+        "ok": false,
+        "status": 413,
+        "ms": 7
+      },
+      {
+        "ok": false,
+        "status": 413,
+        "ms": 6
+      },
+      {
+        "ok": false,
+        "status": 413,
+        "ms": 9
+      }
+    ]
+  },
+  "api": {
+    "upload-abuse-challenge-video": {
+      "count": 12,
+      "ok": 0,
+      "fail": 12,
+      "avgMs": 9,
+      "p95Ms": 14,
+      "maxMs": 14
+    },
+    "entry-queue-sse": {
+      "count": 60,
+      "ok": 60,
+      "fail": 0,
+      "avgMs": 5,
+      "p95Ms": 9,
+      "maxMs": 13
+    },
+    "config": {
+      "count": 60,
+      "ok": 60,
+      "fail": 0,
+      "avgMs": 4,
+      "p95Ms": 7,
+      "maxMs": 11
+    },
+    "levels": {
+      "count": 60,
+      "ok": 60,
+      "fail": 0,
+      "avgMs": 3,
+      "p95Ms": 4,
+      "maxMs": 4
+    },
+    "room": {
+      "count": 60,
+      "ok": 0,
+      "fail": 60,
+      "avgMs": 2,
+      "p95Ms": 3,
+      "maxMs": 4
+    },
+    "quest-templates": {
+      "count": 56,
+      "ok": 56,
+      "fail": 0,
+      "avgMs": 6,
+      "p95Ms": 8,
+      "maxMs": 12
+    },
+    "hint-templates": {
+      "count": 34,
+      "ok": 34,
+      "fail": 0,
+      "avgMs": 6,
+      "p95Ms": 8,
+      "maxMs": 9
+    }
+  }
+}

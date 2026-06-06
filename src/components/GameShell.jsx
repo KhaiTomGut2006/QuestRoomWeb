@@ -282,6 +282,12 @@ function stageLabel(stage) {
   return `Game Demo - ${numerals[stageNumber - 1] || stageNumber}`;
 }
 
+function roomKeyFor(stage, challengeFailureCount = 0) {
+  const stageKey = String(stage || "game-demo-1").trim().slice(0, 96) || "game-demo-1";
+  const count = Math.min(99, Math.max(0, Number(challengeFailureCount) || 0));
+  return count > 0 ? `${stageKey}::fail-${count}` : stageKey;
+}
+
 function getChestRewardIcon(reward) {
   if (!reward || reward.kind === "coins") return "/assets/Coin.png";
   if (reward.itemId === "asset-ticket") return "/assets/Item/AssetTicket.png";
@@ -317,6 +323,9 @@ function playerFromMember(member, stageOverride = "") {
     equippedAccessory: member.equippedAccessory || "",
     stage: stageOverride || member.stage || "game-demo-1",
     challengeFailureCount: Math.max(0, Number(member.challengeFailureCount) || 0),
+    roomKey: stageOverride
+      ? stageOverride
+      : member.roomKey || roomKeyFor(member.stage, member.challengeFailureCount),
     x: Number(member.position?.x || 56),
     y: Number(member.position?.y || 72),
     action: "idle",
@@ -337,6 +346,7 @@ function playerPresencePayload(player, admission = {}) {
     avatar: player.avatar,
     equippedAccessory: player.equippedAccessory,
     stage: player.stage,
+    roomKey: player.roomKey || roomKeyFor(player.stage, player.challengeFailureCount),
     challengeFailureCount: player.challengeFailureCount,
     x: player.x,
     y: player.y,
@@ -367,6 +377,7 @@ function sameRoomPlayer(a, b) {
     "avatar",
     "equippedAccessory",
     "stage",
+    "roomKey",
     "challengeFailureCount",
     "x",
     "y",
@@ -729,7 +740,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   const [roomLevels, setRoomLevels] = useState(() => (
     Array.isArray(initialData?.levels) ? initialData.levels : []
   ));
-  const [viewedStage, setViewedStage] = useState("");
+  const [viewedRoomKey, setViewedRoomKey] = useState("");
   const [previewMode, setPreviewMode] = useState(false);
   const [demoRequested, setDemoRequested] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -768,6 +779,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   const [socialUnreadCount, setSocialUnreadCount] = useState(0);
   const [socialNotifications, setSocialNotifications] = useState([]);
   const [playerReactions, setPlayerReactions] = useState([]);
+  const [finishedNpcVisitIds, setFinishedNpcVisitIds] = useState(() => new Set());
   const [tutorialBusy, setTutorialBusy] = useState(false);
   const [tutorialError, setTutorialError] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -884,6 +896,17 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   const questTemplatesCacheRef = useRef(new Map());
   const hintTemplatesCacheRef = useRef(null);
 
+  const markNpcVisitFinished = useCallback((visitId) => {
+    const normalizedVisitId = String(visitId || "");
+    if (!normalizedVisitId) return;
+    setFinishedNpcVisitIds((current) => {
+      if (current.has(normalizedVisitId)) return current;
+      const next = new Set([...current].slice(-49));
+      next.add(normalizedVisitId);
+      return next;
+    });
+  }, []);
+
   const isAuthed = status === "authenticated";
   const activeMember = member || (previewMode ? demoMember : null);
   const isTutorialActive = activeMember?.tutorial?.status === "active";
@@ -908,35 +931,48 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     && activeMember?.challenge?.submittedAt
   );
   const actualStage = tutorialRoomStage || activeMember?.stage || "";
-  const activeViewedStage = viewedStage || actualStage;
+  const actualRoomKey = tutorialRoomStage
+    || activeMember?.roomKey
+    || roomKeyFor(activeMember?.stage, activeMember?.challengeFailureCount);
+  const activeViewedRoomKey = viewedRoomKey || actualRoomKey;
   const effectiveRoomLevels = useMemo(() => {
     if (tutorialRoomStage) {
-      return [{ stageId: tutorialRoomStage, name: "Tutorial Room", order: 0 }];
+      return [{ roomKey: tutorialRoomStage, stageId: tutorialRoomStage, name: "Tutorial Room", order: 0 }];
     }
-    const levels = Array.isArray(roomLevels) ? [...roomLevels] : [];
-    if (actualStage && !levels.some((level) => level.stageId === actualStage)) {
+    const levels = Array.isArray(roomLevels)
+      ? roomLevels.map((level) => ({
+          ...level,
+          roomKey: level.roomKey || roomKeyFor(level.stageId, level.failureCount)
+        }))
+      : [];
+    if (actualRoomKey && !levels.some((level) => level.roomKey === actualRoomKey)) {
       levels.push({
+        roomKey: actualRoomKey,
         stageId: actualStage,
-        name: activeMember?.stageLabel || stageLabel(actualStage),
+        failureCount: Math.max(0, Number(activeMember?.challengeFailureCount) || 0),
+        name: activeMember?.roomLabel || activeMember?.stageLabel || stageLabel(actualStage),
         order: Number.MAX_SAFE_INTEGER
       });
     }
     return levels.sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-  }, [activeMember?.stageLabel, actualStage, roomLevels, tutorialRoomStage]);
-  const viewedRoomIndex = effectiveRoomLevels.findIndex((level) => level.stageId === activeViewedStage);
-  const isViewingOtherRoom = Boolean(actualStage && activeViewedStage && activeViewedStage !== actualStage);
+  }, [activeMember?.challengeFailureCount, activeMember?.roomLabel, activeMember?.stageLabel, actualRoomKey, actualStage, roomLevels, tutorialRoomStage]);
+  const viewedRoomIndex = effectiveRoomLevels.findIndex((level) => level.roomKey === activeViewedRoomKey);
+  const viewedRoomLevel = effectiveRoomLevels.find((level) => level.roomKey === activeViewedRoomKey) || null;
+  const activeViewedStage = viewedRoomLevel?.stageId || actualStage;
+  const isViewingOtherRoom = Boolean(actualRoomKey && activeViewedRoomKey && activeViewedRoomKey !== actualRoomKey);
   const canViewPreviousRoom = viewedRoomIndex > 0;
   const canViewNextRoom = viewedRoomIndex >= 0 && viewedRoomIndex < effectiveRoomLevels.length - 1;
-  const viewedRoomLabel = effectiveRoomLevels.find((level) => level.stageId === activeViewedStage)?.name
-    || stageLabel(activeViewedStage);
+  const viewedRoomLabel = viewedRoomLevel?.name
+    || stageLabel(viewedRoomLevel?.stageId || actualStage);
   const currentRoomLabel = tutorialRoomStage
     ? "Tutorial Room"
-    : effectiveRoomLevels.find((level) => level.stageId === actualStage)?.name
+    : effectiveRoomLevels.find((level) => level.roomKey === actualRoomKey)?.name
+    || activeMember?.roomLabel
     || activeMember?.stageLabel
     || stageLabel(actualStage);
   const currentRoomLevel = useMemo(() => (
-    effectiveRoomLevels.find((level) => level.stageId === actualStage) || null
-  ), [actualStage, effectiveRoomLevels]);
+    effectiveRoomLevels.find((level) => level.roomKey === actualRoomKey) || null
+  ), [actualRoomKey, effectiveRoomLevels]);
   const latestChallengeInfo = actualStage ? challengeInfoOverrides[actualStage] : null;
   const currentChallengeInfo = useMemo(() => (
     latestChallengeInfo
@@ -954,6 +990,18 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       ? activeMember.npcVisitPurchases || []
       : []
   ), [activeMember?.npcVisitId, activeMember?.npcVisitPurchases, doorNpc?.visitId]);
+  const isDoorNpcFinished = useMemo(() => {
+    const visitId = String(doorNpc?.visitId || "");
+    if (!visitId) return false;
+    if (finishedNpcVisitIds.has(visitId)) return true;
+    const completedActions = new Set([
+      NPC_VISIT_ACTIONS.chest,
+      NPC_VISIT_ACTIONS.gamble,
+      NPC_VISIT_ACTIONS.hint,
+      NPC_VISIT_ACTIONS.quest
+    ]);
+    return activeNpcVisitPurchases.some((itemId) => completedActions.has(String(itemId || "")));
+  }, [activeNpcVisitPurchases, doorNpc?.visitId, finishedNpcVisitIds]);
 
   const applyMember = useCallback((nextMember) => {
     setMember((current) => ({
@@ -1009,7 +1057,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     if (!force && document.visibilityState === "hidden") return;
 
     positionSaveInFlightRef.current = true;
-    fetch(withBasePath("/api/player/me"), {
+    fetch(withBasePath("/api/player/position"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ position })
@@ -1185,11 +1233,17 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   }, []);
 
   const queueDoorNpc = useCallback((npc) => {
-    if (activeNpcQuestRef.current) return;
+    const visitor = activeNpcQuestRef.current && (npc?.type === "quest" || npc?.type === "stupid-quest")
+      ? {
+          ...npc,
+          ...npcFromActiveQuest(activeNpcQuestRef.current),
+          visitId: npc.visitId || ""
+        }
+      : npc;
     window.clearTimeout(npcSwapTimerRef.current);
     if (!doorNpcRef.current) {
-      doorNpcRef.current = npc;
-      setDoorNpc(npc);
+      doorNpcRef.current = visitor;
+      setDoorNpc(visitor);
       setDoorNpcPhase("entering");
       setNpcKey((k) => k + 1);
       return;
@@ -1197,22 +1251,10 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
 
     setDoorNpcPhase("exiting");
     npcSwapTimerRef.current = window.setTimeout(() => {
-      doorNpcRef.current = npc;
-      setDoorNpc(npc);
+      doorNpcRef.current = visitor;
+      setDoorNpc(visitor);
       setDoorNpcPhase("entering");
       setNpcKey((k) => k + 1);
-    }, NPC_EXIT_MS);
-  }, []);
-
-  const dismissDoorNpc = useCallback(() => {
-    window.clearTimeout(npcSwapTimerRef.current);
-    if (!doorNpcRef.current) return;
-    socketRef.current?.emit("npc:dismiss");
-    setDoorNpcPhase("exiting");
-    npcSwapTimerRef.current = window.setTimeout(() => {
-      doorNpcRef.current = null;
-      setDoorNpc(null);
-      setDoorNpcPhase("idle");
     }, NPC_EXIT_MS);
   }, []);
 
@@ -1407,9 +1449,9 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   }, [isAuthed]);
 
   useEffect(() => {
-    if (!actualStage) return;
-    setViewedStage(actualStage);
-  }, [actualStage]);
+    if (!actualRoomKey) return;
+    setViewedRoomKey(actualRoomKey);
+  }, [actualRoomKey]);
 
   useEffect(() => {
     if (!activeMember) return;
@@ -1438,16 +1480,16 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   }, [isAuthed, roomLevels.length]);
 
   useEffect(() => {
-    if (!isAuthed || !activeViewedStage) return;
+    if (!isAuthed || !activeViewedRoomKey) return;
     const controller = new AbortController();
-    const stage = activeViewedStage;
-    if (!isViewingOtherRoom && initialRoomSnapshotStageRef.current === stage) {
+    const roomKey = activeViewedRoomKey;
+    if (!isViewingOtherRoom && initialRoomSnapshotStageRef.current === roomKey) {
       initialRoomSnapshotStageRef.current = "";
       return undefined;
     }
 
     const loadRoomSnapshot = () => {
-      fetch(withBasePath(`/api/player/room?stage=${encodeURIComponent(stage)}`), {
+      fetch(withBasePath(`/api/player/room?roomKey=${encodeURIComponent(roomKey)}`), {
         signal: controller.signal
       })
         .then((res) => (res.ok ? res.json() : Promise.reject(res)))
@@ -1472,7 +1514,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [activeViewedStage, isAuthed, isViewingOtherRoom, mergePlayers]);
+  }, [activeViewedRoomKey, isAuthed, isViewingOtherRoom, mergePlayers]);
 
   useEffect(() => {
     if (!selfPlayer) return;
@@ -1544,25 +1586,26 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [activeMember?.discordId, applyMember, entryAdmissionToken, entryQueueClientId, mergePlayers, previewMode, queueDoorNpc, reloadMemberNow, selfPlayer?.id, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
+  }, [activeMember?.discordId, applyMember, entryAdmissionToken, entryQueueClientId, mergePlayers, previewMode, queueDoorNpc, reloadMemberNow, selfPlayer?.id, selfPlayer?.roomKey, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
 
   useEffect(() => {
     if (!selfPlayer?.id) return;
     socketRef.current?.emit("player:sync", {
+      roomKey: selfPlayer.roomKey,
       challengeFailureCount: selfPlayer.challengeFailureCount
     });
-  }, [selfPlayer?.challengeFailureCount, selfPlayer?.id]);
+  }, [selfPlayer?.challengeFailureCount, selfPlayer?.id, selfPlayer?.roomKey]);
 
   useEffect(() => {
-    if (!isViewingOtherRoom || !activeViewedStage) return;
+    if (!isViewingOtherRoom || !activeViewedRoomKey) return;
     const requestRoomSnapshot = () => {
       if (document.visibilityState === "hidden") return;
-      socketRef.current?.emit("room:peek", { stage: activeViewedStage });
+      socketRef.current?.emit("room:peek", { roomKey: activeViewedRoomKey });
     };
     requestRoomSnapshot();
     const interval = window.setInterval(requestRoomSnapshot, ROOM_PEEK_INTERVAL_MS);
     return () => window.clearInterval(interval);
-  }, [activeViewedStage, isViewingOtherRoom]);
+  }, [activeViewedRoomKey, isViewingOtherRoom]);
 
   useEffect(() => {
     if (!selfPlayer) return;
@@ -1813,16 +1856,19 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
           npcCharacter: npcQuestData.npcCharacter || null,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        applyMember(data.member);
-        activeNpcQuestRef.current = data.member.npcQuest;
-        const questNpc = npcFromActiveQuest(data.member.npcQuest);
-        doorNpcRef.current = questNpc;
-        setDoorNpc(questNpc);
-        setDoorNpcPhase("idle");
-        setQuestReceived(data.member.npcQuest);
-        emitQuestActive(data.member.npcQuest);
+	    if (res.ok) {
+	        const data = await res.json();
+	        applyMember(data.member);
+	        activeNpcQuestRef.current = data.member.npcQuest;
+	        const questNpc = npcFromActiveQuest(data.member.npcQuest);
+	        setDoorNpc((current) => {
+	          const nextNpc = current ? { ...current, ...questNpc } : questNpc;
+	          doorNpcRef.current = nextNpc;
+	          return nextNpc;
+	        });
+	        setDoorNpcPhase("idle");
+	        setQuestReceived(data.member.npcQuest);
+	        emitQuestActive(data.member.npcQuest);
       }
     } catch {}
     setNpcVisit(null);
@@ -1845,40 +1891,39 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
 
   const handleNpcQuestCancel = useCallback(async () => {
     if (!isAuthed) return;
-    const visitorQuest = activeMember?.npcQuest?.source !== "shop";
-    try {
-      const res = await fetch(withBasePath("/api/player/npc-quest"), { method: "DELETE" });
-      if (res.ok) {
-        const data = await res.json();
-        applyMember(data.member);
-        activeNpcQuestRef.current = null;
-        emitQuestActive(null);
-        setNpcVisit(null);
-        setNpcQuestData(null);
-        if (visitorQuest) dismissDoorNpc();
-      }
-    } catch {}
-  }, [activeMember?.npcQuest?.source, applyMember, dismissDoorNpc, emitQuestActive, isAuthed]);
+	    try {
+	      const res = await fetch(withBasePath("/api/player/npc-quest"), { method: "DELETE" });
+	      if (res.ok) {
+	        const data = await res.json();
+	        applyMember(data.member);
+	        activeNpcQuestRef.current = null;
+	        emitQuestActive(null);
+	        setNpcVisit(null);
+	        setNpcQuestData(null);
+	        markNpcVisitFinished(doorNpcRef.current?.visitId);
+	      }
+	    } catch {}
+	  }, [applyMember, emitQuestActive, isAuthed, markNpcVisitFinished]);
 
   const handleNpcQuestSubmit = useCallback(async (file, onUploadProgress, postText = "") => {
     if (!isAuthed) throw new Error("กรุณาเข้าสู่ระบบก่อนส่งเควส");
-    const visitorQuest = activeMember?.npcQuest?.source !== "shop";
-    const evidence = await uploadNpcQuestEvidence(file, activeMember?.discordId || activeMember?.id, onUploadProgress);
+	    const activeVisitId = doorNpcRef.current?.visitId || npcVisit?.visitId || "";
+	    const evidence = await uploadNpcQuestEvidence(file, activeMember?.discordId || activeMember?.id, onUploadProgress);
     const res = await fetch(withBasePath("/api/player/npc-quest"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ evidence, postText })
+      body: JSON.stringify({ evidence, postText, visitId: activeVisitId })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "quest_submit_failed");
 
     applyMember(data.member);
     activeNpcQuestRef.current = null;
-    emitQuestActive(null);
-    setNpcVisit(null);
-    setNpcQuestData(null);
-    if (visitorQuest) dismissDoorNpc();
-    setQuestSuccess({ title: data.submission?.title || "NPC Quest", reward: data.reward ?? 0 });
+	    emitQuestActive(null);
+	    setNpcVisit(null);
+	    setNpcQuestData(null);
+	    markNpcVisitFinished(activeVisitId);
+	    setQuestSuccess({ title: data.submission?.title || "NPC Quest", reward: data.reward ?? 0 });
     socketRef.current?.emit("social:publish", {
       id: data.submission?.id,
       title: data.submission?.title,
@@ -1886,12 +1931,12 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       authorName: activeMember?.name,
       username: activeMember?.username
     });
-  }, [activeMember?.discordId, activeMember?.id, activeMember?.name, activeMember?.npcQuest?.source, activeMember?.username, applyMember, dismissDoorNpc, emitQuestActive, isAuthed]);
+	  }, [activeMember?.discordId, activeMember?.id, activeMember?.name, activeMember?.username, applyMember, emitQuestActive, isAuthed, markNpcVisitFinished, npcVisit?.visitId]);
 
-  const handleChestClaim = useCallback((chestReward, { dismissNpc = true } = {}) => {
-    if (dismissNpc) dismissDoorNpc();
+  const handleChestClaim = useCallback((chestReward) => {
+    markNpcVisitFinished(doorNpcRef.current?.visitId);
     setQuestSuccess({ title: "หีบสมบัติ", chestReward, isChest: true });
-  }, [dismissDoorNpc]);
+  }, [markNpcVisitFinished]);
 
   const handleNpcCoinsNeeded = useCallback((cost) => {
     setNoCoinsCost(Number(cost) || 0);
@@ -1947,20 +1992,20 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     setHintResult(null); // clear hint content on close; hintBought stays for the visit
   }, []);
 
-  const handleGamblingKickOut = useCallback(() => {
-    setNpcVisit(null);
-    setNpcQuestData(null);
-    setGamblingResult(null);
-    setHintResult(null);
-    dismissDoorNpc();
-  }, [dismissDoorNpc]);
+	  const handleGamblingKickOut = useCallback(() => {
+	    markNpcVisitFinished(npcVisit?.visitId || doorNpcRef.current?.visitId);
+	    setNpcVisit(null);
+	    setNpcQuestData(null);
+	    setGamblingResult(null);
+	    setHintResult(null);
+	  }, [markNpcVisitFinished, npcVisit?.visitId]);
 
-  const handleNpcInteract = useCallback(() => {
-    if (isTutorialActive) return;
-    if (!doorNpc || doorNpcPhase === "exiting") return;
-    try { new Audio(withBasePath("/assets/Sound/openmenu.mp3")).play().catch(() => {}); } catch {}
-    setNpcVisit(doorNpc);
-  }, [doorNpc, doorNpcPhase, isTutorialActive]);
+	  const handleNpcInteract = useCallback(() => {
+	    if (isTutorialActive) return;
+	    if (!doorNpc || doorNpcPhase === "exiting") return;
+	    try { new Audio(withBasePath("/assets/Sound/openmenu.mp3")).play().catch(() => {}); } catch {}
+	    setNpcVisit(isDoorNpcFinished ? { ...doorNpc, noBusiness: true } : doorNpc);
+	  }, [doorNpc, doorNpcPhase, isDoorNpcFinished, isTutorialActive]);
 
   const handleTutorialNpcInteract = useCallback(() => {
     if (!tutorialVisitor) return;
@@ -2064,9 +2109,10 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   }, [actualStage, rewardStageKey]);
 
   const visiblePlayers = useMemo(() => {
-    if (!activeViewedStage) return [];
+    if (!activeViewedRoomKey) return [];
     const roomPlayers = players.filter((player) => {
-      const isInViewedRoom = player.stage === activeViewedStage || !player.stage;
+      const playerRoomKey = player.roomKey || roomKeyFor(player.stage, player.challengeFailureCount);
+      const isInViewedRoom = playerRoomKey === activeViewedRoomKey || (!player.stage && !player.roomKey);
       const isBrowsingSelf = isViewingOtherRoom && player.id === selfPlayer?.id;
       return isInViewedRoom && !isBrowsingSelf;
     });
@@ -2074,13 +2120,13 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       selfId: selfPlayer?.id,
       excludeSelf: isViewingOtherRoom
     });
-  }, [activeViewedStage, isViewingOtherRoom, players, selfPlayer?.id]);
+  }, [activeViewedRoomKey, isViewingOtherRoom, players, selfPlayer?.id]);
 
   const navigateViewedRoom = useCallback((direction) => {
     const nextRoom = effectiveRoomLevels[viewedRoomIndex + direction];
     if (!nextRoom) return;
     setTarget(null);
-    setViewedStage(nextRoom.stageId);
+    setViewedRoomKey(nextRoom.roomKey);
   }, [effectiveRoomLevels, viewedRoomIndex]);
 
   if (!activeMember) {
@@ -2283,7 +2329,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
         {isViewingOtherRoom && (
           <div className="room-view-indicator">
             <span>Viewing room: {viewedRoomLabel}</span>
-            <button type="button" onClick={() => setViewedStage(actualStage)}>
+            <button type="button" onClick={() => setViewedRoomKey(actualRoomKey)}>
               Back to my room
             </button>
           </div>
@@ -2469,11 +2515,11 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       {!isTutorialActive && effectiveRoomLevels.length > 1 && (
         <RoomProgressBar
           levels={effectiveRoomLevels}
-          activeStage={actualStage}
-          viewedStage={activeViewedStage}
-          onSelectRoom={(stageId) => {
+          activeRoomKey={actualRoomKey}
+          viewedRoomKey={activeViewedRoomKey}
+          onSelectRoom={(roomKey) => {
             setTarget(null);
-            setViewedStage(stageId);
+            setViewedRoomKey(roomKey);
           }}
           disabled={false}
         />

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Server Optimization for Online Games"
+  short_description: "Professional-grade server optimization patterns for QuestRoomWeb — memory safety, bounded caches, efficient queries, Socket.IO scaling, and heap management for 100-500+ concurrent players."
+  default_prompt: "Review or write QuestRoomWeb server-side code (API routes, Socket.IO handlers, in-memory caches, MongoDB queries, file uploads, or background tasks). Enforce bounded Maps with prune functions, query projections with limits, streaming uploads, proper disconnect cleanup, room-scoped broadcasts, and memory budget estimation."

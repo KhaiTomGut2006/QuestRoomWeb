@@ -9,6 +9,8 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 const CACHE_TTL_MS = Math.max(30_000, Number(process.env.TEMPLATE_CACHE_TTL_MS || 300_000));
+const TEMPLATE_QUERY_LIMIT = Math.max(10, Number(process.env.TEMPLATE_QUERY_LIMIT || 500));
+const TEMPLATE_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.TEMPLATE_QUERY_MAX_TIME_MS || 3_000));
 let cachedQuestTemplates = new Map();
 
 export async function OPTIONS() {
@@ -29,7 +31,12 @@ export async function GET(request) {
     }
 
     await connectDb();
-    const quests = await QuestTemplate.find(filter).sort({ difficulty: 1, createdAt: 1 }).lean();
+    const quests = await QuestTemplate.find(filter)
+      .select("difficulty title description rewardMin rewardMax npcCharacter createdAt")
+      .sort({ difficulty: 1, createdAt: 1, _id: 1 })
+      .limit(TEMPLATE_QUERY_LIMIT)
+      .lean()
+      .maxTimeMS(TEMPLATE_QUERY_MAX_TIME_MS);
     cachedQuestTemplates.set(cacheKey, { quests, loadedAt: Date.now() });
     return NextResponse.json({ quests }, { headers: CORS });
   } catch (error) {
@@ -42,7 +49,7 @@ export async function GET(request) {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const incoming = Array.isArray(body?.quests) ? body.quests : [];
+    const incoming = Array.isArray(body?.quests) ? body.quests.slice(0, TEMPLATE_QUERY_LIMIT) : [];
 
     // Validate entries
     const valid = incoming.filter(
@@ -65,7 +72,12 @@ export async function PUT(request) {
       );
     }
 
-    const quests = await QuestTemplate.find({}).sort({ difficulty: 1, createdAt: 1 }).lean();
+    const quests = await QuestTemplate.find({})
+      .select("difficulty title description rewardMin rewardMax npcCharacter createdAt")
+      .sort({ difficulty: 1, createdAt: 1, _id: 1 })
+      .limit(TEMPLATE_QUERY_LIMIT)
+      .lean()
+      .maxTimeMS(TEMPLATE_QUERY_MAX_TIME_MS);
     cachedQuestTemplates = new Map();
     return NextResponse.json({ success: true, quests }, { headers: CORS });
   } catch (error) {

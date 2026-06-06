@@ -1,0 +1,180 @@
+{
+  "event": "load_test_summary",
+  "config": {
+    "scenario": "reaction-heavy",
+    "baseUrl": "http://127.0.0.1:3101",
+    "basePath": "/questroom",
+    "users": 300,
+    "durationMs": 60000,
+    "rampMs": 20000,
+    "stages": [
+      "game-demo-1",
+      "game-demo-2",
+      "game-demo-3"
+    ],
+    "uploadAbuse": false,
+    "queueTransport": "sse",
+    "auth": true
+  },
+  "health": {
+    "samples": 14,
+    "failures": 0,
+    "maxRssMb": 269,
+    "maxHeapUsedMb": 118,
+    "maxExternalMb": 25,
+    "maxLagMs": 0,
+    "maxSockets": 300,
+    "maxRoomPlayers": 300,
+    "maxCpuLoad1": 3.4248046875,
+    "maxApiActiveCount": 29,
+    "maxPendingNpcPoolLoads": 0,
+    "maxActiveNpcVisits": 0,
+    "last": {
+      "at": 65574,
+      "rssMb": 234,
+      "heapUsedMb": 65,
+      "externalMb": 22,
+      "lagMs": 0,
+      "sockets": 4,
+      "rooms": 3,
+      "roomPlayers": 4,
+      "dbStatus": "connected",
+      "dbPingMs": 36,
+      "cpuLoad1": 2.3310546875,
+      "apiActiveCount": 2,
+      "entryQueueWaiting": 296,
+      "entryQueueActive": 0,
+      "pendingNpcPoolLoads": 0,
+      "activeNpcVisits": 0
+    }
+  },
+  "socket": {
+    "connected": 300,
+    "connectError": 0,
+    "disconnected": 300,
+    "npcVisits": 0,
+    "roomStates": 300,
+    "patches": 52531
+  },
+  "uploadAbuse": {
+    "attempts": 0,
+    "rejected": 0,
+    "unauthorized": 0,
+    "skipped": false,
+    "results": []
+  },
+  "api": {
+    "entry-queue-sse": {
+      "count": 300,
+      "ok": 300,
+      "fail": 0,
+      "avgMs": 1,
+      "p95Ms": 2,
+      "maxMs": 7
+    },
+    "config": {
+      "count": 300,
+      "ok": 300,
+      "fail": 0,
+      "avgMs": 1,
+      "p95Ms": 2,
+      "maxMs": 12
+    },
+    "levels": {
+      "count": 300,
+      "ok": 300,
+      "fail": 0,
+      "avgMs": 28,
+      "p95Ms": 11,
+      "maxMs": 1002
+    },
+    "player-me": {
+      "count": 300,
+      "ok": 300,
+      "fail": 0,
+      "avgMs": 94,
+      "p95Ms": 392,
+      "maxMs": 736
+    },
+    "rooms": {
+      "count": 300,
+      "ok": 300,
+      "fail": 0,
+      "avgMs": 2,
+      "p95Ms": 4,
+      "maxMs": 6
+    },
+    "room": {
+      "count": 300,
+      "ok": 300,
+      "fail": 0,
+      "avgMs": 18,
+      "p95Ms": 100,
+      "maxMs": 190
+    },
+    "social-status": {
+      "count": 481,
+      "ok": 481,
+      "fail": 0,
+      "avgMs": 86,
+      "p95Ms": 260,
+      "maxMs": 887
+    },
+    "global": {
+      "count": 569,
+      "ok": 569,
+      "fail": 0,
+      "avgMs": 116,
+      "p95Ms": 524,
+      "maxMs": 1036
+    },
+    "hint-templates": {
+      "count": 122,
+      "ok": 122,
+      "fail": 0,
+      "avgMs": 2,
+      "p95Ms": 3,
+      "maxMs": 42
+    },
+    "position": {
+      "count": 301,
+      "ok": 299,
+      "fail": 2,
+      "avgMs": 82,
+      "p95Ms": 383,
+      "maxMs": 717
+    },
+    "profile": {
+      "count": 82,
+      "ok": 82,
+      "fail": 0,
+      "avgMs": 81,
+      "p95Ms": 339,
+      "maxMs": 630
+    },
+    "global-reaction": {
+      "count": 716,
+      "ok": 716,
+      "fail": 0,
+      "avgMs": 286,
+      "p95Ms": 763,
+      "maxMs": 1665
+    },
+    "quest-templates": {
+      "count": 155,
+      "ok": 155,
+      "fail": 0,
+      "avgMs": 2,
+      "p95Ms": 3,
+      "maxMs": 49
+    },
+    "ranking": {
+      "count": 62,
+      "ok": 62,
+      "fail": 0,
+      "avgMs": 3,
+      "p95Ms": 4,
+      "maxMs": 53
+    }
+  }
+}

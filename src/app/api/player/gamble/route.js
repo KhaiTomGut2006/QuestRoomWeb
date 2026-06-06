@@ -4,10 +4,22 @@ import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import { MEMBER_INTERACTION_SELECT, normalizeMemberInteraction } from "@/lib/player";
-import { markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
+import { assertActiveNpcVisit, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
 
 const MIN_BET = 1;
 const MAX_BET = 10000;
+const MEMBER_READ_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.MEMBER_READ_QUERY_MAX_TIME_MS || 3_000));
+
+function questCoinExpression() {
+  return {
+    $convert: {
+      input: { $ifNull: ["$questCoin", "0"] },
+      to: "int",
+      onError: 0,
+      onNull: 0
+    }
+  };
+}
 
 // POST /api/player/gamble  body: { betAmount }
 export async function POST(request) {
@@ -24,7 +36,9 @@ export async function POST(request) {
     }
 
     await connectDb();
-    const member = await Member.findOne({ discord_id: String(discordId) }).select(MEMBER_INTERACTION_SELECT);
+    const member = await Member.findOne({ discord_id: String(discordId) })
+      .select(MEMBER_INTERACTION_SELECT)
+      .maxTimeMS(MEMBER_READ_QUERY_MAX_TIME_MS);
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
 
     const currentCoins = Number.parseInt(member.questCoin ?? member.coin ?? "0", 10);
@@ -35,13 +49,39 @@ export async function POST(request) {
       );
     }
 
+    assertActiveNpcVisit(member, visitId);
+
     const won = Math.random() < 0.5;
     const delta = won ? bet : -bet;
-    member.questCoin = String(Math.max(0, currentCoins + delta));
-    markNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.gamble);
-    await member.save({ validateModifiedOnly: true });
+    const operator = won ? "$add" : "$subtract";
+    const coinExpr = questCoinExpression();
 
-    return NextResponse.json({ won, delta, member: normalizeMemberInteraction(member) });
+    const updated = await Member.findOneAndUpdate(
+      {
+        discord_id: String(discordId),
+        $expr: { $gte: [coinExpr, bet] }
+      },
+      [{ $set: { questCoin: { $toString: { [operator]: [coinExpr, bet] } } } }],
+      { new: true, projection: MEMBER_INTERACTION_SELECT, maxTimeMS: MEMBER_READ_QUERY_MAX_TIME_MS }
+    );
+
+    if (!updated) {
+      return NextResponse.json(
+        { error: "not_enough_coins", coins: currentCoins },
+        { status: 400 }
+      );
+    }
+
+    await Member.findOneAndUpdate(
+      { discord_id: String(discordId) },
+      {
+        $set: { npcVisitId: visitId },
+        $addToSet: { npcVisitPurchases: NPC_VISIT_ACTIONS.gamble }
+      },
+      { maxTimeMS: MEMBER_READ_QUERY_MAX_TIME_MS }
+    );
+
+    return NextResponse.json({ won, delta, member: normalizeMemberInteraction(updated) });
   } catch (error) {
     const status = error.message === "npc_visit_expired" ? 409 : 503;
     return NextResponse.json({ error: error.message }, { status });

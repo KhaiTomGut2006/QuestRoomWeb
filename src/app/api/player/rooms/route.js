@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { getAvailableLevels } from "@/lib/player";
+import { getAvailableRoomLevels } from "@/lib/player";
+import { getPlayerDiscordId, getPlayerSession } from "@/lib/loadTestAuth";
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.discordId) {
+export async function GET(request) {
+  const session = await getPlayerSession(request);
+  if (!getPlayerDiscordId(session)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   try {
-    const levels = await getAvailableLevels();
+    const levels = await getAvailableRoomLevels();
     return NextResponse.json({ levels });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503 });

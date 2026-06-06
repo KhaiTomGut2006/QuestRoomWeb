@@ -11,6 +11,10 @@ import { authOptions } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const SERVER_UPLOAD_MAX_BYTES = Math.min(
+  MAX_UPLOAD_BYTES,
+  Math.max(1, Number(process.env.SERVER_UPLOAD_MAX_MB || 2)) * 1024 * 1024
+);
 const GRIDFS_MAX_UPLOAD_BYTES = Math.min(
   MAX_UPLOAD_BYTES,
   Math.max(1, Number(process.env.GRIDFS_MAX_UPLOAD_MB || 8)) * 1024 * 1024
@@ -102,6 +106,12 @@ async function saveGridFsUpload(request, discordId) {
   }
 
   const contentLength = Number(request.headers.get("content-length") || 0);
+  if (process.env.NODE_ENV === "production" && contentLength > SERVER_UPLOAD_MAX_BYTES) {
+    return NextResponse.json(
+      { error: "direct_upload_required", maximumServerUploadSizeInBytes: SERVER_UPLOAD_MAX_BYTES },
+      { status: 413 }
+    );
+  }
   if (contentLength > GRIDFS_MAX_UPLOAD_BYTES + 1024 * 1024) {
     return NextResponse.json(
       { error: "file_too_large", maximumSizeInBytes: GRIDFS_MAX_UPLOAD_BYTES },
@@ -123,6 +133,12 @@ async function saveGridFsUpload(request, discordId) {
       { status: 413 }
     );
   }
+  if (process.env.NODE_ENV === "production" && file.size > SERVER_UPLOAD_MAX_BYTES) {
+    return NextResponse.json(
+      { error: "direct_upload_required", maximumServerUploadSizeInBytes: SERVER_UPLOAD_MAX_BYTES },
+      { status: 413 }
+    );
+  }
 
   await connectDb();
   const filename = safeSegment(file.name);
@@ -136,10 +152,10 @@ async function saveGridFsUpload(request, discordId) {
       size: file.size
     }
   });
-  await new Promise(async (resolve, reject) => {
+  await new Promise((resolve, reject) => {
     uploadStream.on("finish", resolve);
     uploadStream.on("error", reject);
-    Readable.from(Buffer.from(await file.arrayBuffer())).pipe(uploadStream);
+    Readable.fromWeb(file.stream()).pipe(uploadStream);
   });
 
   const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";

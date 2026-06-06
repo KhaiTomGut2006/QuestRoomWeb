@@ -2,6 +2,8 @@ import QuestTemplate from "@/models/QuestTemplate";
 import Level from "@/models/Level";
 import { ACCESSORY_LIST } from "@/lib/accessories";
 
+const SHOP_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.SHOP_QUERY_MAX_TIME_MS || 3_000));
+
 export const ASSET_TICKET_ITEM_ID = "asset-ticket";
 
 export const SHOP_ITEMS = {
@@ -141,7 +143,9 @@ function normalizeConfiguredShopItem(entry) {
 
 async function getLevelItemConfig(stage) {
   if (!stage) return null;
-  return Level.findOne({ stageId: String(stage) }, { npcShop: 1, boxDrops: 1 }).lean();
+  return Level.findOne({ stageId: String(stage) }, { npcShop: 1, boxDrops: 1 })
+    .lean()
+    .maxTimeMS(SHOP_QUERY_MAX_TIME_MS);
 }
 
 export async function getNpcShopItems(stage) {
@@ -159,9 +163,22 @@ export async function getNpcShopItem(stage, itemId) {
 }
 
 async function pickQuest(difficulty) {
-  const pool = await QuestTemplate.find({ difficulty }).lean();
-  if (!pool.length) throw new Error("no_quest_templates");
-  const picked = pool[Math.floor(Math.random() * pool.length)];
+  const [picked] = await QuestTemplate.aggregate([
+    { $match: { difficulty } },
+    {
+      $project: {
+        _id: 0,
+        difficulty: 1,
+        title: 1,
+        description: 1,
+        rewardMin: 1,
+        rewardMax: 1,
+        npcCharacter: 1
+      }
+    },
+    { $sample: { size: 1 } }
+  ]).option({ maxTimeMS: SHOP_QUERY_MAX_TIME_MS });
+  if (!picked) throw new Error("no_quest_templates");
   const reward = Math.round(
     (picked.rewardMin || 50) + Math.random() * ((picked.rewardMax || 100) - (picked.rewardMin || 50))
   );

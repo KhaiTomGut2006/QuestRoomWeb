@@ -71,4 +71,6 @@ const LevelSchema = new mongoose.Schema({
   challengeInfo: { type: ChallengeInfoSchema, default: () => ({}) },
 }, { collection: "levels" });
 
+LevelSchema.index({ order: 1, _id: 1 });
+
 export default mongoose.models.Level || mongoose.model("Level", LevelSchema);

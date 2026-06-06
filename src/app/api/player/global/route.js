@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import {
   getActiveClasses,
   getGlobalQuestPosts,
   reactToGlobalQuestPost
 } from "@/lib/player";
+import { getPlayerDiscordId, getPlayerSession } from "@/lib/loadTestAuth";
 
 export async function GET(request) {
-  const session = await getServerSession(authOptions);
-  const discordId = session?.user?.discordId;
+  const session = await getPlayerSession(request);
+  const discordId = getPlayerDiscordId(session);
   if (!discordId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {
@@ -37,8 +36,8 @@ export async function GET(request) {
 }
 
 export async function PATCH(request) {
-  const session = await getServerSession(authOptions);
-  const discordId = session?.user?.discordId;
+  const session = await getPlayerSession(request);
+  const discordId = getPlayerDiscordId(session);
   if (!discordId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {

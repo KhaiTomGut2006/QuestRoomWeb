@@ -159,6 +159,16 @@ function InteractDialog({ npcId, npcName, intro, children }) {
   );
 }
 
+function NoBusinessDialog({ npc, onClose }) {
+  const character = npc.npcId || npc.id || "witch";
+  const npcName = npc.name || "NPC";
+  return (
+    <InteractDialog npcId={character} npcName={npcName} intro="ฉันไม่มีธุระอะไรกับนายแล้วนะ">
+      <button className="npc-quest-decline-btn" type="button" onClick={onClose}>ปิดบทสนทนา</button>
+    </InteractDialog>
+  );
+}
+
 // ── Gambling dialog (Begger) ─────────────────────────────────────────────────
 const KICK_INSULTS = [
   "ออกไปจากบ้านฉัน! ขอทานสิ้นดี!",
@@ -669,7 +679,7 @@ export default function NpcVisitModal({
   const isHintsDialog    = npc.type === "hints";
   const isShopDialog     = npc.type === "shop";
   const isChestDialog    = npc.type === "chest";
-  const isWideDialog     = isQuestDialog || isGamblingDialog || isHintsDialog || isShopDialog || isChestDialog;
+  const isWideDialog     = npc.noBusiness || isQuestDialog || isGamblingDialog || isHintsDialog || isShopDialog || isChestDialog;
 
   const handleChestClaim = async () => {
     setClaimingChest(true);
@@ -689,7 +699,7 @@ export default function NpcVisitModal({
       onMemberUpdate?.(data.member);
       onCooldownReduction?.(data.reward?.cooldownReductionMs);
       if (data.reward?.assignedQuest) onQuestScrollBought?.(data.reward.assignedQuest, data.member);
-      onChestClaim?.(data.reward, { dismissNpc: true });
+      onChestClaim?.(data.reward, { dismissNpc: false });
       onClose?.();
     } finally {
       setClaimingChest(false);
@@ -764,7 +774,7 @@ export default function NpcVisitModal({
       <div className={`npc-visit-card${isWideDialog ? " npc-visit-card--quest" : ""}`}>
         <button className="npc-visit-close" type="button" onClick={onClose} aria-label="Close">✕</button>
 
-        {!isQuestDialog && !isGamblingDialog && !isHintsDialog && !isShopDialog && !isChestDialog && (
+        {!npc.noBusiness && !isQuestDialog && !isGamblingDialog && !isHintsDialog && !isShopDialog && !isChestDialog && (
           <>
             <span className={`npc-visit-type-badge ${meta.cls}`}>{meta.label}</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -783,7 +793,11 @@ export default function NpcVisitModal({
           </>
         )}
 
-        {isQuestDialog && (
+        {npc.noBusiness && (
+          <NoBusinessDialog npc={npc} onClose={onClose} />
+        )}
+
+        {!npc.noBusiness && isQuestDialog && (
           <QuestDialog
             npc={npc}
             questData={questData}
@@ -795,7 +809,7 @@ export default function NpcVisitModal({
           />
         )}
 
-        {isGamblingDialog && (
+        {!npc.noBusiness && isGamblingDialog && (
           <GamblingDialog
             npc={npc}
             result={gamblingResult}
@@ -807,7 +821,7 @@ export default function NpcVisitModal({
           />
         )}
 
-        {isHintsDialog && (
+        {!npc.noBusiness && isHintsDialog && (
           <HintsDialog
             hintsData={hintsData}
             hintResult={hintResult}
@@ -817,7 +831,7 @@ export default function NpcVisitModal({
           />
         )}
 
-        {isShopDialog && (
+        {!npc.noBusiness && isShopDialog && (
           <ShopDialog
             npc={npc}
             purchases={shopPurchases}
@@ -828,7 +842,7 @@ export default function NpcVisitModal({
           />
         )}
 
-        {isChestDialog && (
+        {!npc.noBusiness && isChestDialog && (
           <ChestDialog
             result={chestResult}
             claimed={visitPurchases.includes("__chest__")}

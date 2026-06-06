@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getMemberByDiscordId } from "@/lib/player";
+import { getPlayerDiscordId, getPlayerSession } from "@/lib/loadTestAuth";
 
 const PROFILE_MEMBER_SELECT = [
   "_id",
@@ -21,8 +20,9 @@ const PROFILE_MEMBER_SELECT = [
 ].join(" ");
 
 export async function GET(request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.discordId) {
+  const session = await getPlayerSession(request);
+  const viewerDiscordId = getPlayerDiscordId(session);
+  if (!viewerDiscordId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -50,7 +50,7 @@ export async function GET(request) {
       rank: member.rank,
       achievements: member.achievements,
       questPosts: member.socialQuestSubmissions,
-      ownedAccessories: member.discordId === session.user.discordId ? member.ownedAccessories : [],
+      ownedAccessories: member.discordId === viewerDiscordId ? member.ownedAccessories : [],
       equippedAccessory: member.equippedAccessory,
       stage: member.stage,
       online: false // Default to offline unless they are online in sockets

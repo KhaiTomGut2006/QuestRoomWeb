@@ -1,0 +1,116 @@
+{
+  "event": "load_test_summary",
+  "config": {
+    "scenario": "heavy",
+    "baseUrl": "http://127.0.0.1:3101",
+    "basePath": "/questroom",
+    "users": 500,
+    "durationMs": 180000,
+    "rampMs": 30000,
+    "stages": [
+      "game-demo-1",
+      "game-demo-2",
+      "game-demo-3"
+    ],
+    "uploadAbuse": false,
+    "queueTransport": "sse",
+    "auth": false
+  },
+  "health": {
+    "samples": 37,
+    "failures": 0,
+    "maxRssMb": 251,
+    "maxHeapUsedMb": 123,
+    "maxExternalMb": 23,
+    "maxLagMs": 0,
+    "maxSockets": 500,
+    "maxRoomPlayers": 500,
+    "maxCpuLoad1": 7.275390625,
+    "maxApiActiveCount": 2,
+    "maxPendingNpcPoolLoads": 0,
+    "maxActiveNpcVisits": 0,
+    "last": {
+      "at": 181763,
+      "rssMb": 221,
+      "heapUsedMb": 90,
+      "externalMb": 22,
+      "lagMs": 0,
+      "sockets": 217,
+      "rooms": 3,
+      "roomPlayers": 217,
+      "dbStatus": "connected",
+      "dbPingMs": 38,
+      "cpuLoad1": 6.0517578125,
+      "apiActiveCount": 1,
+      "entryQueueWaiting": 0,
+      "entryQueueActive": 0,
+      "pendingNpcPoolLoads": 0,
+      "activeNpcVisits": 0
+    }
+  },
+  "socket": {
+    "connected": 500,
+    "connectError": 0,
+    "disconnected": 500,
+    "npcVisits": 0,
+    "roomStates": 500,
+    "patches": 307711
+  },
+  "uploadAbuse": {
+    "attempts": 0,
+    "rejected": 0,
+    "unauthorized": 0,
+    "skipped": false,
+    "results": []
+  },
+  "api": {
+    "entry-queue-sse": {
+      "count": 500,
+      "ok": 500,
+      "fail": 0,
+      "avgMs": 4,
+      "p95Ms": 7,
+      "maxMs": 38
+    },
+    "config": {
+      "count": 500,
+      "ok": 500,
+      "fail": 0,
+      "avgMs": 3,
+      "p95Ms": 6,
+      "maxMs": 77
+    },
+    "levels": {
+      "count": 500,
+      "ok": 500,
+      "fail": 0,
+      "avgMs": 49,
+      "p95Ms": 138,
+      "maxMs": 1645
+    },
+    "room": {
+      "count": 500,
+      "ok": 0,
+      "fail": 500,
+      "avgMs": 3,
+      "p95Ms": 13,
+      "maxMs": 42
+    },
+    "hint-templates": {
+      "count": 2191,
+      "ok": 2191,
+      "fail": 0,
+      "avgMs": 4,
+      "p95Ms": 8,
+      "maxMs": 74
+    },
+    "quest-templates": {
+      "count": 3303,
+      "ok": 3303,
+      "fail": 0,
+      "avgMs": 4,
+      "p95Ms": 8,
+      "maxMs": 77
+    }
+  }
+}

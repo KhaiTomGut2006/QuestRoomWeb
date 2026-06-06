@@ -5,6 +5,7 @@ import Member from "@/models/Member";
 const ROLE_QUEST_COST = 50;
 const ROLE_QUEST_REWARD = 100;
 const ROLE_QUEST_CANCEL_WAIT_MS = 2 * 60 * 1000;
+const MEMBER_READ_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.MEMBER_READ_QUERY_MAX_TIME_MS || 3_000));
 
 function currentCoins(member) {
   return Math.max(0, Number.parseInt(member.questCoin ?? member.coin ?? "0", 10) || 0);
@@ -28,7 +29,7 @@ function updateStep(member, step, extra = {}) {
 
 async function loadTutorialMember(discordId) {
   await connectDb();
-  return Member.findOne({ discord_id: String(discordId || "") });
+  return Member.findOne({ discord_id: String(discordId || "") }).maxTimeMS(MEMBER_READ_QUERY_MAX_TIME_MS);
 }
 
 export async function advanceTutorial(discordId, action) {
@@ -37,6 +38,8 @@ export async function advanceTutorial(discordId, action) {
 
   let reward = null;
   const now = new Date();
+  const originalStep = String(member.tutorial?.step || "");
+  const originalStatus = String(member.tutorial?.status || "");
 
   if (action === "continue-welcome") {
     assertTutorialStep(member, "welcome-1");
@@ -104,13 +107,48 @@ export async function advanceTutorial(discordId, action) {
     throw new Error("invalid_tutorial_action");
   }
 
-  member.markModified("tutorial");
-  member.markModified("npcQuest");
-  member.markModified("profileAchievements");
-  await member.save({ validateModifiedOnly: true });
+  const commitFilter = {
+    discord_id: String(discordId || ""),
+    "tutorial.status": originalStatus,
+    "tutorial.step": originalStep
+  };
+  if (action === "accept-first-quest" || action === "buy-role-quest") {
+    commitFilter.$or = [{ npcQuest: null }, { npcQuest: { $exists: false } }];
+  }
+  if (action === "buy-role-quest") {
+    commitFilter.$expr = {
+      $gte: [
+        {
+          $convert: {
+            input: { $ifNull: ["$questCoin", { $ifNull: ["$coin", "0"] }] },
+            to: "int",
+            onError: 0,
+            onNull: 0
+          }
+        },
+        ROLE_QUEST_COST
+      ]
+    };
+  }
+
+  const updated = await Member.findOneAndUpdate(
+    commitFilter,
+    {
+      $set: {
+        tutorial: member.tutorial,
+        npcQuest: member.npcQuest,
+        questCoin: member.questCoin,
+        stage: member.stage,
+        profileAchievements: member.profileAchievements,
+        questroomRank: member.questroomRank
+      }
+    },
+    { new: true, maxTimeMS: MEMBER_READ_QUERY_MAX_TIME_MS }
+  );
+  if (!updated) throw new Error("invalid_tutorial_step");
 
   return {
-    member: normalizeMember(member),
+    member: normalizeMember(updated),
     reward,
     roleQuestCost: ROLE_QUEST_COST,
     roleQuestReward: ROLE_QUEST_REWARD

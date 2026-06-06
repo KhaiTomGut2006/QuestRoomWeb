@@ -29,6 +29,8 @@ const GameShell = dynamic(() => import("@/components/GameShell"), {
 
 const CLIENT_ID_KEY = "questroom:entry-client-id";
 const RELEASE_AFTER_MS = 24_000;
+const QUEUE_RETRY_MIN_MS = 10_000;
+const QUEUE_RETRY_MAX_MS = 90_000;
 
 function createClientId() {
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
@@ -53,6 +55,13 @@ function statusText(status) {
   if (status === "full") return "คิวเต็มชั่วคราว";
   if (status === "error") return "ระบบคิวเชื่อมต่อไม่ได้";
   return "กำลังรอคิวเข้าเกม";
+}
+
+function boundedQueueRetryMs(value, status = "waiting", failureCount = 0) {
+  const base = Math.max(QUEUE_RETRY_MIN_MS, Number(value) || 30_000);
+  const statusMultiplier = status === "paused" || status === "full" ? 2 : 1;
+  const failureMultiplier = Math.min(4, 1 + Math.max(0, failureCount));
+  return Math.min(QUEUE_RETRY_MAX_MS, base * statusMultiplier * failureMultiplier);
 }
 
 async function fetchJson(path, options = {}) {
@@ -104,30 +113,77 @@ export default function EntryQueueGate() {
     if (!clientId || shouldBypass || admission?.token) return undefined;
     let cancelled = false;
     let timerId = 0;
+    let controller = null;
+    let eventSource = null;
+    let failureCount = 0;
+    let usingSse = false;
 
     const pollQueue = () => {
-      fetch(withBasePath(`/api/entry-queue?clientId=${encodeURIComponent(clientId)}`), { cache: "no-store" })
+      if (usingSse) return;
+      controller?.abort();
+      controller = new AbortController();
+      fetch(withBasePath(`/api/entry-queue?clientId=${encodeURIComponent(clientId)}`), {
+        cache: "no-store",
+        signal: controller.signal
+      })
         .then((response) => response.json())
         .then((data) => {
           if (cancelled) return;
+          failureCount = 0;
           setQueueState(data);
           if (data.status === "admitted" && data.token) {
             setAdmission({ token: data.token, expiresAt: data.expiresAt || "" });
             return;
           }
-          const retryMs = Math.max(1000, Number(data.retryMs) || 2000);
-          timerId = window.setTimeout(pollQueue, retryMs + Math.floor(Math.random() * 900));
+          const retryMs = boundedQueueRetryMs(data.retryMs, data.status, failureCount);
+          timerId = window.setTimeout(pollQueue, retryMs + Math.floor(Math.random() * 5000));
         })
-        .catch(() => {
+        .catch((error) => {
           if (cancelled) return;
+          if (error?.name === "AbortError") return;
+          failureCount += 1;
           setQueueState({ status: "error", retryMs: 3000 });
-          timerId = window.setTimeout(pollQueue, 3000);
+          const retryMs = boundedQueueRetryMs(30_000, "error", failureCount);
+          timerId = window.setTimeout(pollQueue, retryMs + Math.floor(Math.random() * 5000));
         });
     };
 
-    pollQueue();
+    const handleQueueData = (data) => {
+      if (cancelled) return;
+      failureCount = 0;
+      setQueueState(data);
+      if (data.status === "admitted" && data.token) {
+        setAdmission({ token: data.token, expiresAt: data.expiresAt || "" });
+      }
+    };
+
+    if (typeof window !== "undefined" && "EventSource" in window) {
+      usingSse = true;
+      eventSource = new EventSource(withBasePath(`/api/entry-queue?stream=1&clientId=${encodeURIComponent(clientId)}`));
+      eventSource.addEventListener("queue", (event) => {
+        try {
+          handleQueueData(JSON.parse(event.data));
+        } catch {
+          // Ignore malformed SSE payloads and let reconnect/fallback handle it.
+        }
+      });
+      eventSource.onerror = () => {
+        if (cancelled) return;
+        usingSse = false;
+        eventSource?.close();
+        eventSource = null;
+        failureCount += 1;
+        const retryMs = boundedQueueRetryMs(30_000, "error", failureCount);
+        timerId = window.setTimeout(pollQueue, retryMs + Math.floor(Math.random() * 5000));
+      };
+    } else {
+      pollQueue();
+    }
+
     return () => {
       cancelled = true;
+      eventSource?.close();
+      controller?.abort();
       window.clearTimeout(timerId);
     };
   }, [admission?.token, clientId, shouldBypass]);
@@ -136,18 +192,19 @@ export default function EntryQueueGate() {
     if (!admission?.token || shouldBypass || gameMounted || preloadStartedRef.current) return undefined;
     let cancelled = false;
     let retryTimerId = 0;
+    const controller = new AbortController();
 
     const runPreload = async () => {
       preloadStartedRef.current = true;
       try {
         setPreloadState({ status: "loading", progress: 12, label: "กำลังตรวจสอบระบบ" });
-        const config = await fetchJson("/api/config");
+        const config = await fetchJson("/api/config", { signal: controller.signal });
         if (cancelled) return;
 
         setPreloadState({ status: "loading", progress: 34, label: "กำลังโหลดข้อมูลผู้เล่น" });
         let memberPayload = null;
         try {
-          memberPayload = await fetchJson("/api/player/me");
+          memberPayload = await fetchJson("/api/player/me", { signal: controller.signal });
         } catch (error) {
           if (error.status === 401) {
             setInitialData({ config });
@@ -159,15 +216,15 @@ export default function EntryQueueGate() {
         if (cancelled) return;
 
         setPreloadState({ status: "loading", progress: 58, label: "กำลังโหลดรายชื่อห้อง" });
-        const roomsPayload = await fetchJson("/api/player/rooms");
+        const roomsPayload = await fetchJson("/api/player/rooms", { signal: controller.signal });
         if (cancelled) return;
 
         const member = memberPayload?.member || null;
-        const stage = member?.stage || "";
+        const roomKey = member?.roomKey || member?.stage || "";
         let roomPlayers = [];
-        if (stage) {
+        if (roomKey) {
           setPreloadState({ status: "loading", progress: 78, label: "กำลังโหลดผู้เล่นในห้อง" });
-          const roomPayload = await fetchJson(`/api/player/room?stage=${encodeURIComponent(stage)}`);
+          const roomPayload = await fetchJson(`/api/player/room?roomKey=${encodeURIComponent(roomKey)}`, { signal: controller.signal });
           roomPlayers = Array.isArray(roomPayload?.players) ? roomPayload.players : [];
         }
         if (cancelled) return;
@@ -193,6 +250,7 @@ export default function EntryQueueGate() {
     runPreload();
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(retryTimerId);
     };
   }, [admission?.token, gameMounted, shouldBypass]);

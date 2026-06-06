@@ -5,7 +5,21 @@ import { connectDb } from "@/lib/db";
 import Member from "@/models/Member";
 import HintTemplate from "@/models/HintTemplate";
 import { MEMBER_INTERACTION_SELECT, normalizeMemberInteraction } from "@/lib/player";
-import { hasNpcVisitAction, markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
+import { assertActiveNpcVisit, hasNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
+
+const MEMBER_READ_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.MEMBER_READ_QUERY_MAX_TIME_MS || 3_000));
+const HINT_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.HINT_QUERY_MAX_TIME_MS || 3_000));
+
+function questCoinExpression() {
+  return {
+    $convert: {
+      input: { $ifNull: ["$questCoin", "0"] },
+      to: "int",
+      onError: 0,
+      onNull: 0
+    }
+  };
+}
 
 // POST /api/player/hint  body: { hintId }
 export async function POST(request) {
@@ -19,12 +33,16 @@ export async function POST(request) {
 
     await connectDb();
 
-    const hint = await HintTemplate.findById(hintId).lean();
+    const hint = await HintTemplate.findById(hintId)
+      .lean()
+      .maxTimeMS(HINT_QUERY_MAX_TIME_MS);
     if (!hint) return NextResponse.json({ error: "hint_not_found" }, { status: 404 });
 
     const cost = Number(hint.cost) || 500;
 
-    const member = await Member.findOne({ discord_id: String(discordId) }).select(MEMBER_INTERACTION_SELECT);
+    const member = await Member.findOne({ discord_id: String(discordId) })
+      .select(MEMBER_INTERACTION_SELECT)
+      .maxTimeMS(MEMBER_READ_QUERY_MAX_TIME_MS);
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     if (hasNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.hint)) {
       return NextResponse.json({ error: "hint_already_bought" }, { status: 409 });
@@ -38,15 +56,39 @@ export async function POST(request) {
       );
     }
 
-    member.questCoin = String(currentCoins - cost);
-    markNpcVisitAction(member, visitId, NPC_VISIT_ACTIONS.hint);
-    await member.save({ validateModifiedOnly: true });
+    assertActiveNpcVisit(member, visitId);
+
+    const coinExpr = questCoinExpression();
+    const updated = await Member.findOneAndUpdate(
+      {
+        discord_id: String(discordId),
+        $expr: { $gte: [coinExpr, cost] }
+      },
+      [{ $set: { questCoin: { $toString: { $subtract: [coinExpr, cost] } } } }],
+      { new: true, projection: MEMBER_INTERACTION_SELECT, maxTimeMS: MEMBER_READ_QUERY_MAX_TIME_MS }
+    );
+
+    if (!updated) {
+      return NextResponse.json(
+        { error: "not_enough_coins", coins: currentCoins, cost },
+        { status: 400 }
+      );
+    }
+
+    await Member.findOneAndUpdate(
+      { discord_id: String(discordId) },
+      {
+        $set: { npcVisitId: visitId },
+        $addToSet: { npcVisitPurchases: NPC_VISIT_ACTIONS.hint }
+      },
+      { maxTimeMS: MEMBER_READ_QUERY_MAX_TIME_MS }
+    );
 
     return NextResponse.json({
-      hintTitle:   hint.title,
+      hintTitle: hint.title,
       hintContent: hint.content,
       cost,
-      member: normalizeMemberInteraction(member),
+      member: normalizeMemberInteraction(updated),
     });
   } catch (error) {
     const status = error.message === "npc_visit_expired" ? 409 : 503;

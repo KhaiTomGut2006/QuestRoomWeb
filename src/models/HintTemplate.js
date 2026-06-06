@@ -7,5 +7,7 @@ const HintTemplateSchema = new mongoose.Schema({
   order:   { type: Number, default: 0 },
 }, { timestamps: true, collection: "hint_templates" });
 
+HintTemplateSchema.index({ order: 1, createdAt: 1, _id: 1 });
+
 export default mongoose.models.HintTemplate ||
   mongoose.model("HintTemplate", HintTemplateSchema);

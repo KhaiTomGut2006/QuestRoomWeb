@@ -7174,6 +7174,23 @@ button {
   color: #f5c541;
 }
 
+.room-step.is-subroom {
+  max-width: 88px;
+}
+
+.room-step.is-subroom .room-step-dot {
+  width: 28px;
+  height: 28px;
+  border-width: 2px;
+  background: #201b15;
+  font-size: 12px;
+}
+
+.room-step.is-subroom .room-step-label {
+  max-width: 76px;
+  font-size: 10px;
+}
+
 /* Label under the dot */
 .room-step-label {
   font-size: clamp(10px, 0.95vw, 13px);

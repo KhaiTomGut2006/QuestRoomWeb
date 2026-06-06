@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getStageRanking, getAvailableLevels } from "@/lib/player";
+import { getPlayerDiscordId, getPlayerSession } from "@/lib/loadTestAuth";
 
 export async function GET(request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.discordId) {
+  const session = await getPlayerSession(request);
+  if (!getPlayerDiscordId(session)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

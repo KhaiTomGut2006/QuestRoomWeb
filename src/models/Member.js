@@ -140,6 +140,7 @@ const NpcCycleSchema = new mongoose.Schema(
     nextResetAt:       Date,
     durationMs:        Number,
     pendingNpc:        mongoose.Schema.Types.Mixed,
+    pendingNpcRef:     mongoose.Schema.Types.Mixed,
     frozenRemainingMs: Number
   },
   { _id: false }
@@ -255,6 +256,7 @@ MemberSchema.pre("save", function syncMemberAliases(next) {
 });
 
 MemberSchema.index({ stage: 1, lastAuthentication: -1 });
+MemberSchema.index({ stage: 1, challengeFailureStage: 1, challengeFailureCount: 1, lastAuthentication: -1 });
 MemberSchema.index({ discord_id: 1, socialLastSeenAt: 1 });
 MemberSchema.index({ "npcQuestSubmissions.submittedAt": -1 });
 MemberSchema.index({ "questChallenge.approvedAt": -1 });

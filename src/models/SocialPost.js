@@ -51,6 +51,8 @@ const SocialPostSchema = new mongoose.Schema(
     evidence: QuestEvidenceSchema,
     likes: { type: [String], default: [] },
     dislikes: { type: [String], default: [] },
+    likeCount: { type: Number, default: 0 },
+    dislikeCount: { type: Number, default: 0 },
     submittedAt: Date,
     publishedAt: { type: Date, index: true },
     visible: { type: Boolean, default: true, index: true }

@@ -1,10 +1,25 @@
 "use client";
 
-export default function RoomProgressBar({ levels, activeStage, viewedStage, onSelectRoom, disabled }) {
+function romanStep(number) {
+  const numerals = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+  const value = Math.max(0, Number(number) || 0);
+  return numerals[value] || String(value);
+}
+
+export default function RoomProgressBar({
+  levels,
+  activeRoomKey,
+  viewedRoomKey,
+  activeStage = "",
+  viewedStage = "",
+  onSelectRoom,
+  disabled
+}) {
   if (!levels || levels.length === 0) return null;
 
-  const activeIndex  = levels.findIndex((l) => l.stageId === activeStage);
-  const viewedIndex  = levels.findIndex((l) => l.stageId === viewedStage);
+  const activeKey = activeRoomKey || activeStage;
+  const viewedKey = viewedRoomKey || viewedStage || activeKey;
+  const activeIndex  = levels.findIndex((l) => (l.roomKey || l.stageId) === activeKey);
 
   return (
     <nav className="room-progress-bar" aria-label="Room progress">
@@ -18,21 +33,23 @@ export default function RoomProgressBar({ levels, activeStage, viewedStage, onSe
 
       {levels.map((level, index) => {
         const isCompleted = index < activeIndex;
-        const isActive    = level.stageId === activeStage;
-        const isViewed    = level.stageId === viewedStage;
+        const key = level.roomKey || level.stageId;
+        const isActive    = key === activeKey;
+        const isViewed    = key === viewedKey;
 
         let cls = "room-step";
         if (isCompleted) cls += " is-completed";
         if (isActive)    cls += " is-active";
         if (isViewed && !isActive) cls += " is-viewed";
+        if (level.isSubroom || level.kind === "challenge-subroom") cls += " is-subroom";
 
         return (
           <button
-            key={level.stageId}
+            key={key}
             className={cls}
             type="button"
             disabled={disabled}
-            onClick={() => onSelectRoom?.(level.stageId)}
+            onClick={() => onSelectRoom?.(key)}
             aria-label={`ห้อง ${level.name}${isActive ? " (ห้องของคุณ)" : ""}${isViewed && !isActive ? " (กำลังดู)" : ""}`}
             aria-current={isViewed ? "step" : undefined}
           >
@@ -42,7 +59,9 @@ export default function RoomProgressBar({ levels, activeStage, viewedStage, onSe
                   <polyline points="4,10 8,14 16,6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               ) : (
-                <span className="room-step-number">{index + 1}</span>
+                <span className="room-step-number">
+                  {level.failureCount > 0 ? romanStep(level.failureCount) : index + 1}
+                </span>
               )}
             </span>
             <span className="room-step-label">{level.name}</span>

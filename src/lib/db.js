@@ -5,7 +5,26 @@ const uri = process.env.MONGODB_URI;
 let cached = globalThis.__questRoomMongoose;
 
 if (!cached) {
-  cached = globalThis.__questRoomMongoose = { conn: null, promise: null };
+  cached = globalThis.__questRoomMongoose = { conn: null, promise: null, listenersAttached: false };
+}
+
+function attachConnectionListeners() {
+  if (cached.listenersAttached) return;
+  cached.listenersAttached = true;
+  mongoose.connection.on("connected", () => {
+    console.warn("[mongo] connected");
+  });
+  mongoose.connection.on("disconnected", () => {
+    cached.conn = null;
+    cached.promise = null;
+    console.warn("[mongo] disconnected");
+  });
+  mongoose.connection.on("reconnected", () => {
+    console.warn("[mongo] reconnected");
+  });
+  mongoose.connection.on("error", (error) => {
+    console.warn("[mongo] error", error?.message || error);
+  });
 }
 
 export async function connectDb() {
@@ -14,12 +33,13 @@ export async function connectDb() {
   }
 
   if (cached.conn) return cached.conn;
+  attachConnectionListeners();
 
   if (!cached.promise) {
     cached.promise = mongoose.connect(uri, {
       bufferCommands: false,
       dbName: process.env.MONGODB_DB || undefined,
-      maxPoolSize: Math.max(5, Number(process.env.MONGODB_MAX_POOL_SIZE || 20)),
+      maxPoolSize: Math.max(5, Number(process.env.MONGODB_MAX_POOL_SIZE || 30)),
       minPoolSize: Math.max(0, Number(process.env.MONGODB_MIN_POOL_SIZE || 0)),
       maxIdleTimeMS: Math.max(5_000, Number(process.env.MONGODB_MAX_IDLE_MS || 30_000)),
       serverSelectionTimeoutMS: Math.max(1_000, Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || 5_000)),

@@ -1,22 +1,56 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { getMemberByDiscordId, updateMemberPosition } from "@/lib/player";
+import { normalizeMemberSummary, updateMemberPosition } from "@/lib/player";
+import { getPlayerDiscordId, getPlayerSession } from "@/lib/loadTestAuth";
+import { connectDb } from "@/lib/db";
+import Member from "@/models/Member";
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  const discordId = session?.user?.discordId;
+const MEMBER_READ_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.MEMBER_READ_QUERY_MAX_TIME_MS || 3_000));
+
+const ME_MEMBER_SELECT = [
+  "_id",
+  "discord_id",
+  "nick",
+  "nickname",
+  "realName",
+  "username",
+  "discordData",
+  "questroomRank",
+  "stage",
+  "quest",
+  "npcQuest",
+  "questChallenge",
+  "challengeFailureStage",
+  "challengeFailureCount",
+  "questReward",
+  "roomPosition",
+  "shopCooldownT1",
+  "shopCooldownT2",
+  "shopLimitBreak",
+  "shopAssetTickets",
+  "ownedAccessories",
+  "equippedAccessory",
+  "npcCycle",
+  "npcVisitId",
+  "npcVisitPurchases",
+  "questCoin",
+  "tutorial"
+].join(" ");
+
+export async function GET(request) {
+  const session = await getPlayerSession(request);
+  const discordId = getPlayerDiscordId(session);
 
   if (!discordId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   try {
-    const member = await getMemberByDiscordId(discordId, {
-      includeSubmissions: false,
-      lean: true,
-      reconcile: false
-    });
+    await connectDb();
+    const rawMember = await Member.findOne({ discord_id: String(discordId || "") })
+      .select(ME_MEMBER_SELECT)
+      .lean()
+      .maxTimeMS(MEMBER_READ_QUERY_MAX_TIME_MS);
+    const member = normalizeMemberSummary(rawMember);
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     return NextResponse.json({ member });
   } catch (error) {
@@ -25,8 +59,8 @@ export async function GET() {
 }
 
 export async function PATCH(request) {
-  const session = await getServerSession(authOptions);
-  const discordId = session?.user?.discordId;
+  const session = await getPlayerSession(request);
+  const discordId = getPlayerDiscordId(session);
 
   if (!discordId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

@@ -7,6 +7,19 @@ import { MEMBER_INTERACTION_SELECT, normalizeMemberInteraction } from "@/lib/pla
 import { getNpcShopItem, grantShopItem, openChestReward } from "@/lib/shop";
 import { assertActiveNpcVisit } from "@/lib/npcVisit";
 
+const MEMBER_READ_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.MEMBER_READ_QUERY_MAX_TIME_MS || 3_000));
+
+function questCoinExpression() {
+  return {
+    $convert: {
+      input: { $ifNull: ["$questCoin", "0"] },
+      to: "int",
+      onError: 0,
+      onNull: 0
+    }
+  };
+}
+
 export async function POST(request) {
   const session = await getServerSession(authOptions);
   const discordId = session?.user?.discordId;
@@ -15,7 +28,9 @@ export async function POST(request) {
   try {
     const { itemId, visitId } = await request.json();
     await connectDb();
-    const member = await Member.findOne({ discord_id: String(discordId) }).select(MEMBER_INTERACTION_SELECT);
+    const member = await Member.findOne({ discord_id: String(discordId) })
+      .select(MEMBER_INTERACTION_SELECT)
+      .maxTimeMS(MEMBER_READ_QUERY_MAX_TIME_MS);
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     assertActiveNpcVisit(member, visitId);
     const item = await getNpcShopItem(member.stage, itemId);
@@ -68,7 +83,11 @@ export async function POST(request) {
       );
     }
 
-    member.questCoin = String(currentCoins - item.cost);
+    const originalQuestCoin = String(member.questCoin ?? member.coin ?? "0");
+    const originalVisitId = String(member.npcVisitId || "");
+    const originalVisitPurchases = Array.isArray(member.npcVisitPurchases)
+      ? member.npcVisitPurchases.map(String)
+      : [];
 
     // Track purchases as repeated item ids so stock survives a refresh.
     if (visitId) {
@@ -79,6 +98,8 @@ export async function POST(request) {
         member.npcVisitPurchases = [...(member.npcVisitPurchases || []), itemId];
       }
     }
+
+    member.questCoin = String(currentCoins - item.cost);
 
     let chestReward = null;
     let grantedItem = null;
@@ -91,7 +112,40 @@ export async function POST(request) {
       grantedItem = await grantShopItem(member, itemId, item);
     }
 
-    await member.save({ validateModifiedOnly: true });
+    const commitFilter = {
+      discord_id: String(discordId),
+      questCoin: originalQuestCoin,
+      npcVisitId: originalVisitId,
+      npcVisitPurchases: originalVisitPurchases,
+      $expr: { $gte: [questCoinExpression(), item.cost] }
+    };
+    if (item.questDifficulty) commitFilter.$or = [{ npcQuest: null }, { npcQuest: { $exists: false } }];
+    if (item.cooldownTier === 1) commitFilter.shopCooldownT1 = { $lt: item.maxCount };
+    if (item.cooldownTier === 2) {
+      commitFilter.shopLimitBreak = true;
+      commitFilter.shopCooldownT2 = { $lt: item.maxCount };
+    }
+    if (item.limitBreak) commitFilter.shopLimitBreak = { $ne: true };
+    if (item.accessoryId) commitFilter.ownedAccessories = { $nin: [item.accessoryId] };
+
+    const updated = await Member.findOneAndUpdate(
+      commitFilter,
+      {
+        $set: {
+          questCoin: member.questCoin,
+          npcVisitId: member.npcVisitId,
+          npcVisitPurchases: member.npcVisitPurchases,
+          shopAssetTickets: member.shopAssetTickets,
+          ownedAccessories: member.ownedAccessories,
+          npcQuest: member.npcQuest,
+          shopCooldownT1: member.shopCooldownT1,
+          shopCooldownT2: member.shopCooldownT2,
+          shopLimitBreak: member.shopLimitBreak
+        }
+      },
+      { new: true, projection: MEMBER_INTERACTION_SELECT, maxTimeMS: MEMBER_READ_QUERY_MAX_TIME_MS }
+    );
+    if (!updated) return NextResponse.json({ error: "purchase_conflict", retry: true }, { status: 409 });
 
     return NextResponse.json({
       itemId,
@@ -101,7 +155,7 @@ export async function POST(request) {
       cooldownReductionMs: chestReward?.cooldownReductionMs || grantedItem?.cooldownReductionMs || 0,
       assignedQuest: chestReward?.assignedQuest || grantedItem?.assignedQuest || null,
       chestReward,
-      member: normalizeMemberInteraction(member),
+      member: normalizeMemberInteraction(updated),
     });
   } catch (error) {
     const status = error.message === "npc_visit_expired" ? 409 : 503;

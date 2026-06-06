@@ -1,6 +1,7 @@
 const DEFAULT_CLIENT_TTL_MS = 90_000;
 const DEFAULT_ACTIVE_TTL_MS = 45_000;
 const DEFAULT_MAX_QUEUE = 500;
+const DEFAULT_RETRY_MS = 30_000;
 
 function nowMs() {
   return Date.now();
@@ -12,6 +13,7 @@ function randomToken() {
 }
 
 function queueConfig() {
+  const retryMs = Math.max(10_000, Number(process.env.ENTRY_QUEUE_RETRY_MS || DEFAULT_RETRY_MS));
   return {
     enabled: process.env.ENTRY_QUEUE_ENABLED !== "false",
     maxQueue: Math.max(20, Number(process.env.ENTRY_QUEUE_MAX_WAITING || DEFAULT_MAX_QUEUE)),
@@ -19,7 +21,9 @@ function queueConfig() {
     admitPerTick: Math.max(1, Number(process.env.ENTRY_QUEUE_ADMIT_PER_TICK || 1)),
     clientTtlMs: Math.max(10_000, Number(process.env.ENTRY_QUEUE_CLIENT_TTL_MS || DEFAULT_CLIENT_TTL_MS)),
     activeTtlMs: Math.max(10_000, Number(process.env.ENTRY_QUEUE_ACTIVE_TTL_MS || DEFAULT_ACTIVE_TTL_MS)),
-    retryMs: Math.max(1_000, Number(process.env.ENTRY_QUEUE_RETRY_MS || 2_000))
+    retryMs,
+    pausedRetryMs: Math.max(retryMs, Number(process.env.ENTRY_QUEUE_PAUSED_RETRY_MS || 60_000)),
+    fullRetryMs: Math.max(retryMs, Number(process.env.ENTRY_QUEUE_FULL_RETRY_MS || 60_000))
   };
 }
 
@@ -162,7 +166,7 @@ function joinEntryQueue(clientId, metadata = {}) {
 
   if (!state.waiting.has(normalizedClientId)) {
     if (state.waiting.size >= config.maxQueue) {
-      return { ok: false, status: "full", error: "entry_queue_full", retryMs: config.retryMs * 2 };
+      return { ok: false, status: "full", error: "entry_queue_full", retryMs: config.fullRetryMs };
     }
     state.sequence += 1;
     state.waiting.set(normalizedClientId, {
@@ -202,7 +206,7 @@ function joinEntryQueue(clientId, metadata = {}) {
     waiting: state.waiting.size,
     active: state.active.size,
     maxActiveLoaders: config.maxActiveLoaders,
-    retryMs: config.retryMs,
+    retryMs: guard?.warning || guard?.critical ? config.pausedRetryMs : config.retryMs,
     heapGuard: guard
   };
 }

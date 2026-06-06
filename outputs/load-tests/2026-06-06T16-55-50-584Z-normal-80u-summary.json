@@ -1,0 +1,116 @@
+{
+  "event": "load_test_summary",
+  "config": {
+    "scenario": "normal",
+    "baseUrl": "http://127.0.0.1:3101",
+    "basePath": "/questroom",
+    "users": 80,
+    "durationMs": 60000,
+    "rampMs": 10000,
+    "stages": [
+      "game-demo-1",
+      "game-demo-2",
+      "game-demo-3"
+    ],
+    "uploadAbuse": false,
+    "queueTransport": "sse",
+    "auth": false
+  },
+  "health": {
+    "samples": 13,
+    "failures": 0,
+    "maxRssMb": 183,
+    "maxHeapUsedMb": 77,
+    "maxExternalMb": 22,
+    "maxLagMs": 0,
+    "maxSockets": 80,
+    "maxRoomPlayers": 80,
+    "maxCpuLoad1": 5.62744140625,
+    "maxApiActiveCount": 1,
+    "maxPendingNpcPoolLoads": 0,
+    "maxActiveNpcVisits": 0,
+    "last": {
+      "at": 60514,
+      "rssMb": 140,
+      "heapUsedMb": 54,
+      "externalMb": 21,
+      "lagMs": 0,
+      "sockets": 70,
+      "rooms": 3,
+      "roomPlayers": 70,
+      "dbStatus": "connected",
+      "dbPingMs": 36,
+      "cpuLoad1": 4.37255859375,
+      "apiActiveCount": 1,
+      "entryQueueWaiting": 0,
+      "entryQueueActive": 80,
+      "pendingNpcPoolLoads": 0,
+      "activeNpcVisits": 0
+    }
+  },
+  "socket": {
+    "connected": 80,
+    "connectError": 0,
+    "disconnected": 80,
+    "npcVisits": 0,
+    "roomStates": 80,
+    "patches": 11671
+  },
+  "uploadAbuse": {
+    "attempts": 0,
+    "rejected": 0,
+    "unauthorized": 0,
+    "skipped": false,
+    "results": []
+  },
+  "api": {
+    "entry-queue-sse": {
+      "count": 80,
+      "ok": 80,
+      "fail": 0,
+      "avgMs": 3,
+      "p95Ms": 5,
+      "maxMs": 26
+    },
+    "config": {
+      "count": 80,
+      "ok": 80,
+      "fail": 0,
+      "avgMs": 2,
+      "p95Ms": 4,
+      "maxMs": 5
+    },
+    "levels": {
+      "count": 80,
+      "ok": 80,
+      "fail": 0,
+      "avgMs": 120,
+      "p95Ms": 980,
+      "maxMs": 1479
+    },
+    "room": {
+      "count": 80,
+      "ok": 0,
+      "fail": 80,
+      "avgMs": 3,
+      "p95Ms": 17,
+      "maxMs": 22
+    },
+    "hint-templates": {
+      "count": 52,
+      "ok": 52,
+      "fail": 0,
+      "avgMs": 4,
+      "p95Ms": 23,
+      "maxMs": 40
+    },
+    "quest-templates": {
+      "count": 103,
+      "ok": 103,
+      "fail": 0,
+      "avgMs": 3,
+      "p95Ms": 4,
+      "maxMs": 41
+    }
+  }
+}
