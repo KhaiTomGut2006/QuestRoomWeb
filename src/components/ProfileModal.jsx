@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowLeftRight, Gamepad2, MessageSquare, Shirt, ThumbsDown, ThumbsUp, X } from "lucide-react";
-import { withOptimizedAsset } from "@/lib/basePath";
+import { normalizeEvidenceUrl, withOptimizedAsset } from "@/lib/basePath";
 import { ACCESSORY_LIST, getAccessoryImagePath } from "@/lib/accessories";
 import AvatarWithFallback from "./AvatarWithFallback";
 
@@ -54,7 +54,7 @@ function isVideoEvidence(evidence) {
 
 function QuestPost({ post }) {
   const [failed, setFailed] = useState(false);
-  const evidenceUrl = String(post.evidence?.url || "");
+  const evidenceUrl = normalizeEvidenceUrl(post.evidence?.url);
   const isVideo = isVideoEvidence(post.evidence);
 
   return (

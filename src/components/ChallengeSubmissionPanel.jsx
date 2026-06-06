@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ImageUp, MessageSquare, X, Zap } from "lucide-react";
+import { normalizeEvidenceUrl } from "@/lib/basePath";
 
 const MAX_EVIDENCE_BYTES = 100 * 1024 * 1024;
 
@@ -13,6 +14,7 @@ export default function ChallengeSubmissionPanel({ challenge, onSubmit, onClose 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const hasSubmission = Boolean(challenge?.evidence?.url && challenge?.submittedAt);
+  const previewUrl = normalizeEvidenceUrl(challenge?.evidence?.url);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -102,7 +104,7 @@ export default function ChallengeSubmissionPanel({ challenge, onSubmit, onClose 
         </label>
 
         {hasSubmission && (
-          <a className="challenge-submission-preview" href={challenge.evidence.url} target="_blank" rel="noreferrer">
+          <a className="challenge-submission-preview" href={previewUrl} target="_blank" rel="noreferrer">
             ดูไฟล์งานที่ส่งล่าสุด
           </a>
         )}

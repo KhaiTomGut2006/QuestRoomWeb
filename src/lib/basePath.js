@@ -16,3 +16,19 @@ export function withOptimizedAsset(path) {
     : assetPath;
   return withBasePath(query ? `${optimizedPath}?${query}` : optimizedPath);
 }
+
+export function normalizeEvidenceUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(value, typeof window !== "undefined" ? window.location.origin : "http://localhost");
+    const fileId = parsed.searchParams.get("file") || "";
+    if (fileId && parsed.pathname.endsWith("/api/player/npc-quest/upload")) {
+      const normalizedPath = withBasePath(`/api/player/npc-quest/upload?file=${encodeURIComponent(fileId)}`);
+      return typeof window !== "undefined" ? `${window.location.origin}${normalizedPath}` : normalizedPath;
+    }
+  } catch {
+    return value;
+  }
+  return value;
+}

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ThumbsDown, ThumbsUp, X } from "lucide-react";
-import { withBasePath, withOptimizedAsset } from "@/lib/basePath";
+import { normalizeEvidenceUrl, withBasePath, withOptimizedAsset } from "@/lib/basePath";
 import AvatarWithFallback from "./AvatarWithFallback";
 
 const PAGE_SIZE = 10;
@@ -57,7 +57,7 @@ function isVideoEvidence(evidence) {
 function PostMedia({ post }) {
   const [failed, setFailed] = useState(false);
   const evidence = post.evidence || {};
-  const url = String(evidence.url || "");
+  const url = normalizeEvidenceUrl(evidence.url);
 
   if (!url || failed) {
     return (
