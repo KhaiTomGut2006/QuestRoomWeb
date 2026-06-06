@@ -31,11 +31,24 @@ export async function POST(request) {
     }
 
     const event = String(body?.event || body?.reason || "").toLowerCase();
+    const approved = typeof body?.approved === "boolean"
+      ? body.approved
+      : ["approve", "approved"].includes(event)
+        ? true
+        : ["award", "awarded", "badge", "badge_awarded"].includes(event)
+          ? false
+          : null;
     const createReward = body?.createReward !== false && (
       body?.createReward === true
-      || ["approve", "approved", "award", "awarded", "badge", "badge_awarded"].includes(event)
+      || approved === true
     );
-    const result = await syncChallengeReview(discordId, { createReward });
+    const result = await syncChallengeReview(discordId, {
+      event,
+      approved,
+      createReward,
+      badge: body?.badge || null,
+      awardedAt: body?.awardedAt || body?.reviewedAt || null
+    });
     if (!result) {
       return NextResponse.json({ success: false, error: "member_not_found" }, { status: 404, headers: CORS });
     }

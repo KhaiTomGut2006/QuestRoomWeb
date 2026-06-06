@@ -563,7 +563,8 @@ function roomStateForMember(member) {
 
 function getChallengeReviewBadge(member) {
   const challenge = member?.questChallenge;
-  if (!challenge || challenge.approvedAt || challenge.status === "approved") return null;
+  const status = String(challenge?.status || "").toLowerCase();
+  if (!challenge || status === "approved") return null;
   const requestedAt = new Date(challenge.requestedAt || 0).getTime();
   const matchesAttempt = (badge, fallbackAwardedAt) => {
     if (!badge) return false;
@@ -620,7 +621,9 @@ async function reconcileChallengeSublevel(member) {
     member.challengeFailureStage = stage;
     member.challengeFailureCount = Math.max(0, Number(member.challengeFailureCount) || 0) + 1;
     member.challengeFailureHandledKey = failureKey;
-    member.questChallenge.status = "failed";
+    member.questChallenge.status = String(member.questChallenge.status || "").toLowerCase() === "awarded"
+      ? "awarded"
+      : "failed";
     member.quest = {
       current: member.quest?.current || getTaskName(stage),
       status: "active",
@@ -639,6 +642,20 @@ async function reconcileChallengeSublevel(member) {
     await member.save({ validateModifiedOnly: true });
   }
   return member;
+}
+
+function resetChallengeSublevel(member, stage = member?.stage || DEFAULT_STAGE) {
+  if (!member) return false;
+  const hadFailureState = Boolean(
+    member.challengeFailureStage
+    || Number(member.challengeFailureCount) > 0
+    || member.challengeFailureHandledKey
+  );
+  if (!hadFailureState) return false;
+  member.challengeFailureStage = stage;
+  member.challengeFailureCount = 0;
+  member.challengeFailureHandledKey = "";
+  return true;
 }
 
 function normalizeBadge(badge) {
@@ -896,7 +913,13 @@ function isChallengePassedToNextRoom(member, challenge = member?.questChallenge)
   return false;
 }
 
-export async function syncChallengeReview(discordId, { createReward = false } = {}) {
+export async function syncChallengeReview(discordId, {
+  event = "",
+  approved = null,
+  createReward = false,
+  badge = null,
+  awardedAt = null
+} = {}) {
   await connectDb();
   await ensureLevels();
   const member = await Member.findOne({ discord_id: String(discordId || "") })
@@ -905,15 +928,28 @@ export async function syncChallengeReview(discordId, { createReward = false } = 
 
   let saved = false;
   const challenge = member.questChallenge || null;
+  const eventName = String(event || "").toLowerCase();
+  const isApprovedEvent = approved === true || ["approve", "approved"].includes(eventName);
+  const isAwardOnlyEvent = approved === false || ["award", "awarded", "badge", "badge_awarded"].includes(eventName);
   const challengeSubmission = challenge?.submissionId
     ? (member.npcQuestSubmissions || []).find((submission) => submission.id === challenge.submissionId)
     : null;
-  const challengeBadge = normalizeBadge(challenge?.badge) || normalizeBadge(challengeSubmission?.badge);
+  const payloadBadge = normalizeBadge(badge);
+  if (payloadBadge?.id && awardedAt && !payloadBadge.awardedAt) {
+    payloadBadge.awardedAt = awardedAt;
+  }
+  const challengeBadge = payloadBadge || normalizeBadge(challenge?.badge) || normalizeBadge(challengeSubmission?.badge);
   const fallbackBadge = challengeBadge || normalizeBadge(newestBadge(member.profileAchievements));
   const passedToNextRoom = isChallengePassedToNextRoom(member, challenge);
   const approvedAt = challenge?.approvedAt || fallbackBadge?.awardedAt || new Date();
 
-  if (createReward && fallbackBadge && passedToNextRoom) {
+  if (isApprovedEvent) {
+    if (resetChallengeSublevel(member, member.stage || DEFAULT_STAGE)) {
+      saved = true;
+    }
+  }
+
+  if (createReward && fallbackBadge && (passedToNextRoom || isApprovedEvent)) {
     const nextRewardId = rewardIdForBadge(fallbackBadge);
     const completedLevel = cachedLevels.find((level) => level.stageId === challenge?.stage) || null;
     const completionReward = completionRewardForLevel(completedLevel);
@@ -947,7 +983,7 @@ export async function syncChallengeReview(discordId, { createReward = false } = 
     }
   }
 
-  if (challenge && challengeSubmission && passedToNextRoom) {
+  if (challenge && challengeSubmission && (passedToNextRoom || isApprovedEvent)) {
     if (!challenge.approvedAt) {
       member.questChallenge.approvedAt = approvedAt;
       saved = true;
@@ -968,8 +1004,28 @@ export async function syncChallengeReview(discordId, { createReward = false } = 
     member.markModified("questChallenge");
   }
 
+  if (isAwardOnlyEvent && challenge) {
+    if (fallbackBadge && (!challenge.badge?.id && !challenge.badge?.label)) {
+      member.questChallenge.badge = fallbackBadge;
+      member.markModified("questChallenge");
+      saved = true;
+    }
+    if (fallbackBadge && challengeSubmission && (!challengeSubmission.badge?.id && !challengeSubmission.badge?.label)) {
+      challengeSubmission.badge = fallbackBadge;
+      member.markModified("npcQuestSubmissions");
+      saved = true;
+    }
+  }
+
   if (saved) {
     await member.save({ validateModifiedOnly: true });
+  }
+
+  if (isAwardOnlyEvent) {
+    await reconcileChallengeSublevel(member);
+  } else if (isApprovedEvent) {
+    clearRoomPlayersCache();
+    clearRoomLevelsCache();
   }
 
   if (challengeSubmission) {
