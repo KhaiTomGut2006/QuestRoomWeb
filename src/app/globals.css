@@ -1498,8 +1498,7 @@ button {
   z-index: 36;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 12px 9px 16px;
+  padding: 9px 16px;
   border: 2px solid #201c1d;
   background: rgba(255, 250, 230, 0.96);
   box-shadow: 0 4px 0 rgba(32, 28, 29, 0.2);
@@ -1507,17 +1506,6 @@ button {
   font-size: 15px;
   font-weight: 900;
   transform: translateX(-50%);
-}
-
-.room-view-indicator button {
-  border: 2px solid #201c1d;
-  background: #ffd84d;
-  padding: 6px 10px;
-  color: #201c1d;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 900;
 }
 
 .login-screen {

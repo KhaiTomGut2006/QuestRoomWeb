@@ -2329,9 +2329,6 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
         {isViewingOtherRoom && (
           <div className="room-view-indicator">
             <span>Viewing room: {viewedRoomLabel}</span>
-            <button type="button" onClick={() => setViewedRoomKey(actualRoomKey)}>
-              Back to my room
-            </button>
           </div>
         )}
         <PlayerLayer
