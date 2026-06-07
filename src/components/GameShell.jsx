@@ -30,6 +30,7 @@ const NPC_VISIT_ACTIONS = {
   hint: "__hint__"
 };
 const MEMBER_REFRESH_INTERVAL_MS = 120_000;
+const CHALLENGE_REVIEW_REFRESH_DELAYS_MS = [800, 2_500, 6_000];
 const ROOM_LEVEL_REFRESH_INTERVAL_MS = 300_000;
 const ROOM_PEEK_INTERVAL_MS = 60_000;
 const SOCIAL_STATUS_INTERVAL_MS = 300_000;
@@ -885,6 +886,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   const questDataKeyRef = useRef(-1); // npcKey for which quest data was last fetched
   const npcSwapTimerRef = useRef(null);
   const memberRefreshInFlightRef = useRef(false);
+  const challengeReviewRefreshTimersRef = useRef([]);
   const socialStatusInFlightRef = useRef(false);
   const initialRoomSnapshotStageRef = useRef(initialData?.member?.stage && Array.isArray(initialData?.players)
     ? initialData.member.stage
@@ -1041,6 +1043,22 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
         memberRefreshInFlightRef.current = false;
       });
   }, [applyMember, isAuthed, syncSocketPresenceFromMember]);
+
+  const scheduleChallengeReviewRefresh = useCallback(() => {
+    for (const timerId of challengeReviewRefreshTimersRef.current) {
+      window.clearTimeout(timerId);
+    }
+    challengeReviewRefreshTimersRef.current = CHALLENGE_REVIEW_REFRESH_DELAYS_MS.map((delayMs) => (
+      window.setTimeout(() => reloadMemberNow({ force: true }), delayMs)
+    ));
+  }, [reloadMemberNow]);
+
+  useEffect(() => () => {
+    for (const timerId of challengeReviewRefreshTimersRef.current) {
+      window.clearTimeout(timerId);
+    }
+    challengeReviewRefreshTimersRef.current = [];
+  }, []);
 
   useEffect(() => {
     const ownerId = activeMember?.discordId || activeMember?.id || "";
@@ -1564,17 +1582,21 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       setChallengeAnnouncement(data);
     });
     socket.on("member:update", ({ member: nextMember, reason } = {}) => {
+      const reviewReason = ["approve", "approved", "award", "awarded", "badge", "badge_awarded", "challenge_sync"].includes(String(reason || "").toLowerCase());
       if (nextMember) {
         applyMember(nextMember);
         syncSocketPresenceFromMember(nextMember);
+        if (reviewReason) scheduleChallengeReviewRefresh();
         return;
       }
-      if (["approve", "approved", "award", "awarded", "badge", "badge_awarded", "challenge_sync"].includes(String(reason || "").toLowerCase())) {
+      if (reviewReason) {
         reloadMemberNow({ force: true });
+        scheduleChallengeReviewRefresh();
       }
     });
     socket.on("questroom:reload", () => {
       reloadMemberNow({ force: true });
+      scheduleChallengeReviewRefresh();
     });
     socket.on("social:notification", (data) => {
       if (data?.author?.id && data.author.id === activeMember?.discordId) return;
@@ -1599,7 +1621,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [activeMember?.discordId, applyMember, entryAdmissionToken, entryQueueClientId, mergePlayers, previewMode, queueDoorNpc, reloadMemberNow, selfPlayer?.id, selfPlayer?.roomKey, selfPlayer?.stage, showPlayerReaction, showSocialNotification, syncSocketPresenceFromMember]);
+  }, [activeMember?.discordId, applyMember, entryAdmissionToken, entryQueueClientId, mergePlayers, previewMode, queueDoorNpc, reloadMemberNow, scheduleChallengeReviewRefresh, selfPlayer?.id, selfPlayer?.roomKey, selfPlayer?.stage, showPlayerReaction, showSocialNotification, syncSocketPresenceFromMember]);
 
   useEffect(() => {
     if (!selfPlayer?.id) return;
