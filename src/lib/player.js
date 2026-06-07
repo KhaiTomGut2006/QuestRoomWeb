@@ -9,6 +9,13 @@ import SocialPost from "@/models/SocialPost";
 import SocialPostReaction from "@/models/SocialPostReaction";
 import { completionRewardForLevel, normalizeLevelUnlocks, unlockRewards } from "@/lib/levelUnlocks";
 import { markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
+import {
+  challengeFailureAppliesToCurrentStage,
+  challengeCostForStage,
+  nextChallengeFailureCostMultiplier,
+  normalizeChallengeCostMultiplier,
+  resetChallengeCostMultiplier
+} from "@/lib/challengeCost.mjs";
 
 const DEFAULT_STAGE = "game-demo-1";
 const DEFAULT_COINS = 0;
@@ -634,6 +641,7 @@ function getChallengeReviewBadge(member) {
 
 function challengeFailureKey(member) {
   const challenge = member?.questChallenge;
+  if (!challengeFailureAppliesToCurrentStage(challenge?.stage, member?.stage)) return "";
   const badge = getChallengeReviewBadge(member);
   const status = String(challenge?.status || "").toLowerCase();
   const isExplicitFailure = ["failed", "rejected", "declined"].includes(status);
@@ -652,12 +660,21 @@ function challengeFailureKey(member) {
 async function reconcileChallengeSublevel(member) {
   if (!member) return member;
   const stage = member.stage || DEFAULT_STAGE;
+  const quest = member.quest?.toObject?.() || member.quest || {};
   let changed = false;
 
   if (member.challengeFailureStage && member.challengeFailureStage !== stage) {
     member.challengeFailureStage = stage;
     member.challengeFailureCount = 0;
     member.challengeFailureHandledKey = "";
+    member.quest = {
+      ...quest,
+      current: quest.current || getTaskName(stage),
+      status: quest.status || "active",
+      completed: quest.completed || [],
+      costMultiplier: resetChallengeCostMultiplier()
+    };
+    member.markModified("quest");
     changed = true;
   }
 
@@ -669,12 +686,14 @@ async function reconcileChallengeSublevel(member) {
     member.questChallenge.status = String(member.questChallenge.status || "").toLowerCase() === "awarded"
       ? "awarded"
       : "failed";
+    const currentQuest = member.quest?.toObject?.() || member.quest || quest;
     member.quest = {
-      current: member.quest?.current || getTaskName(stage),
+      ...currentQuest,
+      current: currentQuest.current || getTaskName(stage),
       status: "active",
-      completed: member.quest?.completed || [],
-      cooldownUntil: member.quest?.cooldownUntil,
-      costMultiplier: member.quest?.costMultiplier || 1
+      completed: currentQuest.completed || [],
+      cooldownUntil: currentQuest.cooldownUntil,
+      costMultiplier: nextChallengeFailureCostMultiplier(currentQuest.costMultiplier)
     };
     member.markModified("questChallenge");
     member.markModified("quest");
@@ -691,15 +710,22 @@ async function reconcileChallengeSublevel(member) {
 
 function resetChallengeSublevel(member, stage = member?.stage || DEFAULT_STAGE) {
   if (!member) return false;
+  const quest = member.quest?.toObject?.() || member.quest || {};
   const hadFailureState = Boolean(
     member.challengeFailureStage
     || Number(member.challengeFailureCount) > 0
     || member.challengeFailureHandledKey
   );
-  if (!hadFailureState) return false;
+  const hadChallengeMultiplier = normalizeChallengeCostMultiplier(quest.costMultiplier) !== resetChallengeCostMultiplier();
+  if (!hadFailureState && !hadChallengeMultiplier) return false;
   member.challengeFailureStage = stage;
   member.challengeFailureCount = 0;
   member.challengeFailureHandledKey = "";
+  member.quest = {
+    ...quest,
+    costMultiplier: resetChallengeCostMultiplier()
+  };
+  member.markModified("quest");
   return true;
 }
 
@@ -1246,8 +1272,8 @@ export function normalizeMember(member, options = {}) {
   const stageNumber = getStageNumber(stage);
   const roomState = roomStateForMember(member);
   const challengeFailureCount = roomState.failureCount;
-  const costMultiplier = member.quest?.costMultiplier || 1;
-  const currentChallengeCost = Math.round(250 * Math.pow(1.35, Math.max(0, stageNumber - 1))) * costMultiplier;
+  const costMultiplier = normalizeChallengeCostMultiplier(member.quest?.costMultiplier);
+  const currentChallengeCost = challengeCostForStage(stageNumber, costMultiplier);
 
   return {
     id: String(member._id),
@@ -1333,7 +1359,8 @@ export function normalizeMemberSummary(member) {
   const stageNumber = getStageNumber(stage);
   const roomState = roomStateForMember(member);
   const challengeFailureCount = roomState.failureCount;
-  const costMultiplier = member.quest?.costMultiplier || 1;
+  const costMultiplier = normalizeChallengeCostMultiplier(member.quest?.costMultiplier);
+  const currentChallengeCost = challengeCostForStage(stageNumber, costMultiplier);
   return {
     id: String(member._id),
     discordId: member.discord_id || "",
@@ -1388,7 +1415,7 @@ export function normalizeMemberSummary(member) {
         }
       : null,
     position: member.roomPosition || { x: 50, y: 70 },
-    currentChallengeCost: Math.round(250 * Math.pow(1.35, Math.max(0, stageNumber - 1))) * costMultiplier,
+    currentChallengeCost,
     costMultiplier,
     shopCooldownT1: member.shopCooldownT1 || 0,
     shopCooldownT2: member.shopCooldownT2 || 0,
@@ -1656,8 +1683,8 @@ export async function requestChallenge(discordId) {
   const currentCoins = questCoinValue(member);
   const stage = member.stage || DEFAULT_STAGE;
   const stageNumber = getStageNumber(stage);
-  const costMultiplier = member.quest?.costMultiplier || 1;
-  const cost = 100 * costMultiplier;
+  const costMultiplier = normalizeChallengeCostMultiplier(member.quest?.costMultiplier);
+  const cost = challengeCostForStage(stageNumber, costMultiplier);
 
   if (currentCoins < cost) {
     return { ok: false, reason: "not_enough_coins", cost, member: normalizeMemberInteraction(member) };

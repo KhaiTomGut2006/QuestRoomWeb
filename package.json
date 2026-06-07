@@ -7,6 +7,7 @@
     "dev:next": "next dev",
     "build": "next build",
     "start": "NODE_ENV=production node server.js",
+    "test": "node --test",
     "check": "next build",
     "ops:dashboard": "node ops-dashboard/server.mjs",
     "monitor:health": "node scripts/monitor-health.mjs",

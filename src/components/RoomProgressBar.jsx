@@ -1,10 +1,6 @@
 "use client";
 
-function romanStep(number) {
-  const numerals = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
-  const value = Math.max(0, Number(number) || 0);
-  return numerals[value] || String(value);
-}
+import { roomProgressStepLabel } from "@/lib/roomProgress.mjs";
 
 export default function RoomProgressBar({
   levels,
@@ -60,7 +56,7 @@ export default function RoomProgressBar({
                 </svg>
               ) : (
                 <span className="room-step-number">
-                  {level.failureCount > 0 ? romanStep(level.failureCount) : index + 1}
+                  {roomProgressStepLabel(levels, index)}
                 </span>
               )}
             </span>
