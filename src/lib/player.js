@@ -1858,8 +1858,12 @@ export async function getAvailableRoomLevels({ force = false } = {}) {
         const stage = String(member?.stage || "");
         const failureCount = challengeFailureCountForMember(member, stage);
         if (!stage || failureCount <= 0) continue;
-        const key = makeRoomKey(stage, failureCount);
-        subroomCounts.set(key, (subroomCounts.get(key) || 0) + 1);
+        for (let count = 1; count <= failureCount; count += 1) {
+          const key = makeRoomKey(stage, count);
+          if (!subroomCounts.has(key)) subroomCounts.set(key, 0);
+        }
+        const activeKey = makeRoomKey(stage, failureCount);
+        subroomCounts.set(activeKey, (subroomCounts.get(activeKey) || 0) + 1);
       }
 
       const subRooms = [...subroomCounts.entries()].map(([roomKey, activePlayers]) => {

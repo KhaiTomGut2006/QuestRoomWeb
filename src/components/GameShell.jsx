@@ -302,6 +302,19 @@ function fallbackRoomOrder(levels, stage, failureCount = 0) {
   return baseOrder + Math.max(0, Number(failureCount) || 0) / 1000;
 }
 
+function subroomRoman(number) {
+  const numerals = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+  const value = Math.max(0, Number(number) || 0);
+  return numerals[value] || String(value);
+}
+
+function subroomLabel(baseName, failureCount = 0) {
+  const name = String(baseName || "").trim();
+  const count = Math.max(0, Number(failureCount) || 0);
+  if (!name || count <= 0) return name;
+  return `${name}-${subroomRoman(count)}`;
+}
+
 function getChestRewardIcon(reward) {
   if (!reward || reward.kind === "coins") return "/assets/Coin.png";
   if (reward.itemId === "asset-ticket") return "/assets/Item/AssetTicket.png";
@@ -960,18 +973,39 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
           roomKey: level.roomKey || roomKeyFor(level.stageId, level.failureCount)
         }))
       : [];
-    if (actualRoomKey && !levels.some((level) => level.roomKey === actualRoomKey)) {
-      const failureCount = Math.max(0, Number(activeMember?.challengeFailureCount) || 0);
+    const activeFailureCount = Math.max(0, Number(activeMember?.challengeFailureCount) || 0);
+    if (actualStage && activeFailureCount > 0) {
+      const baseLevel = levels.find((level) => level.stageId === actualStage && !level.isSubroom && level.kind !== "challenge-subroom") || null;
+      const baseName = baseLevel?.baseName || baseLevel?.name || stageLabel(actualStage);
+      for (let failureCount = 1; failureCount <= activeFailureCount; failureCount += 1) {
+        const roomKey = roomKeyFor(actualStage, failureCount);
+        if (levels.some((level) => level.roomKey === roomKey)) continue;
+        const isCurrentRoom = roomKey === actualRoomKey;
+        levels.push({
+          roomKey,
+          stageId: actualStage,
+          kind: "challenge-subroom",
+          failureCount,
+          name: isCurrentRoom
+            ? activeMember?.roomLabel || activeMember?.stageLabel || subroomLabel(baseName, failureCount)
+            : subroomLabel(baseName, failureCount),
+          baseName,
+          isSubroom: true,
+          activePlayers: isCurrentRoom ? 1 : 0,
+          order: fallbackRoomOrder(levels, actualStage, failureCount)
+        });
+      }
+    } else if (actualRoomKey && !levels.some((level) => level.roomKey === actualRoomKey)) {
       const baseLevel = levels.find((level) => level.stageId === actualStage && !level.isSubroom && level.kind !== "challenge-subroom") || null;
       levels.push({
         roomKey: actualRoomKey,
         stageId: actualStage,
-        kind: failureCount > 0 ? "challenge-subroom" : "main",
-        failureCount,
+        kind: "main",
+        failureCount: 0,
         name: activeMember?.roomLabel || activeMember?.stageLabel || stageLabel(actualStage),
         baseName: baseLevel?.baseName || baseLevel?.name || stageLabel(actualStage),
-        isSubroom: failureCount > 0,
-        order: fallbackRoomOrder(levels, actualStage, failureCount)
+        isSubroom: false,
+        order: fallbackRoomOrder(levels, actualStage, 0)
       });
     }
     return levels.sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
