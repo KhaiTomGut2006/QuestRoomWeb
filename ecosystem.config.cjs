@@ -30,6 +30,7 @@ module.exports = {
         HEAP_GUARD_WARN_MB: process.env.HEAP_GUARD_WARN_MB || "900",
         HEAP_GUARD_CRIT_MB: process.env.HEAP_GUARD_CRIT_MB || "1150",
         MEMBER_READ_QUERY_MAX_TIME_MS: process.env.MEMBER_READ_QUERY_MAX_TIME_MS || "3000",
+        EXCLUDED_ACTIVE_CLASS_KEYS: process.env.EXCLUDED_ACTIVE_CLASS_KEYS || "AC 1,Hamster Hero",
         BOT_SERVER_TIMEOUT_MS: process.env.BOT_SERVER_TIMEOUT_MS || "3000",
         GAME_API_TOKEN: process.env.GAME_API_TOKEN || "",
         ADMIN_API_TOKEN: process.env.ADMIN_API_TOKEN || "",

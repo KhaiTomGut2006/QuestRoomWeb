@@ -109,6 +109,12 @@ const MAX_SOCIAL_ACTIVITY_ITEMS = 100;
 const GLOBAL_POSTS_CACHE_TTL_MS = Math.max(5_000, Number(process.env.GLOBAL_POSTS_CACHE_TTL_MS || 15_000));
 const GLOBAL_POSTS_CACHE_MAX_KEYS = Math.max(20, Number(process.env.GLOBAL_POSTS_CACHE_MAX_KEYS || 200));
 const ACTIVE_CLASSES_CACHE_TTL_MS = Math.max(30_000, Number(process.env.ACTIVE_CLASSES_CACHE_TTL_MS || 60_000));
+const EXCLUDED_ACTIVE_CLASS_KEYS = new Set(
+  String(process.env.EXCLUDED_ACTIVE_CLASS_KEYS || "AC 1,Hamster Hero")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+);
 const RANKING_CACHE_TTL_MS = Math.max(10_000, Number(process.env.RANKING_CACHE_TTL_MS || 60_000));
 const RANKING_LIMIT = Math.max(10, Number(process.env.RANKING_LIMIT || 100));
 const RANKING_CACHE_MAX_KEYS = Math.max(10, Number(process.env.RANKING_CACHE_MAX_KEYS || 50));
@@ -2150,10 +2156,16 @@ export async function getActiveClasses() {
     .sort({ courseName: 1 })
     .lean()
     .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
-  cachedActiveClasses = configs.map(c => ({
-    sheetTitle: c.sheetTitle,
-    courseName: c.courseName
-  }));
+  cachedActiveClasses = configs
+    .filter((config) => {
+      const sheetTitle = String(config.sheetTitle || "").trim().toLowerCase();
+      const courseName = String(config.courseName || "").trim().toLowerCase();
+      return !EXCLUDED_ACTIVE_CLASS_KEYS.has(sheetTitle) && !EXCLUDED_ACTIVE_CLASS_KEYS.has(courseName);
+    })
+    .map(c => ({
+      sheetTitle: c.sheetTitle,
+      courseName: c.courseName
+    }));
   cachedActiveClassesAt = Date.now();
   return cachedActiveClasses.map((item) => ({ ...item }));
 }
