@@ -1089,6 +1089,8 @@ export async function syncChallengeReview(discordId, {
 
   if (isAwardOnlyEvent) {
     await reconcileChallengeSublevel(member);
+    clearRoomPlayersCache();
+    clearRoomLevelsCache();
   } else if (isApprovedEvent) {
     clearRoomPlayersCache();
     clearRoomLevelsCache();

@@ -290,6 +290,18 @@ function roomKeyFor(stage, challengeFailureCount = 0) {
   return count > 0 ? `${stageKey}::fail-${count}` : stageKey;
 }
 
+function fallbackRoomOrder(levels, stage, failureCount = 0) {
+  const stageKey = String(stage || "");
+  const baseIndex = levels.findIndex((level) => level.stageId === stageKey && !level.isSubroom && level.kind !== "challenge-subroom");
+  const baseLevel = baseIndex >= 0 ? levels[baseIndex] : null;
+  const baseOrder = Number.isFinite(Number(baseLevel?.order))
+    ? Number(baseLevel.order)
+    : baseIndex >= 0
+      ? baseIndex + 1
+      : Number.MAX_SAFE_INTEGER - 100;
+  return baseOrder + Math.max(0, Number(failureCount) || 0) / 1000;
+}
+
 function getChestRewardIcon(reward) {
   if (!reward || reward.kind === "coins") return "/assets/Coin.png";
   if (reward.itemId === "asset-ticket") return "/assets/Item/AssetTicket.png";
@@ -949,12 +961,17 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
         }))
       : [];
     if (actualRoomKey && !levels.some((level) => level.roomKey === actualRoomKey)) {
+      const failureCount = Math.max(0, Number(activeMember?.challengeFailureCount) || 0);
+      const baseLevel = levels.find((level) => level.stageId === actualStage && !level.isSubroom && level.kind !== "challenge-subroom") || null;
       levels.push({
         roomKey: actualRoomKey,
         stageId: actualStage,
-        failureCount: Math.max(0, Number(activeMember?.challengeFailureCount) || 0),
+        kind: failureCount > 0 ? "challenge-subroom" : "main",
+        failureCount,
         name: activeMember?.roomLabel || activeMember?.stageLabel || stageLabel(actualStage),
-        order: Number.MAX_SAFE_INTEGER
+        baseName: baseLevel?.baseName || baseLevel?.name || stageLabel(actualStage),
+        isSubroom: failureCount > 0,
+        order: fallbackRoomOrder(levels, actualStage, failureCount)
       });
     }
     return levels.sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
@@ -1045,14 +1062,26 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       });
   }, [applyMember, isAuthed, syncSocketPresenceFromMember]);
 
+  const reloadRoomLevelsNow = useCallback(({ force = false } = {}) => {
+    if (!isAuthed) return;
+    const query = force ? "?force=1" : "";
+    fetch(withBasePath(`/api/player/rooms${query}`))
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then(({ levels }) => setRoomLevels(Array.isArray(levels) ? levels : []))
+      .catch(() => {});
+  }, [isAuthed]);
+
   const scheduleChallengeReviewRefresh = useCallback(() => {
     for (const timerId of challengeReviewRefreshTimersRef.current) {
       window.clearTimeout(timerId);
     }
     challengeReviewRefreshTimersRef.current = CHALLENGE_REVIEW_REFRESH_DELAYS_MS.map((delayMs) => (
-      window.setTimeout(() => reloadMemberNow({ force: true }), delayMs)
+      window.setTimeout(() => {
+        reloadMemberNow({ force: true });
+        reloadRoomLevelsNow({ force: true });
+      }, delayMs)
     ));
-  }, [reloadMemberNow]);
+  }, [reloadMemberNow, reloadRoomLevelsNow]);
 
   useEffect(() => () => {
     for (const timerId of challengeReviewRefreshTimersRef.current) {
@@ -1458,12 +1487,12 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
         .then((res) => (res.ok ? res.json() : Promise.reject(res)))
         .then((data) => {
           // Preserve local position to avoid snap-back caused by stale DB data
-          setMember((current) => ({ ...data.member, position: current?.position ?? data.member.position }));
-          const nextReward = data.member?.reward;
-          if (nextReward?.id && !nextReward.seenAt && !shownRewardIdsRef.current.has(nextReward.id)) {
-            shownRewardIdsRef.current.add(nextReward.id);
-            setReward(nextReward);
-          }
+          const nextMember = {
+            ...data.member,
+            position: latestPositionRef.current ?? data.member.position
+          };
+          applyMember(nextMember);
+          syncSocketPresenceFromMember(nextMember);
         })
         .catch(() => {})
         .finally(() => {
@@ -1474,7 +1503,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       window.clearInterval(interval);
       memberRefreshInFlightRef.current = false;
     };
-  }, [isAuthed]);
+  }, [applyMember, isAuthed, syncSocketPresenceFromMember]);
 
   useEffect(() => {
     const challenge = activeMember?.challenge;

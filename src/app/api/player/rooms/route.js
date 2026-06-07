@@ -9,7 +9,8 @@ export async function GET(request) {
   }
 
   try {
-    const levels = await getAvailableRoomLevels();
+    const force = request.nextUrl.searchParams.get("force") === "1";
+    const levels = await getAvailableRoomLevels({ force });
     return NextResponse.json({ levels });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503 });
