@@ -6983,8 +6983,11 @@ button {
   align-items: flex-end;
   justify-content: center;
   gap: 0;
-  padding: 0 clamp(16px, 5vw, 80px) 0;
-  background: linear-gradient(to top, rgba(20, 14, 4, 0.72) 0%, transparent 100%);
+  padding: 0 clamp(16px, 5vw, 80px) 2px;
+  background:
+    radial-gradient(ellipse at 50% 100%, rgba(255, 210, 77, 0.16) 0%, transparent 52%),
+    linear-gradient(to top, rgba(18, 10, 2, 0.86) 0%, rgba(28, 16, 4, 0.5) 46%, transparent 100%);
+  filter: drop-shadow(0 -10px 26px rgba(0, 0, 0, 0.38));
   pointer-events: none;
 }
 
@@ -6994,16 +6997,26 @@ button {
   bottom: 56px; /* aligns with dot centres */
   left: clamp(16px, 5vw, 80px);
   right: clamp(16px, 5vw, 80px);
-  height: 4px;
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 4px;
+  height: 6px;
+  background:
+    linear-gradient(180deg, rgba(255, 229, 143, 0.18), rgba(73, 39, 8, 0.46)),
+    rgba(20, 11, 3, 0.72);
+  border: 1px solid rgba(255, 210, 77, 0.22);
+  border-radius: 999px;
   overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 180, 0.16),
+    inset 0 -2px 5px rgba(0, 0, 0, 0.52),
+    0 0 18px rgba(199, 122, 22, 0.18);
 }
 
 .room-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #45a3e5 0%, #2078c5 100%);
-  border-radius: 4px;
+  background: linear-gradient(90deg, #9b5a12 0%, #ffbd26 48%, #ffe260 100%);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 0 16px rgba(255, 189, 38, 0.42);
   transition: width 0.5s ease;
 }
 
@@ -7020,13 +7033,13 @@ button {
   background: transparent;
   cursor: pointer;
   pointer-events: auto;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 226, 160, 0.48);
   transition: color 0.2s, transform 0.15s;
   max-width: 120px;
 }
 
 .room-step:hover:not(:disabled) {
-  color: rgba(255, 255, 255, 0.88);
+  color: rgba(255, 230, 150, 0.95);
   transform: translateY(-2px);
 }
 
@@ -7043,12 +7056,18 @@ button {
   align-items: center;
   justify-content: center;
   border: 3px solid currentColor;
-  background: #1c1610;
+  background:
+    radial-gradient(circle at 35% 24%, rgba(255, 226, 112, 0.16), transparent 38%),
+    linear-gradient(165deg, #271605 0%, #130b03 100%);
   transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
   font-size: 15px;
   font-weight: 900;
   line-height: 1;
   flex-shrink: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 236, 176, 0.15),
+    0 4px 0 rgba(0, 0, 0, 0.36),
+    0 0 0 1px rgba(0, 0, 0, 0.5);
 }
 
 .room-step-dot svg {
@@ -7059,37 +7078,47 @@ button {
 
 /* Completed room */
 .room-step.is-completed {
-  color: #45a3e5;
+  color: #ffbd26;
 }
 
 .room-step.is-completed .room-step-dot {
-  background: #45a3e5;
-  border-color: #45a3e5;
-  color: #fff;
+  background: linear-gradient(145deg, #ffe260 0%, #ffbd26 56%, #a66012 100%);
+  border-color: #ffe260;
+  color: #2a1600;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.36),
+    0 4px 0 rgba(89, 48, 6, 0.86),
+    0 0 18px rgba(255, 189, 38, 0.32);
 }
 
 /* Player's own current room */
 .room-step.is-active {
-  color: #fff;
+  color: #ffe260;
 }
 
 .room-step.is-active .room-step-dot {
-  background: #2078c5;
-  border-color: #fff;
-  color: #fff;
+  background: radial-gradient(circle at 50% 30%, #fff1a8 0%, #ffd24d 34%, #c77a16 72%, #5b2f06 100%);
+  border-color: #fff4b8;
+  color: #211100;
   box-shadow:
-    0 0 0 3px rgba(32, 120, 197, 0.45),
-    0 0 14px rgba(69, 163, 229, 0.6);
+    inset 0 2px 0 rgba(255, 255, 255, 0.4),
+    0 5px 0 rgba(70, 34, 0, 0.9),
+    0 0 0 3px rgba(199, 122, 22, 0.42),
+    0 0 22px rgba(255, 210, 77, 0.72),
+    0 0 48px rgba(255, 139, 20, 0.3);
 }
 
 /* Viewed (browsing) room — not the player's own */
 .room-step.is-viewed .room-step-dot {
-  border-color: #f5c541;
-  box-shadow: 0 0 10px rgba(245, 197, 65, 0.55);
+  border-color: #83f3ff;
+  box-shadow:
+    0 4px 0 rgba(0, 0, 0, 0.35),
+    0 0 0 3px rgba(25, 190, 210, 0.22),
+    0 0 18px rgba(131, 243, 255, 0.5);
 }
 
 .room-step.is-viewed {
-  color: #f5c541;
+  color: #83f3ff;
 }
 
 .room-step.is-subroom {
@@ -7100,13 +7129,22 @@ button {
   width: 28px;
   height: 28px;
   border-width: 2px;
-  background: #201b15;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 120, 70, 0.24), transparent 44%),
+    linear-gradient(155deg, #351107 0%, #180904 100%);
+  border-color: #d97933;
+  color: #ffca7a;
   font-size: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 198, 126, 0.16),
+    0 3px 0 rgba(63, 18, 3, 0.78),
+    0 0 12px rgba(255, 110, 40, 0.2);
 }
 
 .room-step.is-subroom .room-step-label {
   max-width: 76px;
   font-size: 10px;
+  color: rgba(255, 196, 122, 0.62);
 }
 
 /* Label under the dot */
@@ -7120,6 +7158,7 @@ button {
   max-width: 90px;
   line-height: 1.15;
   letter-spacing: 0.01em;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.68);
 }
 
 .room-step-number {
@@ -7132,7 +7171,7 @@ button {
 /* Responsive — small screens: shrink label, dots */
 @media (max-width: 680px) {
   .room-progress-bar {
-    padding: 0 8px 0;
+    padding: 0 8px 2px;
   }
 
   .room-progress-track {
