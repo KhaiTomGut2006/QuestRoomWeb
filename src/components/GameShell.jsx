@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { ChevronLeft, ChevronRight, Coins, Zap, Volume2, VolumeX, LogOut, Settings } from "lucide-react";
+import { Coins, Zap, Volume2, VolumeX, LogOut, Settings } from "lucide-react";
 import { io } from "socket.io-client";
 import { upload } from "@vercel/blob/client";
 import RoomCanvas from "@/components/RoomCanvas";
@@ -956,20 +956,18 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     }
     return levels.sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
   }, [activeMember?.challengeFailureCount, activeMember?.roomLabel, activeMember?.stageLabel, actualRoomKey, actualStage, roomLevels, tutorialRoomStage]);
-  const viewedRoomIndex = effectiveRoomLevels.findIndex((level) => level.roomKey === activeViewedRoomKey);
   const viewedRoomLevel = effectiveRoomLevels.find((level) => level.roomKey === activeViewedRoomKey) || null;
   const activeViewedStage = viewedRoomLevel?.stageId || actualStage;
   const isViewingOtherRoom = Boolean(actualRoomKey && activeViewedRoomKey && activeViewedRoomKey !== actualRoomKey);
-  const canViewPreviousRoom = viewedRoomIndex > 0;
-  const canViewNextRoom = viewedRoomIndex >= 0 && viewedRoomIndex < effectiveRoomLevels.length - 1;
   const viewedRoomLabel = viewedRoomLevel?.name
     || stageLabel(viewedRoomLevel?.stageId || actualStage);
-  const currentRoomLabel = tutorialRoomStage
+  const ownRoomLabel = tutorialRoomStage
     ? "Tutorial Room"
     : effectiveRoomLevels.find((level) => level.roomKey === actualRoomKey)?.name
     || activeMember?.roomLabel
     || activeMember?.stageLabel
     || stageLabel(actualStage);
+  const currentRoomLabel = isViewingOtherRoom ? viewedRoomLabel : ownRoomLabel;
   const currentRoomLevel = useMemo(() => (
     effectiveRoomLevels.find((level) => level.roomKey === actualRoomKey) || null
   ), [actualRoomKey, effectiveRoomLevels]);
@@ -2122,13 +2120,6 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     });
   }, [activeViewedRoomKey, isViewingOtherRoom, players, selfPlayer?.id]);
 
-  const navigateViewedRoom = useCallback((direction) => {
-    const nextRoom = effectiveRoomLevels[viewedRoomIndex + direction];
-    if (!nextRoom) return;
-    setTarget(null);
-    setViewedRoomKey(nextRoom.roomKey);
-  }, [effectiveRoomLevels, viewedRoomIndex]);
-
   if (!activeMember) {
     return <LoginScreen authConfigured={Boolean(config?.authConfigured)} authError={authError} />;
   }
@@ -2137,46 +2128,53 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     <main className="game-shell">
       <section className="top-left hud-cluster">
         <div className="stage-title-row">
-          <h1>{currentRoomLabel}</h1>
-          <button
-            className={`stage-reward-button${shouldShakeRewardButton ? " is-shaking" : ""}`}
-            type="button"
-            aria-label="Open challenge details"
-            disabled={isViewingOtherRoom || isTutorialActive}
-            onClick={handleStageRewardOpen}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withOptimizedAsset("/assets/Card.webp")} alt="" className="gift-line-icon" />
-          </button>
-        </div>
-        <div className="action-row">
-          <button
-            className={`challenge-button${isChallengePending ? " is-pending" : ""}${hasChallengeSubmission ? " is-submitted" : ""}`}
-            type="button"
-            onClick={handleChallenge}
-            disabled={isViewingOtherRoom || isTutorialActive}
-          >
-            <Zap size={23} fill="currentColor" />
-            <span>
-              {hasChallengeSubmission
-                ? "แก้ไข"
-                : isChallengePending
-                  ? "อัปโหลดไฟล์งาน"
-                  : "Challenge"}
-            </span>
-          </button>
-          <div className="cost-chip">
-            <span>-{activeMember?.currentChallengeCost || 250}</span>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
-            {activeMember?.costMultiplier > 1 && (
-              <span className="multiplier-tag">x{activeMember.costMultiplier}</span>
-            )}
+          <div className="stage-title-text">
+            <h1>{currentRoomLabel}</h1>
+            {isViewingOtherRoom && <p>(Spectator)</p>}
           </div>
-          {isChallengePending && (
-            <p className="challenge-pending-note">ให้น้องไปเรียกพี่ประจำห้องได้เลย</p>
+          {!isViewingOtherRoom && (
+            <button
+              className={`stage-reward-button${shouldShakeRewardButton ? " is-shaking" : ""}`}
+              type="button"
+              aria-label="Open challenge details"
+              disabled={isTutorialActive}
+              onClick={handleStageRewardOpen}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={withOptimizedAsset("/assets/Card.webp")} alt="" className="gift-line-icon" />
+            </button>
           )}
         </div>
+        {!isViewingOtherRoom && (
+          <div className="action-row">
+            <button
+              className={`challenge-button${isChallengePending ? " is-pending" : ""}${hasChallengeSubmission ? " is-submitted" : ""}`}
+              type="button"
+              onClick={handleChallenge}
+              disabled={isTutorialActive}
+            >
+              <Zap size={23} fill="currentColor" />
+              <span>
+                {hasChallengeSubmission
+                  ? "แก้ไข"
+                  : isChallengePending
+                    ? "อัปโหลดไฟล์งาน"
+                    : "Challenge"}
+              </span>
+            </button>
+            <div className="cost-chip">
+              <span>-{activeMember?.currentChallengeCost || 250}</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
+              {activeMember?.costMultiplier > 1 && (
+                <span className="multiplier-tag">x{activeMember.costMultiplier}</span>
+              )}
+            </div>
+            {isChallengePending && (
+              <p className="challenge-pending-note">ให้น้องไปเรียกพี่ประจำห้องได้เลย</p>
+            )}
+          </div>
+        )}
       </section>
 
       {activeMember?.npcQuest && !questReceived && !isViewingOtherRoom && (
@@ -2194,105 +2192,109 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
         </div>
       )}
 
-      <section className="top-right hud-cluster">
-        <p className="version">Ver.Demo</p>
-        <div className="profile-row">
-          <div className="coin-pill">
-            <span>{activeMember?.coins?.toLocaleString?.() || "0"}</span>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
-          </div>
-          <div className="ticket-pill" title="Select 1 Asset on HamStore tickets">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withOptimizedAsset("/assets/Item/AssetTicket.png")} alt="asset ticket" />
-            <span>x{Number(activeMember?.shopAssetTickets || 0).toLocaleString()}</span>
-          </div>
-          <div className="profile-action">
-            <button className="circle-button ranking" type="button" aria-label="Ranking" onClick={() => setShowRanking(true)}>
+      {!isViewingOtherRoom && (
+        <section className="top-right hud-cluster">
+          <p className="version">Ver.Demo</p>
+          <div className="profile-row">
+            <div className="coin-pill">
+              <span>{activeMember?.coins?.toLocaleString?.() || "0"}</span>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withOptimizedAsset("/assets/Rank.webp")} alt="Rank" />
-            </button>
-            <span>Rank</span>
-          </div>
-          <div className="profile-action">
-            <button
-              className={`circle-button global${activeMember?.tutorial?.step === "social-intro" ? " tutorial-social-target" : ""}`}
-              type="button"
-              aria-label={activeMember && isAuthed ? "Global Quest" : "Login with Discord"}
-              onClick={handleGlobalQuestOpen}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withOptimizedAsset("/assets/Global.png")} alt="" />
-              {socialUnreadCount > 0 && (
-                <b className="social-unread-badge">{socialUnreadCount > 99 ? "99+" : socialUnreadCount}</b>
-              )}
-            </button>
-            <span>Social</span>
-          </div>
-          <div className="profile-action">
-            <button
-              className="circle-button friends"
-              type="button"
-              aria-label={activeMember && isAuthed ? "Friends list" : "Login with Discord"}
-              onClick={() => (activeMember && isAuthed ? setShowFriends(true) : signIn("discord"))}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withOptimizedAsset("/assets/Friends.png")} alt="" />
-            </button>
-            <span>Friends</span>
-          </div>
-        </div>
-      </section>
-
-      <section className="bottom-right hud-cluster">
-        <div className="profile-action settings-wrapper" ref={settingsPanelRef}>
-          <span>ตั้งค่า</span>
-          <button
-            className={`circle-button settings-btn${showSettings ? " active" : ""}`}
-            type="button"
-            aria-label="Settings"
-            onClick={() => setShowSettings((s) => !s)}
-          >
-            <Settings size={30} strokeWidth={2.5} />
-          </button>
-          {showSettings && (
-            <div className="settings-panel">
-              <p className="settings-panel-title">⚙️ ตั้งค่า</p>
-              <div className="settings-row">
-                <button
-                  className="settings-mute-btn"
-                  type="button"
-                  aria-label={isMuted ? "Unmute" : "Mute"}
-                  onClick={toggleMute}
-                >
-                  {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                </button>
-                <input
-                  type="range"
-                  min="0" max="1" step="0.05"
-                  value={volume}
-                  onChange={handleVolumeChange}
-                  className="settings-volume-slider"
-                  aria-label="Volume"
-                />
-                <span className="settings-vol-pct">
-                  {isMuted ? "Muted" : `${Math.round(volume * 100)}%`}
-                </span>
-              </div>
-              {isAuthed && (
-                <button
-                  className="settings-logout-btn"
-                  type="button"
-                  onClick={() => signOut()}
-                >
-                  <LogOut size={16} />
-                  ออกจากระบบ
-                </button>
-              )}
+              <img src={withOptimizedAsset("/assets/Coin.png")} alt="coin" />
             </div>
-          )}
-        </div>
-      </section>
+            <div className="ticket-pill" title="Select 1 Asset on HamStore tickets">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={withOptimizedAsset("/assets/Item/AssetTicket.png")} alt="asset ticket" />
+              <span>x{Number(activeMember?.shopAssetTickets || 0).toLocaleString()}</span>
+            </div>
+            <div className="profile-action">
+              <button className="circle-button ranking" type="button" aria-label="Ranking" onClick={() => setShowRanking(true)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={withOptimizedAsset("/assets/Rank.webp")} alt="Rank" />
+              </button>
+              <span>Rank</span>
+            </div>
+            <div className="profile-action">
+              <button
+                className={`circle-button global${activeMember?.tutorial?.step === "social-intro" ? " tutorial-social-target" : ""}`}
+                type="button"
+                aria-label={activeMember && isAuthed ? "Global Quest" : "Login with Discord"}
+                onClick={handleGlobalQuestOpen}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={withOptimizedAsset("/assets/Global.png")} alt="" />
+                {socialUnreadCount > 0 && (
+                  <b className="social-unread-badge">{socialUnreadCount > 99 ? "99+" : socialUnreadCount}</b>
+                )}
+              </button>
+              <span>Social</span>
+            </div>
+            <div className="profile-action">
+              <button
+                className="circle-button friends"
+                type="button"
+                aria-label={activeMember && isAuthed ? "Friends list" : "Login with Discord"}
+                onClick={() => (activeMember && isAuthed ? setShowFriends(true) : signIn("discord"))}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={withOptimizedAsset("/assets/Friends.png")} alt="" />
+              </button>
+              <span>Friends</span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {!isViewingOtherRoom && (
+        <section className="bottom-right hud-cluster">
+          <div className="profile-action settings-wrapper" ref={settingsPanelRef}>
+            <span>ตั้งค่า</span>
+            <button
+              className={`circle-button settings-btn${showSettings ? " active" : ""}`}
+              type="button"
+              aria-label="Settings"
+              onClick={() => setShowSettings((s) => !s)}
+            >
+              <Settings size={30} strokeWidth={2.5} />
+            </button>
+            {showSettings && (
+              <div className="settings-panel">
+                <p className="settings-panel-title">⚙️ ตั้งค่า</p>
+                <div className="settings-row">
+                  <button
+                    className="settings-mute-btn"
+                    type="button"
+                    aria-label={isMuted ? "Unmute" : "Mute"}
+                    onClick={toggleMute}
+                  >
+                    {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                  </button>
+                  <input
+                    type="range"
+                    min="0" max="1" step="0.05"
+                    value={volume}
+                    onChange={handleVolumeChange}
+                    className="settings-volume-slider"
+                    aria-label="Volume"
+                  />
+                  <span className="settings-vol-pct">
+                    {isMuted ? "Muted" : `${Math.round(volume * 100)}%`}
+                  </span>
+                </div>
+                {isAuthed && (
+                  <button
+                    className="settings-logout-btn"
+                    type="button"
+                    onClick={() => signOut()}
+                  >
+                    <LogOut size={16} />
+                    ออกจากระบบ
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
 
 
@@ -2306,31 +2308,8 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
         </aside>
       )}
 
-      <button
-        className="nav-arrow nav-left"
-        type="button"
-        aria-label="View previous room"
-        disabled={isTutorialActive || !canViewPreviousRoom}
-        onClick={() => navigateViewedRoom(-1)}
-      >
-        <ChevronLeft size={96} strokeWidth={3} />
-      </button>
-      <button
-        className="nav-arrow nav-right"
-        type="button"
-        aria-label="View next room"
-        disabled={isTutorialActive || !canViewNextRoom}
-        onClick={() => navigateViewedRoom(1)}
-      >
-        <ChevronRight size={96} strokeWidth={3} />
-      </button>
       <section className="game-stage" onClick={handleStageClick}>
         <RoomCanvas target={isViewingOtherRoom ? null : target} onTargetHandled={() => setTarget(null)} />
-        {isViewingOtherRoom && (
-          <div className="room-view-indicator">
-            <span>Viewing room: {viewedRoomLabel}</span>
-          </div>
-        )}
         <PlayerLayer
           players={visiblePlayers}
           selfId={isViewingOtherRoom ? undefined : selfPlayer?.id}
