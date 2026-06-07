@@ -23,14 +23,15 @@ function Badge({ badge }) {
 export default function RewardModal({ reward, onClose }) {
   if (!reward) return null;
   const rewards = Array.isArray(reward.rewards) ? reward.rewards : [];
+  const isBadgeOnly = String(reward.id || "").startsWith("badge-award:");
 
   return (
     <div className="reward-modal-backdrop">
-      <section className="reward-modal" role="dialog" aria-modal="true" aria-label="Quest completed">
+      <section className="reward-modal" role="dialog" aria-modal="true" aria-label={isBadgeOnly ? "Badge earned" : "Quest completed"}>
         <Sparkles className="reward-sparkle reward-sparkle-left" size={38} />
         <Sparkles className="reward-sparkle reward-sparkle-right" size={30} />
-        <p className="reward-kicker">QUEST COMPLETE!</p>
-        <h2>ผ่าน {reward.taskName} แล้ว!</h2>
+        <p className="reward-kicker">{isBadgeOnly ? "BADGE EARNED!" : "QUEST COMPLETE!"}</p>
+        <h2>{isBadgeOnly ? `ได้รับ Badge จาก ${reward.taskName}` : `ผ่าน ${reward.taskName} แล้ว!`}</h2>
         <Badge badge={reward.badge} />
         <p className="reward-earned">ได้รับ Badge</p>
         <h3>{reward.badge?.label || "Badge"}</h3>

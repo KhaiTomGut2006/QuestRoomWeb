@@ -1019,17 +1019,28 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     }
   }, []);
 
-  const reloadMemberNow = useCallback(() => {
-    if (!isAuthed || memberRefreshInFlightRef.current) return;
+  const syncSocketPresenceFromMember = useCallback((nextMember) => {
+    if (!nextMember || !socketRef.current) return;
+    socketRef.current.emit("player:join", playerPresencePayload(playerFromMember(nextMember), {
+      clientId: entryQueueClientId,
+      token: entryAdmissionToken
+    }));
+  }, [entryAdmissionToken, entryQueueClientId]);
+
+  const reloadMemberNow = useCallback(({ force = false } = {}) => {
+    if (!isAuthed || (!force && memberRefreshInFlightRef.current)) return;
     memberRefreshInFlightRef.current = true;
     fetch(withBasePath("/api/player/me"))
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => applyMember(data.member))
+      .then((data) => {
+        applyMember(data.member);
+        syncSocketPresenceFromMember(data.member);
+      })
       .catch(() => {})
       .finally(() => {
         memberRefreshInFlightRef.current = false;
       });
-  }, [applyMember, isAuthed]);
+  }, [applyMember, isAuthed, syncSocketPresenceFromMember]);
 
   useEffect(() => {
     const ownerId = activeMember?.discordId || activeMember?.id || "";
@@ -1553,13 +1564,17 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       setChallengeAnnouncement(data);
     });
     socket.on("member:update", ({ member: nextMember, reason } = {}) => {
-      if (nextMember) applyMember(nextMember);
+      if (nextMember) {
+        applyMember(nextMember);
+        syncSocketPresenceFromMember(nextMember);
+        return;
+      }
       if (["approve", "approved", "award", "awarded", "badge", "badge_awarded", "challenge_sync"].includes(String(reason || "").toLowerCase())) {
-        reloadMemberNow();
+        reloadMemberNow({ force: true });
       }
     });
     socket.on("questroom:reload", () => {
-      reloadMemberNow();
+      reloadMemberNow({ force: true });
     });
     socket.on("social:notification", (data) => {
       if (data?.author?.id && data.author.id === activeMember?.discordId) return;
@@ -1584,7 +1599,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [activeMember?.discordId, applyMember, entryAdmissionToken, entryQueueClientId, mergePlayers, previewMode, queueDoorNpc, reloadMemberNow, selfPlayer?.id, selfPlayer?.roomKey, selfPlayer?.stage, showPlayerReaction, showSocialNotification]);
+  }, [activeMember?.discordId, applyMember, entryAdmissionToken, entryQueueClientId, mergePlayers, previewMode, queueDoorNpc, reloadMemberNow, selfPlayer?.id, selfPlayer?.roomKey, selfPlayer?.stage, showPlayerReaction, showSocialNotification, syncSocketPresenceFromMember]);
 
   useEffect(() => {
     if (!selfPlayer?.id) return;

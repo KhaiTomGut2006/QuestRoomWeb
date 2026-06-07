@@ -58,9 +58,6 @@ export async function POST(request) {
       member: result.member,
       reason: event || "challenge_sync"
     });
-    io?.to?.(`player:${discordId}`)?.emit?.("questroom:reload", {
-      reason: event || "challenge_sync"
-    });
     if (result.notification) {
       io?.emit?.("social:notification", result.notification);
     }

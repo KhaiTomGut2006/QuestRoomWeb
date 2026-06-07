@@ -935,10 +935,10 @@ function newestBadge(badges = []) {
     .sort((a, b) => new Date(b.awardedAt || 0) - new Date(a.awardedAt || 0))[0] || null;
 }
 
-function rewardIdForBadge(badge) {
+function rewardIdForBadge(badge, prefix = "badge") {
   if (!badge) return "";
   const awardedAt = badge.awardedAt ? new Date(badge.awardedAt).getTime() : "";
-  return `badge:${badge.id || badge.label || "badge"}:${awardedAt}`;
+  return `${prefix}:${badge.id || badge.label || "badge"}:${awardedAt}`;
 }
 
 function configuredStageOrder(stage) {
@@ -1021,6 +1021,27 @@ export async function syncChallengeReview(discordId, {
     ) {
       member.questReward.rewards = completionReward.rewards;
       member.questReward.unlocks = completionReward.unlocks;
+      member.markModified("questReward");
+      saved = true;
+    }
+  }
+
+  const hasPendingCompletionReward = String(member.questReward?.id || "").startsWith("badge:")
+    && !member.questReward?.seenAt;
+  if (isAwardOnlyEvent && fallbackBadge && !hasPendingCompletionReward) {
+    const nextRewardId = rewardIdForBadge(fallbackBadge, "badge-award");
+    if (!member.questReward?.id || member.questReward.id !== nextRewardId) {
+      member.questReward = {
+        id: nextRewardId,
+        taskId: challenge?.taskId || member.stage || DEFAULT_STAGE,
+        taskName: challenge?.taskName || fallbackBadge.label || getTaskName(member.stage),
+        badge: fallbackBadge,
+        coins: 0,
+        rewards: [],
+        unlocks: null,
+        awardedAt: fallbackBadge.awardedAt || new Date(),
+        seenAt: null
+      };
       member.markModified("questReward");
       saved = true;
     }
