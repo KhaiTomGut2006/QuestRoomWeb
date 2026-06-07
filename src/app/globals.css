@@ -6982,54 +6982,51 @@ button {
 
 .room-progress-bar {
   position: absolute;
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   left: clamp(14px, 4.8vw, 96px);
   right: clamp(140px, 11vw, 210px);
   z-index: 30;
   display: flex;
-  min-height: clamp(74px, 8dvh, 88px);
+  min-height: clamp(62px, 7dvh, 74px);
   align-items: center;
   justify-content: center;
   gap: 0;
-  padding: 8px clamp(12px, 2vw, 24px) 6px;
-  background:
-    linear-gradient(180deg, rgba(255, 248, 211, 0.92) 0%, rgba(255, 221, 111, 0.9) 48%, rgba(186, 111, 24, 0.9) 100%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 34px, rgba(118, 70, 17, 0.1) 34px 36px);
-  border: 3px solid #372314;
-  border-radius: 28px 28px 20px 20px;
-  box-shadow:
-    inset 0 3px 0 rgba(255, 255, 255, 0.56),
-    inset 0 -7px 0 rgba(121, 70, 14, 0.34),
-    0 5px 0 #704410,
-    0 12px 24px rgba(42, 22, 5, 0.28);
+  padding: 0 clamp(10px, 1.8vw, 22px);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   pointer-events: none;
 }
 
 /* Track line sits at mid-dot height */
 .room-progress-track {
   position: absolute;
-  top: 30px;
+  top: 22px;
   left: clamp(18px, 2vw, 28px);
   right: clamp(18px, 2vw, 28px);
-  height: 9px;
+  height: 10px;
   background:
-    linear-gradient(180deg, #8b5219 0%, #4a2a0c 100%),
-    repeating-linear-gradient(90deg, rgba(255, 235, 170, 0.16) 0 18px, transparent 18px 28px);
-  border: 2px solid #2d1b0f;
+    linear-gradient(180deg, #4a351c 0%, #211711 100%),
+    #2b2622;
+  border: 3px solid #241b16;
   border-radius: 999px;
   overflow: hidden;
   box-shadow:
-    inset 0 2px 0 rgba(255, 225, 139, 0.32),
-    inset 0 -2px 0 rgba(26, 15, 8, 0.38);
+    inset 0 2px 0 rgba(255, 226, 137, 0.26),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.38),
+    0 2px 0 rgba(255, 226, 137, 0.75),
+    0 5px 10px rgba(43, 24, 8, 0.18);
 }
 
 .room-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #46aaf2 0%, #42c7ff 52%, #ffe366 100%);
+  background: linear-gradient(90deg, #2ea8ff 0%, #46d8ff 42%, #ffe45a 72%, #ffb52b 100%);
   border-radius: 999px;
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.45),
-    0 0 14px rgba(66, 199, 255, 0.34);
+    inset 0 2px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -2px 0 rgba(52, 107, 153, 0.28),
+    0 0 14px rgba(66, 199, 255, 0.36);
   transition: width 0.5s ease;
 }
 
@@ -7040,13 +7037,13 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 5px 4px 2px;
+  gap: 5px;
+  padding: 2px 4px 0;
   border: none;
   background: transparent;
   cursor: pointer;
   pointer-events: auto;
-  color: rgba(76, 49, 25, 0.62);
+  color: rgba(50, 35, 22, 0.62);
   transition: color 0.2s, transform 0.15s;
   max-width: 120px;
 }
@@ -7062,25 +7059,26 @@ button {
 
 /* Dot */
 .room-step-dot {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3px solid currentColor;
+  border: 4px solid #2b2622;
   background:
-    radial-gradient(circle at 35% 24%, rgba(255, 255, 255, 0.4), transparent 38%),
-    linear-gradient(165deg, #fff1b1 0%, #d99a2b 100%);
+    radial-gradient(circle at 35% 24%, rgba(255, 255, 255, 0.74), transparent 34%),
+    linear-gradient(180deg, #ffe071 0%, #ffd24d 62%, #d69222 100%);
   transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
   font-size: 15px;
   font-weight: 900;
   line-height: 1;
   flex-shrink: 0;
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.46),
-    0 4px 0 rgba(88, 51, 12, 0.62),
-    0 0 0 2px rgba(255, 246, 206, 0.72);
+    inset 0 2px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -5px 0 rgba(177, 105, 20, 0.32),
+    0 4px 0 rgba(58, 36, 18, 0.9),
+    0 8px 14px rgba(43, 24, 8, 0.18);
 }
 
 .room-step-dot svg {
@@ -7091,17 +7089,21 @@ button {
 
 /* Completed room */
 .room-step.is-completed {
-  color: #5a3510;
+  color: #3a2818;
 }
 
 .room-step.is-completed .room-step-dot {
-  background: linear-gradient(145deg, #ffe98a 0%, #ffd24d 58%, #f39b22 100%);
-  border-color: #fff2a9;
-  color: #2a1600;
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.88), transparent 32%),
+    linear-gradient(135deg, #fff46e 0%, #ffd24d 28%, #ff9d35 58%, #ff5b86 100%);
+  border-color: #2b2622;
+  color: #20130a;
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.36),
-    0 4px 0 rgba(130, 76, 12, 0.8),
-    0 0 0 3px rgba(255, 205, 51, 0.32);
+    inset 0 2px 0 rgba(255, 255, 255, 0.76),
+    inset 0 -5px 0 rgba(188, 75, 39, 0.28),
+    0 4px 0 rgba(58, 36, 18, 0.9),
+    0 0 0 5px rgba(255, 210, 77, 0.28),
+    0 0 18px rgba(255, 126, 58, 0.28);
 }
 
 /* Player's own current room */
@@ -7110,15 +7112,17 @@ button {
 }
 
 .room-step.is-active .room-step-dot {
-  background: radial-gradient(circle at 50% 30%, #fff1a8 0%, #ffd24d 34%, #c77a16 72%, #5b2f06 100%);
-  border-color: #fff4b8;
+  background:
+    radial-gradient(circle at 35% 22%, rgba(255, 255, 255, 0.86), transparent 34%),
+    linear-gradient(180deg, #fff079 0%, #ffd24d 54%, #f1a12b 100%);
+  border-color: #2b2622;
   color: #211100;
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.4),
-    0 5px 0 rgba(70, 34, 0, 0.9),
-    0 0 0 5px rgba(255, 234, 97, 0.52),
-    0 0 22px rgba(255, 210, 77, 0.72),
-    0 0 48px rgba(255, 139, 20, 0.3);
+    inset 0 2px 0 rgba(255, 255, 255, 0.76),
+    inset 0 -5px 0 rgba(177, 105, 20, 0.34),
+    0 5px 0 rgba(58, 36, 18, 0.95),
+    0 0 0 6px rgba(255, 234, 97, 0.58),
+    0 0 24px rgba(255, 210, 77, 0.66);
 }
 
 /* Viewed (browsing) room — not the player's own */
@@ -7139,19 +7143,20 @@ button {
 }
 
 .room-step.is-subroom .room-step-dot {
-  width: 28px;
-  height: 28px;
-  border-width: 2px;
+  width: 30px;
+  height: 30px;
+  border-width: 3px;
   background:
-    radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.35), transparent 44%),
-    linear-gradient(155deg, #b15d25 0%, #53250c 100%);
-  border-color: #ffd07a;
-  color: #fff1c9;
+    radial-gradient(circle at 35% 24%, rgba(255, 255, 255, 0.62), transparent 34%),
+    linear-gradient(180deg, #ffdf69 0%, #c87422 100%);
+  border-color: #2b2622;
+  color: #23150d;
   font-size: 12px;
   box-shadow:
-    inset 0 1px 0 rgba(255, 198, 126, 0.16),
-    0 3px 0 rgba(63, 18, 3, 0.78),
-    0 0 12px rgba(255, 110, 40, 0.2);
+    inset 0 2px 0 rgba(255, 255, 255, 0.48),
+    inset 0 -4px 0 rgba(109, 54, 13, 0.28),
+    0 3px 0 rgba(58, 36, 18, 0.86),
+    0 6px 12px rgba(43, 24, 8, 0.14);
 }
 
 .room-step.is-subroom .room-step-label {
@@ -7172,8 +7177,8 @@ button {
   line-height: 1.15;
   letter-spacing: 0;
   text-shadow:
-    0 1px 0 rgba(255, 249, 217, 0.95),
-    0 2px 0 rgba(93, 57, 17, 0.18);
+    0 2px 0 rgba(255, 249, 217, 0.96),
+    0 3px 0 rgba(53, 34, 20, 0.24);
 }
 
 .room-step-number {
@@ -7188,27 +7193,21 @@ button {
   .room-progress-bar {
     left: 8px;
     right: 86px;
-    min-height: 66px;
-    padding: 6px 8px 5px;
-    border-width: 2px;
-    border-radius: 22px 22px 16px 16px;
-    box-shadow:
-      inset 0 2px 0 rgba(255, 255, 255, 0.52),
-      inset 0 -5px 0 rgba(121, 70, 14, 0.3),
-      0 4px 0 #704410,
-      0 8px 16px rgba(42, 22, 5, 0.24);
+    min-height: 58px;
+    padding: 0 6px;
   }
 
   .room-progress-track {
-    top: 25px;
+    top: 19px;
     left: 12px;
     right: 12px;
     height: 7px;
+    border-width: 2px;
   }
 
   .room-step-dot {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     border-width: 2.5px;
     font-size: 12px;
   }
@@ -7253,13 +7252,13 @@ button {
   }
 
   .room-progress-bar {
-    min-height: 64px;
-    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    min-height: 58px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     right: clamp(120px, 10vw, 184px);
   }
 
   .room-progress-track {
-    top: 24px;
+    top: 19px;
   }
 
   .bottom-right {
