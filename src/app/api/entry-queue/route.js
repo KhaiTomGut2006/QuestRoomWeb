@@ -3,6 +3,7 @@ import { entryQueueStats, joinEntryQueue, releaseEntryQueue } from "@/lib/entryQ
 
 const STREAM_INTERVAL_MS = Math.max(2_000, Number(process.env.ENTRY_QUEUE_STREAM_INTERVAL_MS || 5_000));
 const STREAM_MAX_DURATION_MS = Math.max(30_000, Number(process.env.ENTRY_QUEUE_STREAM_MAX_DURATION_MS || 120_000));
+const STREAM_ENABLED = process.env.ENTRY_QUEUE_STREAM_ENABLED === "true";
 
 function sseMessage(event, data) {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -75,7 +76,7 @@ export async function GET(request) {
     return NextResponse.json({ ok: true, status: "stats", ...entryQueueStats() });
   }
 
-  if (searchParams.get("stream") === "1") {
+  if (searchParams.get("stream") === "1" && STREAM_ENABLED) {
     return streamEntryQueue(request, clientId);
   }
 

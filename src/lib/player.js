@@ -119,6 +119,10 @@ const FRIENDS_STALE_CACHE_TTL_MS = Math.max(
 );
 const FRIENDS_CACHE_MAX_KEYS = Math.max(20, Number(process.env.FRIENDS_CACHE_MAX_KEYS || 200));
 const MAX_CLASS_FRIENDS = Math.max(50, Number(process.env.MAX_CLASS_FRIENDS || 500));
+const FRIENDS_BOT_RESPONSE_BUDGET_MS = Math.max(
+  300,
+  Number(process.env.FRIENDS_BOT_RESPONSE_BUDGET_MS || 1_200)
+);
 const MEMBER_LIST_QUERY_MAX_TIME_MS = Math.max(1_000, Number(process.env.MEMBER_LIST_QUERY_MAX_TIME_MS || 8_000));
 const SOCIAL_POSTS_QUERY_MAX_TIME_MS = Math.max(1_000, Number(process.env.SOCIAL_POSTS_QUERY_MAX_TIME_MS || 3_000));
 const SOCIAL_POST_AUTO_BACKFILL_ENABLED = process.env.SOCIAL_POST_AUTO_BACKFILL_ENABLED === "true";
@@ -376,6 +380,39 @@ function cloneFriends(friends) {
     ...friend,
     bestBadge: friend.bestBadge ? { ...friend.bestBadge } : null
   }));
+}
+
+function normalizeSheetStudent(student = {}) {
+  return {
+    discordId: String(student.discordId || ""),
+    sheetRowIndex: student.sheetRowIndex,
+    name: String(student.name || ""),
+    discordUsername: String(student.discordUsername || ""),
+    avatarUrl: String(student.avatarUrl || ""),
+    isOnline: Boolean(student.isOnline)
+  };
+}
+
+async function fetchClassStudentsFromBot(classId, timeoutMs) {
+  const botUrl = (process.env.BOT_SERVER_URL || "https://api.hamsterquest.com/attendance").replace(/\/$/, "");
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${botUrl}/api/attendance?course=${encodeURIComponent(classId)}`, {
+      signal: controller.signal
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data?.success || !Array.isArray(data.students)) return [];
+    return data.students.slice(0, MAX_CLASS_FRIENDS).map(normalizeSheetStudent);
+  } catch (err) {
+    if (err?.name !== "AbortError") {
+      console.warn("Failed to fetch students from bot server, falling back to local DB:", err.message);
+    }
+    return [];
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function pruneClassFriendsCache(now = Date.now()) {
@@ -2109,7 +2146,10 @@ export async function getActiveClasses() {
   if (cachedActiveClasses && Date.now() - cachedActiveClassesAt < ACTIVE_CLASSES_CACHE_TTL_MS) {
     return cachedActiveClasses.map((item) => ({ ...item }));
   }
-  const configs = await CourseConfig.find({ isActive: true }).sort({ courseName: 1 }).lean();
+  const configs = await CourseConfig.find({ isActive: true })
+    .sort({ courseName: 1 })
+    .lean()
+    .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
   cachedActiveClasses = configs.map(c => ({
     sheetTitle: c.sheetTitle,
     courseName: c.courseName
@@ -2448,26 +2488,29 @@ export async function getClassFriends(classId) {
   }
 
   const friendsLoad = (async () => {
-    const botUrl = (process.env.BOT_SERVER_URL || "https://api.hamsterquest.com/attendance").replace(/\/$/, "");
-    const botTimeoutMs = Math.max(2000, Number(process.env.BOT_SERVER_TIMEOUT_MS) || 20000);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), botTimeoutMs);
-  
+    const botTimeoutMs = Math.max(500, Number(process.env.BOT_SERVER_TIMEOUT_MS) || 3_000);
+    const effectiveBotTimeoutMs = Math.min(botTimeoutMs, FRIENDS_BOT_RESPONSE_BUDGET_MS);
+    const localMembersLoad = Member.find({
+      discord_id: { $exists: true, $ne: "" },
+      courses: normalizedClassId
+    })
+      .select(MEMBER_FRIEND_SELECT)
+      .limit(MAX_CLASS_FRIENDS)
+      .lean()
+      .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS)
+      .exec();
+
     let sheetStudents = [];
-    try {
-      const res = await fetch(`${botUrl}/api/attendance?course=${encodeURIComponent(normalizedClassId)}`, {
-        signal: controller.signal
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.success && Array.isArray(data.students)) {
-          sheetStudents = data.students.slice(0, MAX_CLASS_FRIENDS);
-        }
-      }
-    } catch (err) {
-      console.warn("Failed to fetch students from bot server, falling back to local DB:", err.message);
-    } finally {
-      clearTimeout(timeoutId);
+    let localMembers = [];
+    const [botResult, localResult] = await Promise.allSettled([
+      fetchClassStudentsFromBot(normalizedClassId, effectiveBotTimeoutMs),
+      localMembersLoad
+    ]);
+    if (botResult.status === "fulfilled") {
+      sheetStudents = Array.isArray(botResult.value) ? botResult.value : [];
+    }
+    if (localResult.status === "fulfilled") {
+      localMembers = Array.isArray(localResult.value) ? localResult.value : [];
     }
 
     let members = [];
@@ -2479,6 +2522,7 @@ export async function getClassFriends(classId) {
           discord_id: { $in: discordIds }
         })
           .select(MEMBER_FRIEND_SELECT)
+          .limit(MAX_CLASS_FRIENDS)
           .lean()
           .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
       }
@@ -2513,19 +2557,7 @@ export async function getClassFriends(classId) {
       });
     }
 
-    // Return only exact local matches if the Google Sheet service is unavailable.
-    const query = {
-      discord_id: { $exists: true, $ne: "" },
-      courses: normalizedClassId
-    };
-
-    members = await Member.find(query)
-      .select(MEMBER_FRIEND_SELECT)
-      .limit(MAX_CLASS_FRIENDS)
-      .lean()
-      .maxTimeMS(MEMBER_LIST_QUERY_MAX_TIME_MS);
-
-    return members.map(m => {
+    return localMembers.map(m => {
       const identity = publicMemberIdentity(m);
       const bestBadge = getBestBadge(m.profileAchievements);
       return {

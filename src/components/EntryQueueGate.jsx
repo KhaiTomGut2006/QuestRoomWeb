@@ -31,6 +31,7 @@ const CLIENT_ID_KEY = "questroom:entry-client-id";
 const RELEASE_AFTER_MS = 24_000;
 const QUEUE_RETRY_MIN_MS = 10_000;
 const QUEUE_RETRY_MAX_MS = 90_000;
+const ENTRY_QUEUE_SSE_ENABLED = process.env.NEXT_PUBLIC_ENTRY_QUEUE_SSE_ENABLED === "true";
 
 function createClientId() {
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
@@ -157,7 +158,7 @@ export default function EntryQueueGate() {
       }
     };
 
-    if (typeof window !== "undefined" && "EventSource" in window) {
+    if (ENTRY_QUEUE_SSE_ENABLED && typeof window !== "undefined" && "EventSource" in window) {
       usingSse = true;
       eventSource = new EventSource(withBasePath(`/api/entry-queue?stream=1&clientId=${encodeURIComponent(clientId)}`));
       eventSource.addEventListener("queue", (event) => {

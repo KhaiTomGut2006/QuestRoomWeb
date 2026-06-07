@@ -13,16 +13,18 @@ export async function GET(request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const activeClasses = await getActiveClasses();
+    const classId = searchParams.get("class") || "all";
+    const [activeClasses, page] = await Promise.all([
+      getActiveClasses(),
+      getGlobalQuestPosts(classId, discordId, {
+        limit: searchParams.get("limit"),
+        cursor: searchParams.get("cursor")
+      })
+    ]);
     const classes = [
       { sheetTitle: "all", courseName: "All Courses" },
       ...activeClasses
     ];
-    const classId = searchParams.get("class") || "all";
-    const page = await getGlobalQuestPosts(classId, discordId, {
-      limit: searchParams.get("limit"),
-      cursor: searchParams.get("cursor")
-    });
     return NextResponse.json({
       classes,
       posts: page.posts,
