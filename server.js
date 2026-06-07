@@ -1688,12 +1688,14 @@ app.prepare().then(() => {
       if (rateLimited("player:join", 1_000)) return;
       if (
         ENTRY_QUEUE_ENFORCE_SOCKET
+        && !socket.data.entryAdmitted
         && !globalThis.__questRoomEntryQueueApi?.validateToken?.(payload.entryQueueClientId, payload.entryAdmissionToken)
       ) {
         socket.emit("entry:denied", { reason: "entry_queue_required" });
         socket.disconnect(true);
         return;
       }
+      socket.data.entryAdmitted = true;
       const player = compactPlayer(payload);
       if (!player.id) return;
       socket.data.loadTest = socket.data.loadTest || isLoadTestPlayerId(player.id);

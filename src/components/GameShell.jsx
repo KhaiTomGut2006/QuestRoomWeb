@@ -31,6 +31,7 @@ const NPC_VISIT_ACTIONS = {
 };
 const MEMBER_REFRESH_INTERVAL_MS = 120_000;
 const CHALLENGE_REVIEW_REFRESH_DELAYS_MS = [800, 2_500, 6_000];
+const CHALLENGE_PENDING_REFRESH_INTERVAL_MS = 5_000;
 const ROOM_LEVEL_REFRESH_INTERVAL_MS = 300_000;
 const ROOM_PEEK_INTERVAL_MS = 60_000;
 const SOCIAL_STATUS_INTERVAL_MS = 300_000;
@@ -1474,6 +1475,31 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       memberRefreshInFlightRef.current = false;
     };
   }, [isAuthed]);
+
+  useEffect(() => {
+    const challenge = activeMember?.challenge;
+    const challengeStatus = String(challenge?.status || "").toLowerCase();
+    if (!isAuthed || previewMode || challengeStatus !== "pending") return undefined;
+
+    const refreshPendingChallenge = () => {
+      if (document.visibilityState === "hidden") return;
+      reloadMemberNow();
+    };
+    const timeoutId = window.setTimeout(refreshPendingChallenge, 2_000);
+    const intervalId = window.setInterval(refreshPendingChallenge, CHALLENGE_PENDING_REFRESH_INTERVAL_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
+  }, [
+    activeMember?.challenge?.requestedAt,
+    activeMember?.challenge?.status,
+    activeMember?.challenge?.submissionId,
+    activeMember?.discordId,
+    isAuthed,
+    previewMode,
+    reloadMemberNow
+  ]);
 
   useEffect(() => {
     if (!actualRoomKey) return;

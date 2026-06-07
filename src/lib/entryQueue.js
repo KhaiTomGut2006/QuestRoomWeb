@@ -1,6 +1,8 @@
 const DEFAULT_CLIENT_TTL_MS = 90_000;
 const DEFAULT_ACTIVE_TTL_MS = 45_000;
+const DEFAULT_SOCKET_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_MAX_QUEUE = 500;
+const DEFAULT_MAX_SOCKET_SESSIONS = 2_000;
 const DEFAULT_RETRY_MS = 30_000;
 
 function nowMs() {
@@ -21,6 +23,8 @@ function queueConfig() {
     admitPerTick: Math.max(1, Number(process.env.ENTRY_QUEUE_ADMIT_PER_TICK || 1)),
     clientTtlMs: Math.max(10_000, Number(process.env.ENTRY_QUEUE_CLIENT_TTL_MS || DEFAULT_CLIENT_TTL_MS)),
     activeTtlMs: Math.max(10_000, Number(process.env.ENTRY_QUEUE_ACTIVE_TTL_MS || DEFAULT_ACTIVE_TTL_MS)),
+    socketSessionTtlMs: Math.max(60_000, Number(process.env.ENTRY_QUEUE_SOCKET_SESSION_TTL_MS || DEFAULT_SOCKET_SESSION_TTL_MS)),
+    maxSocketSessions: Math.max(100, Number(process.env.ENTRY_QUEUE_MAX_SOCKET_SESSIONS || DEFAULT_MAX_SOCKET_SESSIONS)),
     retryMs,
     pausedRetryMs: Math.max(retryMs, Number(process.env.ENTRY_QUEUE_PAUSED_RETRY_MS || 60_000)),
     fullRetryMs: Math.max(retryMs, Number(process.env.ENTRY_QUEUE_FULL_RETRY_MS || 60_000))
@@ -50,6 +54,7 @@ function createQueueState() {
     waiting: new Map(),
     active: new Map(),
     tokens: new Map(),
+    socketSessions: new Map(),
     sequence: 0,
     lastAdmittedAt: 0,
     lastCleanupAt: 0
@@ -58,6 +63,30 @@ function createQueueState() {
 
 const state = globalThis.__questRoomEntryQueue || createQueueState();
 globalThis.__questRoomEntryQueue = state;
+if (!state.socketSessions) state.socketSessions = new Map();
+
+function pruneSocketSessions(config = queueConfig()) {
+  if (state.socketSessions.size <= config.maxSocketSessions) return;
+  const overflow = state.socketSessions.size - config.maxSocketSessions;
+  const oldestTokens = [...state.socketSessions.entries()]
+    .sort(([, a], [, b]) => (a?.expiresAt || 0) - (b?.expiresAt || 0))
+    .slice(0, overflow)
+    .map(([token]) => token);
+  for (const token of oldestTokens) state.socketSessions.delete(token);
+}
+
+function rememberSocketSession(clientId, token, config = queueConfig()) {
+  const normalizedClientId = String(clientId || "").trim().slice(0, 120);
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedClientId || !normalizedToken) return;
+  state.socketSessions.set(normalizedToken, {
+    clientId: normalizedClientId,
+    token: normalizedToken,
+    rememberedAt: nowMs(),
+    expiresAt: nowMs() + config.socketSessionTtlMs
+  });
+  pruneSocketSessions(config);
+}
 
 function cleanupQueue(config = queueConfig()) {
   const now = nowMs();
@@ -73,6 +102,10 @@ function cleanupQueue(config = queueConfig()) {
       state.tokens.delete(entry.token);
     }
   }
+  for (const [token, entry] of state.socketSessions) {
+    if (!entry || now > entry.expiresAt) state.socketSessions.delete(token);
+  }
+  pruneSocketSessions(config);
 }
 
 function queuePosition(clientId) {
@@ -92,6 +125,7 @@ function entryQueueStats() {
     enabled: config.enabled,
     waiting: state.waiting.size,
     active: state.active.size,
+    socketSessions: state.socketSessions.size,
     maxActiveLoaders: config.maxActiveLoaders,
     admitPerTick: config.admitPerTick,
     paused: Boolean(guard?.warning || guard?.critical),
@@ -212,10 +246,12 @@ function joinEntryQueue(clientId, metadata = {}) {
 }
 
 function releaseEntryQueue(clientId, token = "") {
+  const config = queueConfig();
   const normalizedClientId = String(clientId || "").trim().slice(0, 120);
   const normalizedToken = String(token || "").trim();
   const active = state.active.get(normalizedClientId);
   if (active && (!normalizedToken || active.token === normalizedToken)) {
+    rememberSocketSession(normalizedClientId, active.token, config);
     state.active.delete(normalizedClientId);
     state.tokens.delete(active.token);
   }
@@ -227,9 +263,10 @@ function releaseEntryQueue(clientId, token = "") {
 function validateEntryToken(clientId, token) {
   const config = queueConfig();
   if (!config.enabled) return true;
+  cleanupQueue(config);
   const normalizedClientId = String(clientId || "").trim().slice(0, 120);
   const normalizedToken = String(token || "").trim();
-  const entry = state.tokens.get(normalizedToken);
+  const entry = state.tokens.get(normalizedToken) || state.socketSessions.get(normalizedToken);
   return Boolean(
     entry
     && entry.clientId === normalizedClientId
