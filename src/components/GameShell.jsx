@@ -2467,37 +2467,32 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
           const isAheadRoom = viewedIndex > activeIndex;
           const isMainRoom = !viewedRoomLevel?.isSubroom && viewedRoomLevel?.kind !== "challenge-subroom";
           if (!isAheadRoom || !isMainRoom) return null;
+          const lockedChestNpc = { id: "chest", type: "chest", name: "Reward Chest", npcId: "chest" };
           return (
-            <div className="locked-room-gift-overlay">
-              <button
-                className="locked-room-gift-btn is-shaking"
-                type="button"
-                aria-label="ดูรายละเอียดห้องนี้"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const stageId = viewedRoomLevel?.stageId || activeViewedStage;
-                  if (!stageId) return;
-                  const cached = challengeInfoOverrides[stageId];
-                  if (cached) {
-                    setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: cached }, viewedRoomLabel));
-                  } else {
-                    setPreviewRoomChallengeInfo(challengeInfoFromLevel(viewedRoomLevel, viewedRoomLabel));
-                    fetch(withBasePath(`/api/player/challenge-info?stage=${encodeURIComponent(stageId)}`), { cache: "no-store" })
-                      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-                      .then((data) => {
-                        if (!data?.challengeInfo) return;
-                        setChallengeInfoOverrides((cur) => ({ ...cur, [stageId]: data.challengeInfo }));
-                        setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: data.challengeInfo }, viewedRoomLabel));
-                      })
-                      .catch(() => {});
-                  }
-                  setPreviewRoomChallengeView("details");
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={withOptimizedAsset("/assets/Card.webp")} alt="" className="gift-line-icon" />
-              </button>
-            </div>
+            <NpcDoorVisitor
+              npc={lockedChestNpc}
+              phase="idle"
+              promptLabel="ดูไอเท็มที่จะปลดล็อค"
+              onInteract={() => {
+                const stageId = viewedRoomLevel?.stageId || activeViewedStage;
+                if (!stageId) return;
+                const cached = challengeInfoOverrides[stageId];
+                if (cached) {
+                  setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: cached }, viewedRoomLabel));
+                } else {
+                  setPreviewRoomChallengeInfo(challengeInfoFromLevel(viewedRoomLevel, viewedRoomLabel));
+                  fetch(withBasePath(`/api/player/challenge-info?stage=${encodeURIComponent(stageId)}`), { cache: "no-store" })
+                    .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+                    .then((data) => {
+                      if (!data?.challengeInfo) return;
+                      setChallengeInfoOverrides((cur) => ({ ...cur, [stageId]: data.challengeInfo }));
+                      setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: data.challengeInfo }, viewedRoomLabel));
+                    })
+                    .catch(() => {});
+                }
+                setPreviewRoomChallengeView("rewards");
+              }}
+            />
           );
         })()}
       </section>

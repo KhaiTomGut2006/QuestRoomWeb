@@ -15,7 +15,7 @@ const NPC_IMAGE = {
   chest: "chest_close.png",
 };
 
-export default function NpcDoorVisitor({ npc, phase = "idle", onInteract }) {
+export default function NpcDoorVisitor({ npc, phase = "idle", onInteract, promptLabel }) {
   if (!npc) return null;
 
   const character = npc.npcId || npc.id;
@@ -35,7 +35,7 @@ export default function NpcDoorVisitor({ npc, phase = "idle", onInteract }) {
       <span className="npc-door-visitor-click-icon" aria-hidden="true">
         <MousePointerClick size={21} strokeWidth={3} />
       </span>
-      <span className="npc-door-visitor-prompt">คลิกเพื่อพูดคุย</span>
+      <span className="npc-door-visitor-prompt">{promptLabel || "คลิกเพื่อพูดคุย"}</span>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={withOptimizedAsset(`/assets/NPC/${imgFile}`)} alt="" />
       <span className="npc-door-visitor-shadow" aria-hidden="true" />
