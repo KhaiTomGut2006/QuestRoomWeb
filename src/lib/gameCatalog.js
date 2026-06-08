@@ -59,6 +59,7 @@ export const GAME_ITEM_CATALOG = [
     image: "/assets/Item/Cooldown.png",
     shadowImage: "/assets/ItemShadow/cooldown_shadow.webp",
     defaultPrice: 200,
+    note: "ซื้อได้สูงสุด 5 ครั้ง",
     canShopSell: true,
     canBoxDrop: true
   },
@@ -68,6 +69,7 @@ export const GAME_ITEM_CATALOG = [
     image: "/assets/Item/Cooldown.png",
     shadowImage: "/assets/ItemShadow/cooldown_shadow.webp",
     defaultPrice: 400,
+    note: "ต้องซื้อ Limit Break ก่อนถึงซื้อได้",
     canShopSell: true,
     canBoxDrop: true
   },
@@ -77,6 +79,7 @@ export const GAME_ITEM_CATALOG = [
     image: "/assets/Item/limitbreak.png",
     shadowImage: "/assets/ItemShadow/quest_shadow.webp",
     defaultPrice: 2000,
+    note: "ปลดล็อค Cooldown Lv2 และยกเลิกขีดจำกัดต่างๆ",
     canShopSell: true,
     canBoxDrop: true
   },
@@ -96,7 +99,7 @@ export const GAME_ITEM_CATALOG = [
     shadowImage: "/assets/ItemShadow/mrX_shadow.webp",
     defaultPrice: 10000,
     canShopSell: true,
-    canBoxDrop: true
+    canBoxDrop: false
   },
   {
     id: "accessory-mrx-red-eye",
@@ -105,7 +108,7 @@ export const GAME_ITEM_CATALOG = [
     shadowImage: "/assets/ItemShadow/mrX_shadow.webp",
     defaultPrice: 20000,
     canShopSell: true,
-    canBoxDrop: true
+    canBoxDrop: false
   },
   {
     id: "accessory-mrx-glasses",
@@ -114,7 +117,7 @@ export const GAME_ITEM_CATALOG = [
     shadowImage: "/assets/ItemShadow/mrX_shadow.webp",
     defaultPrice: 15000,
     canShopSell: true,
-    canBoxDrop: true
+    canBoxDrop: false
   },
   {
     id: "accessory-ppuk",
@@ -123,7 +126,7 @@ export const GAME_ITEM_CATALOG = [
     shadowImage: "/assets/ItemShadow/puk_shadow.webp",
     defaultPrice: 8000,
     canShopSell: true,
-    canBoxDrop: true
+    canBoxDrop: false
   }
 ];
 
