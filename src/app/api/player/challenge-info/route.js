@@ -56,25 +56,35 @@ export async function GET(request) {
 
     const currentLevel = await Level.findOne(
       { stageId: stage },
-      { _id: 0, name: 1, stageId: 1, order: 1, challengeInfo: 1 }
+      { _id: 0, name: 1, stageId: 1, order: 1, challengeInfo: 1, unlocks: 1 }
     ).lean().maxTimeMS(LEVEL_QUERY_MAX_TIME_MS);
 
     if (!currentLevel) {
       return NextResponse.json({ error: "level_not_found" }, { status: 404 });
     }
 
-    const rewardLevel = await Level.findOne(
-      { order: (Number(currentLevel.order) || 0) + 1 },
-      { _id: 0, name: 1, unlocks: 1 }
-    ).lean().maxTimeMS(LEVEL_QUERY_MAX_TIME_MS);
+    const ownRewards = request.nextUrl.searchParams.get("ownRewards") === "1";
+
+    let rewards;
+    if (ownRewards) {
+      // Return items unlocked by reaching this stage itself
+      rewards = unlockRewards(currentLevel?.unlocks || {}, { realImages: false }).slice(0, 12);
+    } else {
+      // Default: return items unlocked by completing this stage (next stage's unlocks)
+      const rewardLevel = await Level.findOne(
+        { order: (Number(currentLevel.order) || 0) + 1 },
+        { _id: 0, name: 1, unlocks: 1 }
+      ).lean().maxTimeMS(LEVEL_QUERY_MAX_TIME_MS);
+      rewards = rewardLevel
+        ? unlockRewards(rewardLevel?.unlocks || {}, { realImages: false }).slice(0, 12)
+        : [];
+    }
 
     return NextResponse.json(
       {
         challengeInfo: {
           ...normalizeChallengeInfo(currentLevel),
-          rewards: rewardLevel
-            ? unlockRewards(rewardLevel?.unlocks || {}, { realImages: false }).slice(0, 12)
-            : [],
+          rewards,
         },
       },
       { headers: { "Cache-Control": "private, no-store" } }

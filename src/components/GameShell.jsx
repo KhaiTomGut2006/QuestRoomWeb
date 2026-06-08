@@ -2476,16 +2476,17 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
               onInteract={() => {
                 const stageId = viewedRoomLevel?.stageId || activeViewedStage;
                 if (!stageId) return;
-                const cached = challengeInfoOverrides[stageId];
+                const ownCacheKey = `${stageId}:own`;
+                const cached = challengeInfoOverrides[ownCacheKey];
                 if (cached) {
                   setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: cached }, viewedRoomLabel));
                 } else {
                   setPreviewRoomChallengeInfo(challengeInfoFromLevel(viewedRoomLevel, viewedRoomLabel));
-                  fetch(withBasePath(`/api/player/challenge-info?stage=${encodeURIComponent(stageId)}`), { cache: "no-store" })
+                  fetch(withBasePath(`/api/player/challenge-info?stage=${encodeURIComponent(stageId)}&ownRewards=1`), { cache: "no-store" })
                     .then((res) => (res.ok ? res.json() : Promise.reject(res)))
                     .then((data) => {
                       if (!data?.challengeInfo) return;
-                      setChallengeInfoOverrides((cur) => ({ ...cur, [stageId]: data.challengeInfo }));
+                      setChallengeInfoOverrides((cur) => ({ ...cur, [ownCacheKey]: data.challengeInfo }));
                       setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: data.challengeInfo }, viewedRoomLabel));
                     })
                     .catch(() => {});
