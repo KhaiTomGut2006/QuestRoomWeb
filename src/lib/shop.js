@@ -236,14 +236,24 @@ export async function openChestReward(member, { coinMin = 20, coinMax = 200 } = 
   if (configuredDrops.length) {
     for (const drop of configuredDrops) {
       const itemId = String(drop?.itemType || "");
-      const item = SHOP_ITEMS[itemId];
       const weight = Number(drop?.chance);
-      if (!item || !Number.isFinite(weight) || weight <= 0) continue;
+      if (!Number.isFinite(weight) || weight <= 0) continue;
+      if (itemId === "coins") {
+        pool.push({
+          kind: "coins",
+          weight,
+          coinMin: Math.max(1, Number(drop.coinMin) || 20),
+          coinMax: Math.max(1, Number(drop.coinMax) || 200)
+        });
+        continue;
+      }
+      const item = SHOP_ITEMS[itemId];
+      if (!item) continue;
       if (!canReceiveConfiguredChestDrop(member, itemId, item)) continue;
       pool.push({ kind: "item", itemId, itemName: drop.itemName || item.name, weight });
     }
   } else {
-    pool.push({ kind: "coins", weight: CHEST_COIN_WEIGHT });
+    pool.push({ kind: "coins", weight: CHEST_COIN_WEIGHT, coinMin, coinMax });
     for (const [itemId, item] of Object.entries(SHOP_ITEMS)) {
       if (!canReceiveChestDrop(member, itemId, item)) continue;
       pool.push({
@@ -255,10 +265,12 @@ export async function openChestReward(member, { coinMin = 20, coinMax = 200 } = 
     }
   }
 
-  if (!pool.length) pool.push({ kind: "coins", weight: 1 });
+  if (!pool.length) pool.push({ kind: "coins", weight: 1, coinMin, coinMax });
   const picked = pickWeighted(pool);
   if (picked.kind === "coins") {
-    const coins = randomInt(coinMin, coinMax);
+    const min = Number(picked.coinMin) || coinMin;
+    const max = Number(picked.coinMax) || coinMax;
+    const coins = randomInt(min, max);
     addQuestCoins(member, coins);
     return { kind: "coins", coins };
   }

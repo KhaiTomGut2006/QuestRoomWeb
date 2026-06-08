@@ -12,6 +12,8 @@ const BoxDropSchema = new mongoose.Schema({
   itemType: { type: String, required: true },
   itemName: { type: String, default: '' },
   chance:   { type: Number, default: 0 },
+  coinMin:  { type: Number, default: 0 },
+  coinMax:  { type: Number, default: 0 },
 }, { _id: false });
 
 const NpcSpawnSchema = new mongoose.Schema({

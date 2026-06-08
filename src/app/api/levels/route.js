@@ -66,6 +66,15 @@ function normalizeLevel(level, index) {
     }).filter((item) => item.itemType) : [],
     boxDrops: Array.isArray(level?.boxDrops) ? level.boxDrops.map((drop) => {
       const itemType = String(drop?.itemType || "").trim();
+      if (itemType === "coins") {
+        return {
+          itemType: "coins",
+          itemName: "Coins",
+          chance: normalizePoolChance(drop?.chance),
+          coinMin: Math.max(1, Math.min(100000, Number(drop?.coinMin) || 20)),
+          coinMax: Math.max(1, Math.min(100000, Number(drop?.coinMax) || 200)),
+        };
+      }
       const meta = getGameItem(itemType) || {};
       return {
         itemType,
@@ -145,6 +154,7 @@ function validateLevels(levels) {
       if (!meta.canShopSell) throw new Error(`${itemId} cannot be sold by NPC shop.`);
     }
     for (const itemId of boxItemIds) {
+      if (itemId === "coins") continue;
       const meta = getGameItem(itemId);
       if (!meta) throw new Error(`Unknown box item id: ${itemId}.`);
       if (!availableItems.has(itemId)) throw new Error(`${itemId} is not unlocked yet for ${levelName}.`);
