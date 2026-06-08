@@ -498,13 +498,7 @@ async function ensureLevels({ force = false } = {}) {
           videoUrl: l.challengeInfo?.videoUrl || "",
           videoPath: l.challengeInfo?.videoPath || "",
           videoContentType: l.challengeInfo?.videoContentType || "",
-          rewards: Array.isArray(l.challengeInfo?.rewards) ? l.challengeInfo.rewards.map((reward) => ({
-            id: String(reward?.id || ""),
-            label: String(reward?.label || ""),
-            image: String(reward?.image || ""),
-            quantity: Math.max(0, Number(reward?.quantity) || 0),
-            kind: String(reward?.kind || "item"),
-          })) : unlockRewards(l.unlocks || {}, { realImages: false }),
+          rewards: unlockRewards(l.unlocks || {}, { realImages: false }),
         },
       }));
       cachedLevelsAt = Date.now();

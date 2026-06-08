@@ -76,6 +76,7 @@ let lastHeapGuardLogAt = 0;
 let lastRuntimePressureReliefAt = 0;
 let rejectNewNpcPoolLoadsUntil = 0;
 let npcPoolIndexPromise = null;
+let npcPoolExpiryIndexPromise = null;
 const apiRouteStats = new Map();
 const activeApiRequests = new Map();
 let nextApiRequestId = 1;
@@ -701,7 +702,17 @@ async function getNpcPoolsCollection() {
       return null;
     });
   }
+  if (!npcPoolExpiryIndexPromise) {
+    npcPoolExpiryIndexPromise = collection.createIndex(
+      { expiresAt: 1 },
+      { background: true, name: "npc_pools_expires_at" }
+    ).catch((error) => {
+      console.warn("Failed to ensure npc pool expiry index:", error.message);
+      return null;
+    });
+  }
   await npcPoolIndexPromise;
+  await npcPoolExpiryIndexPromise;
   return collection;
 }
 
@@ -1351,6 +1362,16 @@ app.prepare().then(() => {
     transports: SOCKET_TRANSPORTS
   });
   globalThis.__questRoomIo = io;
+  globalThis.__questRoomInvalidateLevelRuntimeConfig = async () => {
+    levelConfigCache.clear();
+    npcPoolCache.clear();
+    try {
+      const collection = await getNpcPoolsCollection();
+      await collection.deleteMany({ expiresAt: { $gte: new Date() } }, { maxTimeMS: DB_QUERY_MAX_TIME_MS });
+    } catch (error) {
+      console.warn("Failed to invalidate persisted NPC pools:", error.message);
+    }
+  };
   globalThis.__questRoomRuntimePressureRelief = (snapshot = heapGuardSnapshot()) => {
     const now = Date.now();
     if (now - lastRuntimePressureReliefAt < 3_000) return;

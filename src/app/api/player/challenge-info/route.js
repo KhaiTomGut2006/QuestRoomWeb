@@ -3,15 +3,7 @@ import { connectDb } from "@/lib/db";
 import Level from "@/models/Level";
 import { unlockRewards } from "@/lib/levelUnlocks";
 
-function normalizeReward(reward, index) {
-  return {
-    id: String(reward?.id || `reward-${index}`),
-    label: String(reward?.label || ""),
-    image: String(reward?.image || ""),
-    quantity: Math.max(0, Number(reward?.quantity) || 0),
-    kind: String(reward?.kind || "item"),
-  };
-}
+const LEVEL_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.LEVEL_QUERY_MAX_TIME_MS || 3_000));
 
 function publicChallengeVideoUrl(info) {
   const url = String(info?.videoUrl || "").trim();
@@ -49,9 +41,7 @@ function normalizeChallengeInfo(level) {
     videoUrl: publicChallengeVideoUrl(info),
     videoPath: String(info.videoPath || "").trim(),
     videoContentType: String(info.videoContentType || "").trim(),
-    rewards: Array.isArray(info.rewards) && info.rewards.length
-      ? info.rewards.slice(0, 12).map(normalizeReward)
-      : unlockRewards(level?.unlocks || {}, { realImages: false }).slice(0, 12),
+    rewards: unlockRewards(level?.unlocks || {}, { realImages: false }).slice(0, 12),
   };
 }
 
@@ -66,7 +56,7 @@ export async function GET(request) {
     const level = await Level.findOne(
       { stageId: stage },
       { _id: 0, name: 1, challengeInfo: 1, unlocks: 1 }
-    ).lean();
+    ).lean().maxTimeMS(LEVEL_QUERY_MAX_TIME_MS);
 
     if (!level) {
       return NextResponse.json({ error: "level_not_found" }, { status: 404 });
