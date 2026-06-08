@@ -53,17 +53,30 @@ export async function GET(request) {
 
   try {
     await connectDb();
-    const level = await Level.findOne(
+
+    const currentLevel = await Level.findOne(
       { stageId: stage },
-      { _id: 0, name: 1, challengeInfo: 1, unlocks: 1 }
+      { _id: 0, name: 1, stageId: 1, order: 1, challengeInfo: 1 }
     ).lean().maxTimeMS(LEVEL_QUERY_MAX_TIME_MS);
 
-    if (!level) {
+    if (!currentLevel) {
       return NextResponse.json({ error: "level_not_found" }, { status: 404 });
     }
 
+    const rewardLevel = await Level.findOne(
+      { order: (Number(currentLevel.order) || 0) + 1 },
+      { _id: 0, name: 1, unlocks: 1 }
+    ).lean().maxTimeMS(LEVEL_QUERY_MAX_TIME_MS);
+
     return NextResponse.json(
-      { challengeInfo: normalizeChallengeInfo(level) },
+      {
+        challengeInfo: {
+          ...normalizeChallengeInfo(currentLevel),
+          rewards: rewardLevel
+            ? unlockRewards(rewardLevel?.unlocks || {}, { realImages: false }).slice(0, 12)
+            : [],
+        },
+      },
       { headers: { "Cache-Control": "private, no-store" } }
     );
   } catch (error) {
