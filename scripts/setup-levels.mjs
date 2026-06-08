@@ -111,7 +111,7 @@ function buildLevels() {
     ];
 
     levels.push({
-      stageId: `game-demo-${levels.length + 1}`,
+      stageId: `stage-${levels.length + 1}`,
       name: def.name,
       order: levels.length,
       unlocks: { coinReward: def.coin, items: newItems, npcs: newNpcs },
@@ -140,7 +140,7 @@ async function main() {
   const validIds = levels.map(lv => lv.stageId);
   const result = await members.updateMany(
     { stage: { $nin: validIds } },
-    { $set: { stage: validIds[0] || "game-demo-1" } }
+    { $set: { stage: validIds[0] || "stage-1" } }
   );
   if (result.modifiedCount > 0) {
     console.log(`🔧 Moved ${result.modifiedCount} players back to ${validIds[0]}`);
