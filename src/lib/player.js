@@ -862,11 +862,11 @@ function isGlobalQuestSubmissionVisible(member, submission) {
   if (submission?.source !== "challenge") return true;
 
   const challenge = member?.questChallenge;
+  const status = String(challenge?.status || "").toLowerCase();
   return Boolean(
     challenge
     && challenge.submissionId === submission.id
-    && isChallengePassedToNextRoom(member, challenge)
-    && (challenge.approvedAt || ["approved", "awarded"].includes(challenge.status))
+    && (challenge.approvedAt || ["approved", "awarded"].includes(status))
   );
 }
 
@@ -880,8 +880,10 @@ function normalizeSocialQuestSubmissions(member) {
 
 function socialPublishedAt(member, submission) {
   if (submission?.source === "challenge") {
-    return member?.questChallenge?.submissionId === submission.id
-      && isChallengePassedToNextRoom(member, member.questChallenge)
+    const challenge = member?.questChallenge;
+    const status = String(challenge?.status || "").toLowerCase();
+    return challenge?.submissionId === submission.id
+      && (challenge.approvedAt || ["approved", "awarded"].includes(status))
       ? member.questChallenge.approvedAt || submission.submittedAt || null
       : null;
   }
