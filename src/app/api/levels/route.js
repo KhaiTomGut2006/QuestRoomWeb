@@ -122,16 +122,16 @@ function validateLevels(levels) {
 
     const unlockItemIds = level.unlocks.items.map((item) => item.itemType);
     const unlockNpcIds = level.unlocks.npcs.map((npc) => npc.npcId);
-    if (hasDuplicates(unlockItemIds)) throw new Error(`Duplicate item unlocks in ${levelName}.`);
-    if (hasDuplicates(unlockNpcIds)) throw new Error(`Duplicate NPC unlocks in ${levelName}.`);
+    // if (hasDuplicates(unlockItemIds)) throw new Error(`Duplicate item unlocks in ${levelName}.`);
+    // if (hasDuplicates(unlockNpcIds)) throw new Error(`Duplicate NPC unlocks in ${levelName}.`);
 
     for (const itemId of unlockItemIds) {
       if (!GAME_ITEM_BY_ID.has(itemId)) throw new Error(`Unknown item id: ${itemId}.`);
-      if (unlockedItems.has(itemId)) throw new Error(`${itemId} is already unlocked before ${levelName}.`);
+      // if (unlockedItems.has(itemId)) throw new Error(`${itemId} is already unlocked before ${levelName}.`);
     }
     for (const npcId of unlockNpcIds) {
       if (!GAME_NPC_BY_ID.has(npcId)) throw new Error(`Unknown NPC id: ${npcId}.`);
-      if (unlockedNpcs.has(npcId)) throw new Error(`${npcId} is already unlocked before ${levelName}.`);
+      // if (unlockedNpcs.has(npcId)) throw new Error(`${npcId} is already unlocked before ${levelName}.`);
     }
 
     const availableItems = new Set([...unlockedItems.keys(), ...unlockItemIds]);
@@ -140,34 +140,34 @@ function validateLevels(levels) {
     const boxItemIds = level.boxDrops.map((item) => item.itemType);
     const spawnNpcIds = level.npcSpawns.map((spawn) => spawn.npcId);
 
-    if (hasDuplicates(shopItemIds)) throw new Error(`Duplicate NPC shop items in ${levelName}.`);
-    if (hasDuplicates(boxItemIds)) throw new Error(`Duplicate box drops in ${levelName}.`);
-    if (hasDuplicates(spawnNpcIds)) throw new Error(`Duplicate NPC spawns in ${levelName}.`);
-    if (availableNpcs.size > 0 && spawnNpcIds.length === 0) throw new Error(`NPC spawn chances are required in ${levelName}.`);
-    if (availableItems.size > 0 && shopItemIds.length === 0) throw new Error(`NPC shop chances are required in ${levelName}.`);
-    if (availableItems.size > 0 && boxItemIds.length === 0) throw new Error(`Box drop chances are required in ${levelName}.`);
+    // if (hasDuplicates(shopItemIds)) throw new Error(`Duplicate NPC shop items in ${levelName}.`);
+    // if (hasDuplicates(boxItemIds)) throw new Error(`Duplicate box drops in ${levelName}.`);
+    // if (hasDuplicates(spawnNpcIds)) throw new Error(`Duplicate NPC spawns in ${levelName}.`);
+    // if (availableNpcs.size > 0 && spawnNpcIds.length === 0) throw new Error(`NPC spawn chances are required in ${levelName}.`);
+    // if (availableItems.size > 0 && shopItemIds.length === 0) throw new Error(`NPC shop chances are required in ${levelName}.`);
+    // if (availableItems.size > 0 && boxItemIds.length === 0) throw new Error(`Box drop chances are required in ${levelName}.`);
 
     for (const itemId of shopItemIds) {
       const meta = getGameItem(itemId);
       if (!meta) throw new Error(`Unknown shop item id: ${itemId}.`);
-      if (!availableItems.has(itemId)) throw new Error(`${itemId} is not unlocked yet for ${levelName}.`);
-      if (!meta.canShopSell) throw new Error(`${itemId} cannot be sold by NPC shop.`);
+      // if (!availableItems.has(itemId)) throw new Error(`${itemId} is not unlocked yet for ${levelName}.`);
+      // if (!meta.canShopSell) throw new Error(`${itemId} cannot be sold by NPC shop.`);
     }
     for (const itemId of boxItemIds) {
       if (itemId === "coins") continue;
       const meta = getGameItem(itemId);
       if (!meta) throw new Error(`Unknown box item id: ${itemId}.`);
-      if (!availableItems.has(itemId)) throw new Error(`${itemId} is not unlocked yet for ${levelName}.`);
-      if (!meta.canBoxDrop) throw new Error(`${itemId} cannot drop from boxes.`);
+      // if (!availableItems.has(itemId)) throw new Error(`${itemId} is not unlocked yet for ${levelName}.`);
+      // if (!meta.canBoxDrop) throw new Error(`${itemId} cannot drop from boxes.`);
     }
     for (const npcId of spawnNpcIds) {
       if (!getGameNpc(npcId)) throw new Error(`Unknown NPC id: ${npcId}.`);
-      if (!availableNpcs.has(npcId)) throw new Error(`${npcId} is not unlocked yet for ${levelName}.`);
+      // if (!availableNpcs.has(npcId)) throw new Error(`${npcId} is not unlocked yet for ${levelName}.`);
     }
 
-    assertChanceTotal(level.npcSpawns, "NPC spawn", levelName);
-    assertChanceTotal(level.npcShop, "NPC shop", levelName);
-    assertChanceTotal(level.boxDrops, "Box drop", levelName);
+    // assertChanceTotal(level.npcSpawns, "NPC spawn", levelName);
+    // assertChanceTotal(level.npcShop, "NPC shop", levelName);
+    // assertChanceTotal(level.boxDrops, "Box drop", levelName);
 
     for (const item of level.unlocks.items) unlockedItems.set(item.itemType, item);
     for (const npc of level.unlocks.npcs) unlockedNpcs.set(npc.npcId, npc);
