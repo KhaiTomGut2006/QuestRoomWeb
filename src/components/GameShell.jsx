@@ -801,6 +801,8 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [challengeInfoView, setChallengeInfoView] = useState(null);
   const [challengeInfoOverrides, setChallengeInfoOverrides] = useState({});
+  const [previewRoomChallengeInfo, setPreviewRoomChallengeInfo] = useState(null);
+  const [previewRoomChallengeView, setPreviewRoomChallengeView] = useState(null); // 'details' | 'rewards' | null
   const [showChallengeSubmission, setShowChallengeSubmission] = useState(false);
   const [challengeAnnouncement, setChallengeAnnouncement] = useState(null);
   const [socialUnreadCount, setSocialUnreadCount] = useState(0);
@@ -2458,6 +2460,46 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
             <RoomClock cycleInfo={cycleInfo} />
           </>
         )}
+        {(() => {
+          if (!isViewingOtherRoom) return null;
+          const activeIndex = effectiveRoomLevels.findIndex((l) => l.roomKey === actualRoomKey);
+          const viewedIndex = effectiveRoomLevels.findIndex((l) => l.roomKey === activeViewedRoomKey);
+          const isAheadRoom = viewedIndex > activeIndex;
+          const isMainRoom = !viewedRoomLevel?.isSubroom && viewedRoomLevel?.kind !== "challenge-subroom";
+          if (!isAheadRoom || !isMainRoom) return null;
+          return (
+            <div className="locked-room-gift-overlay">
+              <button
+                className="locked-room-gift-btn is-shaking"
+                type="button"
+                aria-label="ดูรายละเอียดห้องนี้"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const stageId = viewedRoomLevel?.stageId || activeViewedStage;
+                  if (!stageId) return;
+                  const cached = challengeInfoOverrides[stageId];
+                  if (cached) {
+                    setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: cached }, viewedRoomLabel));
+                  } else {
+                    setPreviewRoomChallengeInfo(challengeInfoFromLevel(viewedRoomLevel, viewedRoomLabel));
+                    fetch(withBasePath(`/api/player/challenge-info?stage=${encodeURIComponent(stageId)}`), { cache: "no-store" })
+                      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+                      .then((data) => {
+                        if (!data?.challengeInfo) return;
+                        setChallengeInfoOverrides((cur) => ({ ...cur, [stageId]: data.challengeInfo }));
+                        setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: data.challengeInfo }, viewedRoomLabel));
+                      })
+                      .catch(() => {});
+                  }
+                  setPreviewRoomChallengeView("details");
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={withOptimizedAsset("/assets/Card.webp")} alt="" className="gift-line-icon" />
+              </button>
+            </div>
+          );
+        })()}
       </section>
       <TutorialMode
         tutorial={activeMember?.tutorial}
@@ -2533,6 +2575,14 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
           view={challengeInfoView}
           onClose={() => setChallengeInfoView(null)}
           onShowRewards={() => setChallengeInfoView("rewards")}
+        />
+      )}
+      {previewRoomChallengeView && previewRoomChallengeInfo && (
+        <ChallengeInfoModal
+          info={previewRoomChallengeInfo}
+          view={previewRoomChallengeView}
+          onClose={() => { setPreviewRoomChallengeView(null); setPreviewRoomChallengeInfo(null); }}
+          onShowRewards={() => setPreviewRoomChallengeView("rewards")}
         />
       )}
       <ChallengeAnnouncement

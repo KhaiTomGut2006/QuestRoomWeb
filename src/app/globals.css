@@ -7304,3 +7304,52 @@ button {
     transform-origin: left center;
   }
 }
+
+/* ── Locked-room gift box overlay ─────────────────────────────────────────── */
+.locked-room-gift-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* push the box down toward the isometric floor */
+  padding-top: 44%;
+}
+
+.locked-room-gift-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(72px, 6vw, 100px);
+  height: clamp(72px, 6vw, 100px);
+  border: 4px solid #2b2622;
+  border-radius: 12px;
+  background: #ffd24d;
+  cursor: pointer;
+  box-shadow:
+    0 6px 0 rgba(0, 0, 0, 0.22),
+    inset 0 0 0 3px rgba(255, 255, 255, 0.3);
+  filter: drop-shadow(0 8px 16px rgba(52, 38, 22, 0.38));
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.locked-room-gift-btn:hover {
+  transform: translateY(-4px) scale(1.06);
+  box-shadow:
+    0 10px 0 rgba(0, 0, 0, 0.22),
+    inset 0 0 0 3px rgba(255, 255, 255, 0.3);
+}
+
+.locked-room-gift-btn img.gift-line-icon {
+  width: clamp(44px, 3.8vw, 62px);
+  height: clamp(44px, 3.8vw, 62px);
+}
+
+.locked-room-gift-btn.is-shaking {
+  animation: stage-reward-shake 1.55s ease-in-out infinite;
+  transform-origin: 50% 72%;
+}
+
