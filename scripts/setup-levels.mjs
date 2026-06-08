@@ -3,7 +3,6 @@ const { loadEnvConfig } = pkg;
 import mongoose from "mongoose";
 
 loadEnvConfig(process.cwd());
-
 const MONGO_URI = process.env.MONGODB_URI;
 if (!MONGO_URI) { console.error("MONGODB_URI not configured"); process.exit(1); }
 
@@ -31,12 +30,48 @@ function buildLevels() {
   };
 
   const stageDefs = [
-    { name: "Game Demo - I", coin: 1000, npcs: ["chest","quest-easy","stupid-quest"], items: ["quest-scroll-normal","chest-small","cooldown-minute"], boxCoinPct: 20, coinMin: 50, coinMax: 150 },
-    { name: "Game Demo - II", coin: 1500, npcs: ["shop","quest-medium"], items: ["quest-scroll-rare","chest-medium","accessory-ppuk","asset-ticket"], boxCoinPct: 15, coinMin: 100, coinMax: 300 },
-    { name: "Game Demo - III", coin: 2000, npcs: ["hints","gambling"], items: ["quest-scroll-epic","chest-large","cooldown-minute-lv2"], boxCoinPct: 15, coinMin: 150, coinMax: 400 },
-    { name: "Game Demo - IV", coin: 2500, npcs: ["quest-hard"], items: ["limit-break","accessory-mrx"], boxCoinPct: 12, coinMin: 200, coinMax: 500 },
-    { name: "Game Demo - V", coin: 3000, npcs: [], items: ["accessory-mrx-red-eye","accessory-mrx-glasses"], boxCoinPct: 12, coinMin: 300, coinMax: 600 },
-    { name: "Hamstore To Make Money", coin: 5000, npcs: [], items: [], boxCoinPct: 10, coinMin: 400, coinMax: 1000 },
+    {
+      name: "อยากเห็นรูปเดี่ยวตัวละครเจ้า (ตอนแยกสาย) จัง",
+      coin: 1000,
+      npcs: ["chest", "quest-easy", "stupid-quest"],
+      items: ["quest-scroll-normal", "chest-small", "cooldown-minute"],
+      boxCoinPct: 20, coinMin: 50, coinMax: 150,
+    },
+    {
+      name: "Game Demo - II",
+      coin: 1500,
+      npcs: ["shop", "quest-medium"],
+      items: ["quest-scroll-rare", "chest-medium", "accessory-ppuk", "asset-ticket"],
+      boxCoinPct: 15, coinMin: 100, coinMax: 300,
+    },
+    {
+      name: "Game Demo - III",
+      coin: 2000,
+      npcs: ["hints", "gambling"],
+      items: ["quest-scroll-epic", "chest-large", "cooldown-minute-lv2"],
+      boxCoinPct: 15, coinMin: 150, coinMax: 400,
+    },
+    {
+      name: "Game Demo - IV",
+      coin: 2500,
+      npcs: ["quest-hard"],
+      items: ["limit-break", "accessory-mrx"],
+      boxCoinPct: 12, coinMin: 200, coinMax: 500,
+    },
+    {
+      name: "Game Demo - V",
+      coin: 3000,
+      npcs: [],
+      items: ["accessory-mrx-red-eye", "accessory-mrx-glasses"],
+      boxCoinPct: 12, coinMin: 300, coinMax: 600,
+    },
+    {
+      name: "Hamstore To Make Money",
+      coin: 5000,
+      npcs: [],
+      items: [],
+      boxCoinPct: 10, coinMin: 400, coinMax: 1000,
+    },
   ];
 
   const allNpcs = [];
@@ -53,7 +88,10 @@ function buildLevels() {
     allItems.push(...newItems);
 
     const npcSpawns = allNpcs.map((npc, i) => ({ npcId: npc.npcId, chance: eq(allNpcs.length, i) }));
-    const npcShop = allItems.map((item, i) => ({ itemType: item.itemType, itemName: item.itemName, chance: eq(allItems.length, i), price: item.price, maxQty: item.maxQty }));
+    const npcShop = allItems.map((item, i) => ({
+      itemType: item.itemType, itemName: item.itemName,
+      chance: eq(allItems.length, i), price: item.price, maxQty: item.maxQty,
+    }));
 
     const coinPct = def.boxCoinPct;
     const itemPctTotal = 100 - coinPct;
@@ -97,6 +135,17 @@ async function main() {
   await collection.deleteMany({});
   if (levels.length > 0) await collection.insertMany(levels);
   console.log(`\n✅ Saved ${levels.length} levels!\n`);
+  // Also reset all players stuck on non-existent stages back to stage 1
+  const members = mongoose.connection.collection("members");
+  const validIds = levels.map(lv => lv.stageId);
+  const result = await members.updateMany(
+    { stage: { $nin: validIds } },
+    { $set: { stage: validIds[0] || "game-demo-1" } }
+  );
+  if (result.modifiedCount > 0) {
+    console.log(`🔧 Moved ${result.modifiedCount} players back to ${validIds[0]}`);
+  }
+  console.log(`\n⚠️  Restart QuestRoomWeb server for changes to take effect\n`);
   await mongoose.disconnect();
 }
 
