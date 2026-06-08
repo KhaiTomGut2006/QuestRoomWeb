@@ -33,6 +33,14 @@ const ROOM_SUBLEVEL_DISCOVERY_TTL_MS = Math.max(
 );
 const ROOM_SUBLEVEL_DISCOVERY_LIMIT = Math.max(50, Number(process.env.ROOM_SUBLEVEL_DISCOVERY_LIMIT || 500));
 const ROOM_FAILURE_COUNT_MAX = 99;
+const BADGE_KIND_VALUES = {
+  bronze: 1,
+  silver: 2,
+  gold: 3,
+  platinum: 4,
+  diamond: 5,
+  master: 6
+};
 export const MEMBER_INTERACTION_SELECT = [
   "_id",
   "discord_id",
@@ -741,6 +749,73 @@ function normalizeBadge(badge) {
   };
 }
 
+function badgeKey(badge) {
+  const label = String(badge?.label || "").trim().toLowerCase();
+  if (label) return `label:${label}`;
+  const id = String(badge?.id || "").trim().toLowerCase();
+  return id ? `id:${id}` : "";
+}
+
+function mergeBadge(existing, incoming) {
+  const normalizedExisting = normalizeBadge(existing) || {};
+  const normalizedIncoming = normalizeBadge(incoming) || {};
+  const existingKindValue = BADGE_KIND_VALUES[String(normalizedExisting.kind || "").toLowerCase()] || 0;
+  const incomingKindValue = BADGE_KIND_VALUES[String(normalizedIncoming.kind || "").toLowerCase()] || 0;
+  const winner = incomingKindValue > existingKindValue ? normalizedIncoming : normalizedExisting;
+  const fallback = winner === normalizedIncoming ? normalizedExisting : normalizedIncoming;
+  const existingAwardedAt = normalizedExisting.awardedAt ? new Date(normalizedExisting.awardedAt).getTime() : 0;
+  const incomingAwardedAt = normalizedIncoming.awardedAt ? new Date(normalizedIncoming.awardedAt).getTime() : 0;
+  const awardedAt = existingAwardedAt && incomingAwardedAt
+    ? (existingAwardedAt <= incomingAwardedAt ? normalizedExisting.awardedAt : normalizedIncoming.awardedAt)
+    : normalizedExisting.awardedAt || normalizedIncoming.awardedAt || null;
+
+  return {
+    ...fallback,
+    ...Object.fromEntries(Object.entries(winner).filter(([, value]) => value !== "" && value != null)),
+    awardedAt
+  };
+}
+
+function dedupeBadges(badges = []) {
+  const badgeByKey = new Map();
+  const result = [];
+  for (const rawBadge of badges || []) {
+    const badge = normalizeBadge(rawBadge);
+    const key = badgeKey(badge);
+    if (!badge || !key) continue;
+    if (badgeByKey.has(key)) {
+      const index = badgeByKey.get(key);
+      result[index] = mergeBadge(result[index], badge);
+      continue;
+    }
+    badgeByKey.set(key, result.length);
+    result.push(badge);
+  }
+  return result;
+}
+
+function upsertProfileBadge(member, badge) {
+  const normalizedBadge = normalizeBadge(badge);
+  const key = badgeKey(normalizedBadge);
+  if (!member || !normalizedBadge || !key) return false;
+
+  const existingBadges = dedupeBadges(member.profileAchievements || []);
+  const existingIndex = existingBadges.findIndex((item) => badgeKey(item) === key);
+  if (existingIndex >= 0) {
+    existingBadges[existingIndex] = mergeBadge(existingBadges[existingIndex], normalizedBadge);
+  } else {
+    existingBadges.push(normalizedBadge);
+  }
+
+  const previous = JSON.stringify((member.profileAchievements || []).map(normalizeBadge).filter(Boolean));
+  const next = JSON.stringify(existingBadges);
+  if (previous === next) return false;
+
+  member.profileAchievements = existingBadges;
+  member.markModified("profileAchievements");
+  return true;
+}
+
 function normalizeNpcQuestSubmission(submission) {
   const likes = Array.isArray(submission.likes) ? submission.likes.map(String) : [];
   const dislikes = Array.isArray(submission.dislikes) ? submission.dislikes.map(String) : [];
@@ -1013,6 +1088,12 @@ export async function syncChallengeReview(discordId, {
   const fallbackBadge = challengeBadge || normalizeBadge(newestBadge(member.profileAchievements));
   const passedToNextRoom = isChallengePassedToNextRoom(member, challenge);
   const approvedAt = challenge?.approvedAt || fallbackBadge?.awardedAt || new Date();
+
+  if (fallbackBadge && (isAwardOnlyEvent || isApprovedEvent)) {
+    if (upsertProfileBadge(member, fallbackBadge)) {
+      saved = true;
+    }
+  }
 
   if (isApprovedEvent) {
     if (resetChallengeSublevel(member, member.stage || DEFAULT_STAGE)) {
@@ -2137,16 +2218,6 @@ export async function submitNpcQuest(discordId, evidence, postText = "", visitId
   member.npcQuest = null;
   if (!Array.isArray(member.profileAchievements)) member.profileAchievements = [];
   if (questSource === "tutorial-first-quest") {
-    if (!member.profileAchievements.some((badge) => badge.id === "tutorial-time-to-begin")) {
-      member.profileAchievements.push({
-        id: "tutorial-time-to-begin",
-        label: "Time To Begin",
-        sublabel: "Tutorial Mode",
-        kind: "silver",
-        icon: "/assets/Rank/Silver.png",
-        awardedAt: submittedAt
-      });
-    }
     member.tutorial = {
       ...(member.tutorial?.toObject?.() || member.tutorial || {}),
       status: "active",
@@ -2155,16 +2226,6 @@ export async function submitNpcQuest(discordId, evidence, postText = "", visitId
     };
   }
   if (questSource === "tutorial-role") {
-    if (!member.profileAchievements.some((badge) => badge.id === "tutorial-challenge-role")) {
-      member.profileAchievements.push({
-        id: "tutorial-challenge-role",
-        label: "Challenge Role",
-        sublabel: "Tutorial Mode",
-        kind: "gold",
-        icon: "/assets/Rank/Gold.png",
-        awardedAt: submittedAt
-      });
-    }
     member.questroomRank = "Challenge Role";
     member.tutorial = {
       ...(member.tutorial?.toObject?.() || member.tutorial || {}),

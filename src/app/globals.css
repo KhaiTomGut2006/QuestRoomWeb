@@ -212,7 +212,7 @@ button {
 .stage-title-text p {
   margin: 8px 0 0 4px;
   color: #201c1d;
-  font-size: clamp(18px, 1.4vw, 26px);
+  font-size: clamp(18px, 1.1vw, 26px);
   font-weight: 950;
   letter-spacing: 0;
   text-shadow: none;
