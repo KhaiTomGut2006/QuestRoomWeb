@@ -7265,3 +7265,42 @@ button {
     bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Fix UI crowding on smaller laptops */
+@media (max-width: 1440px) {
+  .top-left {
+    transform: scale(0.85);
+    transform-origin: top left;
+  }
+  .top-right {
+    transform: scale(0.85);
+    transform-origin: top right;
+  }
+  .bottom-right {
+    transform: scale(0.85);
+    transform-origin: bottom right;
+  }
+  .npc-quest-sidebar {
+    transform: translateY(-50%) scale(0.85);
+    transform-origin: left center;
+  }
+}
+
+@media (max-width: 1200px) {
+  .top-left {
+    transform: scale(0.72);
+    transform-origin: top left;
+  }
+  .top-right {
+    transform: scale(0.72);
+    transform-origin: top right;
+  }
+  .bottom-right {
+    transform: scale(0.72);
+    transform-origin: bottom right;
+  }
+  .npc-quest-sidebar {
+    transform: translateY(-50%) scale(0.72);
+    transform-origin: left center;
+  }
+}
