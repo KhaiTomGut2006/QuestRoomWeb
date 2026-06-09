@@ -153,7 +153,7 @@ const demoMember = {
   name: "Demo Guest",
   username: "demo",
   avatar: "",
-  stage: "game-demo-1",
+  stage: "stage-1",
   coins: 0,
   shopAssetTickets: 0,
   ownedAccessories: [],
@@ -184,9 +184,9 @@ const demoNpcQuest = {
 
 const demoChallenge = {
   status: "pending",
-  taskId: "game-demo-1",
+  taskId: "stage-1",
   taskName: "Game Demo",
-  stage: "game-demo-1",
+  stage: "stage-1",
   cost: 250,
   requestedAt: "demo-challenge-preview",
 };
@@ -279,13 +279,13 @@ function RoomClock({ cycleInfo }) {
 // ─────────────────────────────────────────────────────────────────
 
 function stageLabel(stage) {
-  const stageNumber = Number.parseInt(String(stage || "game-demo-1").split("-").pop(), 10) || 1;
+  const stageNumber = Number.parseInt(String(stage || "stage-1").split("-").pop(), 10) || 1;
   const numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
   return `Game Demo - ${numerals[stageNumber - 1] || stageNumber}`;
 }
 
 function roomKeyFor(stage, challengeFailureCount = 0) {
-  const stageKey = String(stage || "game-demo-1").trim().slice(0, 96) || "game-demo-1";
+  const stageKey = String(stage || "stage-1").trim().slice(0, 96) || "stage-1";
   const count = Math.min(99, Math.max(0, Number(challengeFailureCount) || 0));
   return count > 0 ? `${stageKey}::fail-${count}` : stageKey;
 }
@@ -348,7 +348,7 @@ function playerFromMember(member, stageOverride = "") {
     rank: member.rank || "Game Tester",
     achievements: member.achievements || [],
     equippedAccessory: member.equippedAccessory || "",
-    stage: stageOverride || member.stage || "game-demo-1",
+    stage: stageOverride || member.stage || "stage-1",
     challengeFailureCount: Math.max(0, Number(member.challengeFailureCount) || 0),
     roomKey: stageOverride
       ? stageOverride

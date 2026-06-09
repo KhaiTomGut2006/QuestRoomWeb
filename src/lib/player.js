@@ -17,7 +17,7 @@ import {
   resetChallengeCostMultiplier
 } from "@/lib/challengeCost.mjs";
 
-const DEFAULT_STAGE = "game-demo-1";
+const DEFAULT_STAGE = "stage-1";
 const DEFAULT_COINS = 0;
 const MAX_ROMAN_NUMBER = 3999;
 const ROOM_PLAYERS_CACHE_TTL_MS = Math.max(0, Number(process.env.ROOM_PLAYERS_CACHE_TTL_MS || 5_000));

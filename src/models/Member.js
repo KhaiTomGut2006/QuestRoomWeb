@@ -227,7 +227,7 @@ const MemberSchema = new mongoose.Schema(
     challengeFailureCount: { type: Number, default: 0 },
     challengeFailureHandledKey: String,
     questReward: RewardSchema,
-    stage: { type: String, default: "game-demo-1", index: true },
+    stage: { type: String, default: "stage-1", index: true },
     quest: { type: QuestSchema, default: () => ({}) },
     npcQuest: { type: NpcQuestSchema, default: null },
     npcQuestSubmissions: { type: [NpcQuestSubmissionSchema], default: [] },
