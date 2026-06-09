@@ -6999,12 +6999,19 @@ button {
   pointer-events: none;
 }
 
+.room-progress-inner {
+  display: flex;
+  width: 100%;
+  max-width: max-content;
+  position: relative;
+}
+
 /* Track line sits at mid-dot height */
 .room-progress-track {
   position: absolute;
   top: 22px;
-  left: clamp(18px, 2vw, 28px);
-  right: clamp(18px, 2vw, 28px);
+  left: calc(50% / var(--steps-count, 1));
+  right: calc(50% / var(--steps-count, 1));
   height: 10px;
   background:
     linear-gradient(180deg, #4a351c 0%, #211711 100%),
@@ -7182,7 +7189,7 @@ button {
 }
 
 .room-step.is-subroom {
-  max-width: 88px;
+  /* Subroom steps share the same width to keep progress bar calculation accurate */
 }
 
 .room-step.is-subroom .room-step-dot {
