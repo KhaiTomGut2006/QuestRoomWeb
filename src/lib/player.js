@@ -1393,6 +1393,11 @@ export function normalizeMember(member, options = {}) {
     npcQuestSubmissions: includeSubmissions
       ? npcQuestSubmissions.map(normalizeNpcQuestSubmission)
       : [],
+    recentCompletedQuestTitles: Array.isArray(member.npcQuestSubmissions)
+      ? member.npcQuestSubmissions
+          .filter(sub => sub.submittedAt && (Date.now() - new Date(sub.submittedAt).getTime() < 7 * 24 * 60 * 60 * 1000))
+          .map(sub => String(sub.title || ""))
+      : [],
     socialQuestSubmissions: includeSubmissions
       ? normalizeSocialQuestSubmissions({ ...memberObject, npcQuestSubmissions })
       : [],
@@ -1475,6 +1480,11 @@ export function normalizeMemberSummary(member) {
         }
       : null,
     npcQuestSubmissions: [],
+    recentCompletedQuestTitles: Array.isArray(member.npcQuestSubmissions)
+      ? member.npcQuestSubmissions
+          .filter(sub => sub.submittedAt && (Date.now() - new Date(sub.submittedAt).getTime() < 7 * 24 * 60 * 60 * 1000))
+          .map(sub => String(sub.title || ""))
+      : [],
     socialQuestSubmissions: [],
     tutorial: normalizeTutorial(member.tutorial),
     challenge: member.questChallenge || null,

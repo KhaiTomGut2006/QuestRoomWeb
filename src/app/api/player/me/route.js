@@ -34,7 +34,8 @@ const ME_MEMBER_SELECT = [
   "npcVisitId",
   "npcVisitPurchases",
   "questCoin",
-  "tutorial"
+  "tutorial",
+  "npcQuestSubmissions"
 ].join(" ");
 
 export async function GET(request) {

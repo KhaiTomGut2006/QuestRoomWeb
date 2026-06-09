@@ -675,11 +675,12 @@ export default function NpcVisitModal({
   const imgSrc  = withOptimizedAsset(`/assets/NPC/${imgFile}`);
   const meta    = TYPE_META[npc.type] || { label: npc.type, cls: "" };
   const isQuestDialog    = (npc.type === "quest" || npc.type === "stupid-quest") && questData;
+  const isEmptyQuestDialog = (npc.type === "quest" || npc.type === "stupid-quest") && !questData && !npc.noBusiness;
   const isGamblingDialog = npc.type === "gambling";
   const isHintsDialog    = npc.type === "hints";
   const isShopDialog     = npc.type === "shop";
   const isChestDialog    = npc.type === "chest";
-  const isWideDialog     = npc.noBusiness || isQuestDialog || isGamblingDialog || isHintsDialog || isShopDialog || isChestDialog;
+  const isWideDialog     = npc.noBusiness || isQuestDialog || isEmptyQuestDialog || isGamblingDialog || isHintsDialog || isShopDialog || isChestDialog;
 
   const handleChestClaim = async () => {
     setClaimingChest(true);
@@ -795,6 +796,17 @@ export default function NpcVisitModal({
 
         {npc.noBusiness && (
           <NoBusinessDialog npc={npc} onClose={onClose} />
+        )}
+
+        {isEmptyQuestDialog && (
+          <div className="flex-1 flex flex-col justify-center items-center text-center p-8 space-y-4">
+            <p className="text-xl text-yellow-100 font-bold drop-shadow-md">
+              "NPC คนนี้ไม่มีเควสใหม่ให้คุณในตอนนี้นะ"
+            </p>
+            <p className="text-sm text-yellow-100/70">
+              (เควสจะกลับมาให้ทำอีกครั้งหลังจากผ่านไป 7 วัน)
+            </p>
+          </div>
         )}
 
         {!npc.noBusiness && isQuestDialog && (

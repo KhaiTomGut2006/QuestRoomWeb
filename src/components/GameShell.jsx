@@ -1878,8 +1878,11 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     }
 
     const applyQuestPool = (pool) => {
-      if (pool.length === 0) { setNpcQuestData(null); return; }
-      const picked = pool[Math.floor(Math.random() * pool.length)];
+      const recentTitles = new Set(activeMember?.recentCompletedQuestTitles || []);
+      const availablePool = pool.filter(q => !recentTitles.has(q.title));
+
+      if (availablePool.length === 0) { setNpcQuestData(null); return; }
+      const picked = availablePool[Math.floor(Math.random() * availablePool.length)];
       const reward = Math.round(
         picked.rewardMin + Math.random() * (picked.rewardMax - picked.rewardMin)
       );
@@ -1900,7 +1903,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       })
       .catch(() => setNpcQuestData(null));
 
-  }, [activeMember?.npcQuest, npcKey, npcVisit]);
+  }, [activeMember?.npcQuest, activeMember?.recentCompletedQuestTitles, npcKey, npcVisit]);
 
   useEffect(() => {
     if (npcVisit?.type === "hints") {
