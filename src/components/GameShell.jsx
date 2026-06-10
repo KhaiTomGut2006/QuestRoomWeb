@@ -823,6 +823,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   const socialCheckedAtRef = useRef("");
   const shownSocialNotificationIdsRef = useRef(new Set());
   const showGlobalQuestRef = useRef(false);
+  const latestRoomStateRef = useRef({ stage: "", challengeFailureCount: 0 });
 
   useEffect(() => {
     const audio = new Audio();
@@ -1058,16 +1059,35 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
   }, [activeNpcVisitPurchases, doorNpc?.visitId, finishedNpcVisitIds]);
 
   const applyMember = useCallback((nextMember) => {
-    setMember((current) => ({
-      ...current,
-      ...(nextMember || {}),
-      npcQuestSubmissions: nextMember?.npcQuestSubmissions?.length
-        ? nextMember.npcQuestSubmissions
-        : current?.npcQuestSubmissions || nextMember?.npcQuestSubmissions || [],
-      socialQuestSubmissions: nextMember?.socialQuestSubmissions?.length
-        ? nextMember.socialQuestSubmissions
-        : current?.socialQuestSubmissions || nextMember?.socialQuestSubmissions || [],
-    }));
+    setMember((current) => {
+      const incoming = nextMember || {};
+      const incomingStage = incoming.stage || current?.stage || "";
+      const incomingCount = Math.max(0, Number(incoming.challengeFailureCount) || 0);
+      const currentStage = current?.stage || "";
+      const currentCount = Math.max(0, Number(current?.challengeFailureCount) || 0);
+
+      let finalStage = incomingStage;
+      let finalCount = incomingCount;
+
+      if (incomingStage === currentStage && incomingCount < currentCount) {
+        finalCount = currentCount;
+      }
+
+      latestRoomStateRef.current = { stage: finalStage, challengeFailureCount: finalCount };
+
+      return {
+        ...current,
+        ...incoming,
+        stage: finalStage,
+        challengeFailureCount: finalCount,
+        npcQuestSubmissions: incoming.npcQuestSubmissions?.length
+          ? incoming.npcQuestSubmissions
+          : current?.npcQuestSubmissions || incoming.npcQuestSubmissions || [],
+        socialQuestSubmissions: incoming.socialQuestSubmissions?.length
+          ? incoming.socialQuestSubmissions
+          : current?.socialQuestSubmissions || incoming.socialQuestSubmissions || [],
+      };
+    });
     const nextReward = nextMember?.reward;
     if (nextReward?.id && !nextReward.seenAt && !shownRewardIdsRef.current.has(nextReward.id)) {
       shownRewardIdsRef.current.add(nextReward.id);
@@ -1522,10 +1542,14 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       fetch(withBasePath("/api/player/me"))
         .then((res) => (res.ok ? res.json() : Promise.reject(res)))
         .then((data) => {
-          // Preserve local position to avoid snap-back caused by stale DB data
+          const latest = latestRoomStateRef.current;
           const nextMember = {
             ...data.member,
-            position: latestPositionRef.current ?? data.member.position
+            position: latestPositionRef.current ?? data.member.position,
+            stage: latest.stage || data.member.stage,
+            challengeFailureCount: latest.challengeFailureCount > 0
+              ? latest.challengeFailureCount
+              : data.member.challengeFailureCount,
           };
           applyMember(nextMember);
           syncSocketPresenceFromMember(nextMember);

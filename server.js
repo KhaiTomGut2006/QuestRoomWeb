@@ -475,8 +475,8 @@ function enrichNpc(npc, availableCoins = 0, configuredShopItems = null) {
       ? configuredShopItems
       : null;
     const offers = configured
-      ? pickConfiguredShopOffers(configured, 4)
-      : [...catalog].sort(() => Math.random() - 0.5).slice(0, 4);
+      ? pickConfiguredShopOffers(configured, 3)
+      : [...catalog].sort(() => Math.random() - 0.5).slice(0, 3);
     const offerConfig = configured
       ? Object.fromEntries(configured.map((item) => [
           String(item.itemType || ""),
@@ -493,7 +493,7 @@ function enrichNpc(npc, availableCoins = 0, configuredShopItems = null) {
   return { ...npc, visitId };
 }
 
-function pickConfiguredShopOffers(configured, maxOffers = 4) {
+function pickConfiguredShopOffers(configured, maxOffers = 3) {
   const pool = configured
     .map((item) => ({
       itemType: String(item.itemType || ""),
