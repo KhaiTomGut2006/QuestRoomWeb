@@ -6978,6 +6978,93 @@ button {
   transform: translateY(2px);
 }
 
+/* ── Spectator Reward Banner ───────────────────────────────────────────────── */
+
+@keyframes spectator-banner-pulse {
+  0%, 100% {
+    box-shadow:
+      0 4px 0 rgba(58, 36, 18, 0.9),
+      0 0 0 4px rgba(255, 220, 82, 0.25),
+      0 0 18px rgba(255, 210, 77, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 4px 0 rgba(58, 36, 18, 0.9),
+      0 0 0 8px rgba(255, 220, 82, 0.4),
+      0 0 28px rgba(255, 210, 77, 0.55);
+  }
+}
+
+.spectator-reward-banner {
+  position: absolute;
+  bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(8px, 1vw, 14px);
+  padding: clamp(8px, 0.8vw, 12px) clamp(16px, 2vw, 28px);
+  border: 3px solid #2b2622;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.35), transparent 40%),
+    linear-gradient(180deg, #ffe071 0%, #ffc93c 50%, #e8a020 100%);
+  color: #3a2410;
+  font-weight: 800;
+  cursor: pointer;
+  transform: translateX(-50%);
+  animation: spectator-banner-pulse 2.4s ease-in-out infinite;
+  transition: transform 0.15s;
+  white-space: nowrap;
+}
+
+.spectator-reward-banner:hover {
+  transform: translateX(-50%) translateY(-2px) scale(1.03);
+}
+
+.spectator-reward-banner:active {
+  transform: translateX(-50%) translateY(1px) scale(0.98);
+}
+
+.spectator-reward-banner-icon {
+  width: clamp(28px, 2.5vw, 40px);
+  height: clamp(28px, 2.5vw, 40px);
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 1px rgba(58, 36, 18, 0.3));
+}
+
+.spectator-reward-banner-text {
+  font-size: clamp(12px, 1vw, 16px);
+  line-height: 1.2;
+}
+
+.spectator-reward-banner-room {
+  font-size: clamp(10px, 0.85vw, 13px);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(58, 36, 18, 0.18);
+  color: #5a3a1a;
+}
+
+@media (max-width: 680px) {
+  .spectator-reward-banner {
+    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    padding: 6px 14px;
+    gap: 6px;
+  }
+
+  .spectator-reward-banner-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .spectator-reward-banner-room {
+    display: none;
+  }
+}
+
 /* ── Room Progress Bar ──────────────────────────────────────────────────────── */
 
 .room-progress-bar {

@@ -27,7 +27,7 @@ export async function POST(request) {
     if (!member) return NextResponse.json({ error: "member_not_found" }, { status: 404 });
     return NextResponse.json({ member });
   } catch (error) {
-    const status = error.message === "active_quest_exists" ? 409 : 503;
+    const status = ["active_quest_exists", "quest_already_completed"].includes(error.message) ? 409 : 503;
     return NextResponse.json({ error: error.message }, { status });
   }
 }

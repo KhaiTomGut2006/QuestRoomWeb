@@ -16,6 +16,8 @@ import {
   normalizeChallengeCostMultiplier,
   resetChallengeCostMultiplier
 } from "@/lib/challengeCost.mjs";
+import { npcQuestCompletionKeyFromQuestData, npcQuestCompletionKeyFromSubmission } from "@/lib/npcQuestCompletion.mjs";
+import { challengeFailureCountForMember, makeRoomKey, parseRoomKey } from "@/lib/roomState.mjs";
 
 const DEFAULT_STAGE = "stage-1";
 const DEFAULT_COINS = 0;
@@ -58,6 +60,7 @@ export const MEMBER_INTERACTION_SELECT = [
   "challengeFailureStage",
   "challengeFailureCount",
   "challengeFailureHandledKey",
+  "completedNpcQuestKeys",
   "questReward",
   "roomPosition",
   "shopCooldownT1",
@@ -566,40 +569,6 @@ function getSublevelLabel(stage, failureCount = 0) {
   return count > 0 ? `${label}-${toRoman(count)}` : label;
 }
 
-export function makeRoomKey(stage = DEFAULT_STAGE, failureCount = 0) {
-  const stageKey = String(stage || DEFAULT_STAGE).trim().slice(0, 96) || DEFAULT_STAGE;
-  const count = Math.min(ROOM_FAILURE_COUNT_MAX, Math.max(0, Number(failureCount) || 0));
-  return count > 0 ? `${stageKey}::fail-${count}` : stageKey;
-}
-
-export function parseRoomKey(roomKey = DEFAULT_STAGE) {
-  const value = String(roomKey || DEFAULT_STAGE).trim().slice(0, 128) || DEFAULT_STAGE;
-  const canonical = /^(.+?)::fail-([1-9]\d{0,2})$/i.exec(value);
-  if (canonical) {
-    return {
-      stage: canonical[1].slice(0, 96) || DEFAULT_STAGE,
-      failureCount: Math.min(ROOM_FAILURE_COUNT_MAX, Number(canonical[2]) || 0)
-    };
-  }
-
-  // Backward compatibility for the temporary socket-only key used before roomKey became API contract.
-  const legacy = /^(.+?):challenge-([2-9]\d{0,2})$/i.exec(value);
-  if (legacy) {
-    return {
-      stage: legacy[1].slice(0, 96) || DEFAULT_STAGE,
-      failureCount: Math.min(ROOM_FAILURE_COUNT_MAX, Math.max(0, (Number(legacy[2]) || 1) - 1))
-    };
-  }
-
-  return { stage: value.slice(0, 96) || DEFAULT_STAGE, failureCount: 0 };
-}
-
-function challengeFailureCountForMember(member, stage = member?.stage || DEFAULT_STAGE) {
-  return member?.challengeFailureStage === stage
-    ? Math.min(ROOM_FAILURE_COUNT_MAX, Math.max(0, Number(member?.challengeFailureCount) || 0))
-    : 0;
-}
-
 function roomStateFor(stage = DEFAULT_STAGE, failureCount = 0) {
   const count = Math.min(ROOM_FAILURE_COUNT_MAX, Math.max(0, Number(failureCount) || 0));
   return {
@@ -669,6 +638,9 @@ async function reconcileChallengeSublevel(member) {
     member.challengeFailureStage = stage;
     member.challengeFailureCount = 0;
     member.challengeFailureHandledKey = "";
+    member.markModified("challengeFailureStage");
+    member.markModified("challengeFailureCount");
+    member.markModified("challengeFailureHandledKey");
     member.quest = {
       ...quest,
       current: quest.current || getTaskName(stage),
@@ -685,6 +657,9 @@ async function reconcileChallengeSublevel(member) {
     member.challengeFailureStage = stage;
     member.challengeFailureCount = Math.max(0, Number(member.challengeFailureCount) || 0) + 1;
     member.challengeFailureHandledKey = failureKey;
+    member.markModified("challengeFailureStage");
+    member.markModified("challengeFailureCount");
+    member.markModified("challengeFailureHandledKey");
     member.questChallenge.status = String(member.questChallenge.status || "").toLowerCase() === "awarded"
       ? "awarded"
       : "failed";
@@ -705,7 +680,7 @@ async function reconcileChallengeSublevel(member) {
   if (changed) {
     clearRoomPlayersCache();
     clearRoomLevelsCache();
-    await member.save({ validateModifiedOnly: true });
+    await member.save();
   }
   return member;
 }
@@ -723,6 +698,9 @@ function resetChallengeSublevel(member, stage = member?.stage || DEFAULT_STAGE) 
   member.challengeFailureStage = stage;
   member.challengeFailureCount = 0;
   member.challengeFailureHandledKey = "";
+  member.markModified("challengeFailureStage");
+  member.markModified("challengeFailureCount");
+  member.markModified("challengeFailureHandledKey");
   member.quest = {
     ...quest,
     costMultiplier: resetChallengeCostMultiplier()
@@ -838,6 +816,50 @@ function normalizeNpcQuestSubmission(submission) {
       : null,
     submittedAt: submission.submittedAt || null
   };
+}
+
+function buildCompletedNpcQuestKeys(member) {
+  const keys = new Set((member?.completedNpcQuestKeys || []).map(String).filter(Boolean));
+  for (const submission of member?.npcQuestSubmissions || []) {
+    if (!submission?.submittedAt) continue;
+    const key = npcQuestCompletionKeyFromSubmission(submission);
+    if (key) keys.add(key);
+  }
+  return Array.from(keys);
+}
+
+async function hasCompletedNpcQuest(member, questData = {}) {
+  const completionKey = npcQuestCompletionKeyFromQuestData(questData);
+  if (!completionKey) return false;
+
+  const storedKeys = new Set((member?.completedNpcQuestKeys || []).map(String).filter(Boolean));
+  if (storedKeys.has(completionKey)) return true;
+
+  for (const submission of member?.npcQuestSubmissions || []) {
+    if (npcQuestCompletionKeyFromSubmission(submission) === completionKey) {
+      return true;
+    }
+  }
+
+  const authorId = String(member?.discord_id || member?.discordId || "").trim();
+  if (!authorId) return false;
+
+  const [difficulty, title, npcType, npcCharacter] = completionKey.split("::");
+  const matchedPost = await SocialPost.findOne({
+    authorId,
+    source: "npc-quest",
+    difficulty,
+    title,
+    npcType,
+    npcCharacter: npcCharacter || null,
+    visible: true,
+    "evidence.url": { $exists: true, $ne: "" }
+  })
+    .select("postId")
+    .lean()
+    .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
+
+  return Boolean(matchedPost);
 }
 
 function normalizeTutorial(tutorial) {
@@ -1398,6 +1420,7 @@ export function normalizeMember(member, options = {}) {
           .filter(sub => sub.submittedAt && (Date.now() - new Date(sub.submittedAt).getTime() < 7 * 24 * 60 * 60 * 1000))
           .map(sub => String(sub.title || ""))
       : [],
+    completedNpcQuestKeys: buildCompletedNpcQuestKeys(member),
     socialQuestSubmissions: includeSubmissions
       ? normalizeSocialQuestSubmissions({ ...memberObject, npcQuestSubmissions })
       : [],
@@ -1485,6 +1508,7 @@ export function normalizeMemberSummary(member) {
           .filter(sub => sub.submittedAt && (Date.now() - new Date(sub.submittedAt).getTime() < 7 * 24 * 60 * 60 * 1000))
           .map(sub => String(sub.title || ""))
       : [],
+    completedNpcQuestKeys: buildCompletedNpcQuestKeys(member),
     socialQuestSubmissions: [],
     tutorial: normalizeTutorial(member.tutorial),
     challenge: member.questChallenge || null,
@@ -2117,6 +2141,13 @@ export async function acceptNpcQuest(discordId, questData) {
   await ensureLevels();
   const reward = Math.max(0, Number(questData.reward) || 0);
   const cancelPenalty = reward > 0 ? Math.max(1, Math.round(reward * 0.25)) : 0;
+  const currentMember = await Member.findOne({ discord_id: String(discordId || "") })
+    .select(`${MEMBER_INTERACTION_SELECT} npcQuestSubmissions`)
+    .maxTimeMS(MEMBER_READ_QUERY_MAX_TIME_MS);
+  if (!currentMember) return null;
+  if (await hasCompletedNpcQuest(currentMember, questData)) {
+    throw new Error("quest_already_completed");
+  }
   const member = await Member.findOneAndUpdate(
     {
       discord_id: String(discordId || ""),
@@ -2199,6 +2230,12 @@ export async function submitNpcQuest(discordId, evidence, postText = "", visitId
   const currentCoins = Math.max(0, questCoinValue(member));
   const reward = Math.max(0, Number(member.npcQuest.reward) || 0);
   const submittedAt = new Date();
+  const completionKey = npcQuestCompletionKeyFromSubmission({
+    difficulty: member.npcQuest.difficulty,
+    title: member.npcQuest.title,
+    npcType: member.npcQuest.npcType,
+    npcCharacter: member.npcQuest.npcCharacter
+  });
   if (!Array.isArray(member.npcQuestSubmissions)) member.npcQuestSubmissions = [];
   if (member.npcQuestSubmissions.length >= MAX_NPC_QUEST_SUBMISSIONS) {
     member.npcQuestSubmissions = member.npcQuestSubmissions.slice(-MAX_NPC_QUEST_SUBMISSIONS + 1);
@@ -2222,6 +2259,11 @@ export async function submitNpcQuest(discordId, evidence, postText = "", visitId
   });
   member.questCoin = String(currentCoins + reward);
   member.npcQuest = null;
+  if (!Array.isArray(member.completedNpcQuestKeys)) member.completedNpcQuestKeys = [];
+  if (completionKey) {
+    member.completedNpcQuestKeys = Array.from(new Set([...(member.completedNpcQuestKeys || []).map(String), completionKey]));
+    member.markModified("completedNpcQuestKeys");
+  }
   if (!Array.isArray(member.profileAchievements)) member.profileAchievements = [];
   if (questSource === "tutorial-first-quest") {
     member.tutorial = {

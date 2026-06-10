@@ -27,6 +27,7 @@ const MEMBER_SELECT = [
   "challengeFailureStage",
   "challengeFailureCount",
   "challengeFailureHandledKey",
+  "completedNpcQuestKeys",
   "questReward",
   "roomPosition",
   "shopCooldownT1",

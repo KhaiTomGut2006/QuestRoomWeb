@@ -1878,8 +1878,16 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
     }
 
     const applyQuestPool = (pool) => {
-      const recentTitles = new Set(activeMember?.recentCompletedQuestTitles || []);
-      const availablePool = pool.filter(q => !recentTitles.has(q.title));
+      const completedKeys = new Set(activeMember?.completedNpcQuestKeys || []);
+      const availablePool = pool.filter((q) => {
+        const key = [
+          String(q.difficulty || "").trim().toLowerCase(),
+          String(q.title || "").trim().toLowerCase(),
+          String(npcVisit?.id || "").trim().toLowerCase(),
+          String(q.npcCharacter || "").trim().toLowerCase()
+        ].join("::");
+        return !completedKeys.has(key);
+      });
 
       if (availablePool.length === 0) { setNpcQuestData(null); return; }
       const picked = availablePool[Math.floor(Math.random() * availablePool.length)];
@@ -1903,7 +1911,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       })
       .catch(() => setNpcQuestData(null));
 
-  }, [activeMember?.npcQuest, activeMember?.recentCompletedQuestTitles, npcKey, npcVisit]);
+  }, [activeMember?.completedNpcQuestKeys, activeMember?.npcQuest, npcKey, npcVisit]);
 
   useEffect(() => {
     if (npcVisit?.type === "hints") {
@@ -1971,6 +1979,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
       setNpcQuestData(null);
       return;
     }
+    let accepted = false;
     try {
       const res = await fetch(withBasePath("/api/player/npc-quest"), {
         method: "POST",
@@ -1988,6 +1997,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
 	    if (res.ok) {
 	        const data = await res.json();
 	        applyMember(data.member);
+	        accepted = true;
 	        activeNpcQuestRef.current = data.member.npcQuest;
 	        const questNpc = npcFromActiveQuest(data.member.npcQuest);
 	        setDoorNpc((current) => {
@@ -1998,10 +2008,17 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
 	        setDoorNpcPhase("idle");
 	        setQuestReceived(data.member.npcQuest);
 	        emitQuestActive(data.member.npcQuest);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        if (data.error === "quest_already_completed") {
+          setMessage("เควสนี้เคยทำไปแล้ว");
+        }
       }
     } catch {}
-    setNpcVisit(null);
-    setNpcQuestData(null);
+    if (accepted) {
+      setNpcVisit(null);
+      setNpcQuestData(null);
+    }
   }, [applyMember, emitQuestActive, handleTutorialAction, isAuthed, npcQuestData, npcVisit]);
 
   const handleQuestScrollBought = useCallback((assignedQuest, updatedMember, options = {}) => {
@@ -2463,42 +2480,7 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
             <RoomClock cycleInfo={cycleInfo} />
           </>
         )}
-        {(() => {
-          if (!isViewingOtherRoom) return null;
-          const activeIndex = effectiveRoomLevels.findIndex((l) => l.roomKey === actualRoomKey);
-          const viewedIndex = effectiveRoomLevels.findIndex((l) => l.roomKey === activeViewedRoomKey);
-          const isAheadRoom = viewedIndex > activeIndex;
-          const isMainRoom = !viewedRoomLevel?.isSubroom && viewedRoomLevel?.kind !== "challenge-subroom";
-          if (!isAheadRoom || !isMainRoom) return null;
-          const lockedChestNpc = { id: "chest", type: "chest", name: "Reward Chest", npcId: "chest" };
-          return (
-            <NpcDoorVisitor
-              npc={lockedChestNpc}
-              phase="idle"
-              promptLabel="ดูไอเท็มที่จะปลดล็อค"
-              onInteract={() => {
-                const stageId = viewedRoomLevel?.stageId || activeViewedStage;
-                if (!stageId) return;
-                const ownCacheKey = `${stageId}:own`;
-                const cached = challengeInfoOverrides[ownCacheKey];
-                if (cached) {
-                  setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: cached }, viewedRoomLabel));
-                } else {
-                  setPreviewRoomChallengeInfo(challengeInfoFromLevel(viewedRoomLevel, viewedRoomLabel));
-                  fetch(withBasePath(`/api/player/challenge-info?stage=${encodeURIComponent(stageId)}&ownRewards=1`), { cache: "no-store" })
-                    .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-                    .then((data) => {
-                      if (!data?.challengeInfo) return;
-                      setChallengeInfoOverrides((cur) => ({ ...cur, [ownCacheKey]: data.challengeInfo }));
-                      setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: data.challengeInfo }, viewedRoomLabel));
-                    })
-                    .catch(() => {});
-                }
-                setPreviewRoomChallengeView("rewards");
-              }}
-            />
-          );
-        })()}
+
       </section>
       <TutorialMode
         tutorial={activeMember?.tutorial}
@@ -2663,6 +2645,45 @@ export default function GameShell({ entryAdmissionToken = "", entryQueueClientId
           onClose={handleGlobalQuestClose}
         />
       )}
+      {(() => {
+        if (!isViewingOtherRoom) return null;
+        const activeIndex = effectiveRoomLevels.findIndex((l) => l.roomKey === actualRoomKey);
+        const viewedIndex = effectiveRoomLevels.findIndex((l) => l.roomKey === activeViewedRoomKey);
+        const isAheadRoom = viewedIndex > activeIndex;
+        const isMainRoom = !viewedRoomLevel?.isSubroom && viewedRoomLevel?.kind !== "challenge-subroom";
+        if (!isAheadRoom || !isMainRoom) return null;
+        return (
+          <button
+            className="spectator-reward-banner"
+            type="button"
+            onClick={() => {
+              const stageId = viewedRoomLevel?.stageId || activeViewedStage;
+              if (!stageId) return;
+              const ownCacheKey = `${stageId}:own`;
+              const cached = challengeInfoOverrides[ownCacheKey];
+              if (cached) {
+                setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: cached }, viewedRoomLabel));
+              } else {
+                setPreviewRoomChallengeInfo(challengeInfoFromLevel(viewedRoomLevel, viewedRoomLabel));
+                fetch(withBasePath(`/api/player/challenge-info?stage=${encodeURIComponent(stageId)}&ownRewards=1`), { cache: "no-store" })
+                  .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+                  .then((data) => {
+                    if (!data?.challengeInfo) return;
+                    setChallengeInfoOverrides((cur) => ({ ...cur, [ownCacheKey]: data.challengeInfo }));
+                    setPreviewRoomChallengeInfo(challengeInfoFromLevel({ challengeInfo: data.challengeInfo }, viewedRoomLabel));
+                  })
+                  .catch(() => {});
+              }
+              setPreviewRoomChallengeView("rewards");
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={withOptimizedAsset("/assets/NPC/chest_close.png")} alt="" className="spectator-reward-banner-icon" />
+            <span className="spectator-reward-banner-text">ดูไอเท็มที่จะปลดล็อค</span>
+            <span className="spectator-reward-banner-room">{viewedRoomLabel}</span>
+          </button>
+        );
+      })()}
       {!isTutorialActive && effectiveRoomLevels.length > 1 && (
         <RoomProgressBar
           levels={effectiveRoomLevels}

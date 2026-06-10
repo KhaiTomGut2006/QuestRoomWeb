@@ -230,6 +230,7 @@ const MemberSchema = new mongoose.Schema(
     stage: { type: String, default: "stage-1", index: true },
     quest: { type: QuestSchema, default: () => ({}) },
     npcQuest: { type: NpcQuestSchema, default: null },
+    completedNpcQuestKeys: { type: [String], default: [] },
     npcQuestSubmissions: { type: [NpcQuestSubmissionSchema], default: [] },
     socialLastSeenAt: Date,
     npcCycle: { type: NpcCycleSchema, default: null },
