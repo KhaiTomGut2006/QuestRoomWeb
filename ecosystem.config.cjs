@@ -1,6 +1,7 @@
 const { loadEnvConfig } = require("@next/env");
 
-loadEnvConfig(process.cwd());
+const projectRoot = __dirname;
+loadEnvConfig(projectRoot);
 
 const questroomPort = process.env.QUESTROOM_PORT || "3001";
 const questroomOpsPort = process.env.OPS_DASHBOARD_PORT || "3003";
@@ -12,6 +13,7 @@ module.exports = {
     {
       name: "questroom",
       script: "server.js",
+      cwd: projectRoot,
       exec_mode: "fork",
       instances: 1,
       node_args: `--max-old-space-size=${nodeMaxOldSpaceMb}`,
@@ -66,6 +68,7 @@ module.exports = {
     {
       name: "questroom-ops",
       script: "ops-dashboard/server.mjs",
+      cwd: projectRoot,
       exec_mode: "fork",
       instances: 1,
       max_memory_restart: process.env.OPS_DASHBOARD_MAX_MEMORY_RESTART || "256M",
@@ -81,6 +84,7 @@ module.exports = {
     {
       name: "questroom-member-sync",
       script: "scripts/questroom-member-sync-worker.js",
+      cwd: projectRoot,
       exec_mode: "fork",
       instances: 1,
       autorestart: true,
