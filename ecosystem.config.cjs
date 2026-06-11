@@ -77,6 +77,25 @@ module.exports = {
         OPS_DASHBOARD_BASIC_AUTH: process.env.OPS_DASHBOARD_BASIC_AUTH || "",
         OPS_DASHBOARD_POLL_MS: process.env.OPS_DASHBOARD_POLL_MS || "15000"
       }
+    },
+    {
+      name: "questroom-member-sync",
+      script: "scripts/questroom-member-sync-worker.js",
+      exec_mode: "fork",
+      instances: 1,
+      autorestart: true,
+      restart_delay: 5000,
+      max_memory_restart: process.env.QUESTROOM_SYNC_MAX_MEMORY_RESTART || "256M",
+      env: {
+        NODE_ENV: "production",
+        QUESTROOM_SYNC_SOURCE_URI: process.env.QUESTROOM_SYNC_SOURCE_URI || "",
+        QUESTROOM_SYNC_TARGET_URI: process.env.QUESTROOM_SYNC_TARGET_URI || "",
+        QUESTROOM_SYNC_SOURCE_DB: process.env.QUESTROOM_SYNC_SOURCE_DB || "dekhub",
+        QUESTROOM_SYNC_TARGET_DB: process.env.QUESTROOM_SYNC_TARGET_DB || "dekhub",
+        QUESTROOM_SYNC_INTERVAL_MS: process.env.QUESTROOM_SYNC_INTERVAL_MS || "30000",
+        QUESTROOM_SYNC_BATCH_SIZE: process.env.QUESTROOM_SYNC_BATCH_SIZE || "200",
+        QUESTROOM_SYNC_POOL_SIZE: process.env.QUESTROOM_SYNC_POOL_SIZE || "3"
+      }
     }
   ]
 };

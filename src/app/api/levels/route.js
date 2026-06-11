@@ -8,7 +8,7 @@ import { GAME_ITEM_BY_ID, GAME_NPC_BY_ID, getGameItem, getGameNpc } from "@/lib/
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Game-Api-Token",
 };
 const LEVEL_SAVE_MAX_LEVELS = Math.max(1, Number(process.env.LEVEL_SAVE_MAX_LEVELS || process.env.LEVEL_LIST_LIMIT || 500));
 const LEVEL_UNLOCK_ITEMS_MAX = Math.max(1, Number(process.env.LEVEL_UNLOCK_ITEMS_MAX || 80));
@@ -24,10 +24,21 @@ function json(body, init = {}) {
   });
 }
 
-function isAuthorized(request) {
+function getAuthStatus(request) {
   const expectedToken = process.env.GAME_API_TOKEN || process.env.ADMIN_API_TOKEN || "";
-  if (!expectedToken) return process.env.NODE_ENV !== "production";
-  return request.headers.get("authorization") === `Bearer ${expectedToken}`;
+  if (!expectedToken) {
+    return {
+      ok: process.env.NODE_ENV !== "production",
+      error: "server_game_api_token_not_configured"
+    };
+  }
+  const bearer = request.headers.get("authorization") || "";
+  const headerToken = request.headers.get("x-game-api-token") || "";
+  const hasSubmittedToken = Boolean(bearer || headerToken);
+  return {
+    ok: bearer === `Bearer ${expectedToken}` || headerToken === expectedToken,
+    error: hasSubmittedToken ? "invalid_game_api_token" : "missing_game_api_token"
+  };
 }
 
 function normalizePoolChance(value) {
@@ -188,8 +199,9 @@ export async function GET() {
 }
 
 export async function PUT(request) {
-  if (!isAuthorized(request)) {
-    return json({ success: false, error: "unauthorized" }, { status: 401 });
+  const auth = getAuthStatus(request);
+  if (!auth.ok) {
+    return json({ success: false, error: auth.error }, { status: 401 });
   }
 
   try {

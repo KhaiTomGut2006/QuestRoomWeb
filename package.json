@@ -11,6 +11,10 @@
     "check": "next build",
     "ops:dashboard": "node ops-dashboard/server.mjs",
     "monitor:health": "node scripts/monitor-health.mjs",
+    "migrate:dekhub": "node scripts/migrate-dekhub-data.js",
+    "migrate:dekhub:all": "node scripts/migrate-dekhub-database.js",
+    "migrate:questroom:members": "node scripts/sync-questroom-member-data.js",
+    "sync:questroom:members": "node scripts/questroom-member-sync-worker.js",
     "repair:r2-evidence": "node scripts/repair_r2_evidence_paths.js"
   },
   "dependencies": {
