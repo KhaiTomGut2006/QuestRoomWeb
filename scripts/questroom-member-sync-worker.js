@@ -1,6 +1,7 @@
 const { loadEnvConfig } = require("@next/env");
 const mongoose = require("mongoose");
 const {
+  FORBIDDEN_SYNC_FIELDS,
   QUESTROOM_FIELDS,
   syncBatch
 } = require("./sync-questroom-member-data");
@@ -23,6 +24,7 @@ const CONNECTION_OPTIONS = {
   retryReads: true,
   retryWrites: true
 };
+const WORKER_VERSION = "questroom-fields-v2-no-coin";
 
 let stopping = false;
 let timer = null;
@@ -141,12 +143,15 @@ async function shutdown(signal) {
 
 async function main() {
   console.log("[questroom-sync] worker starting", {
+    version: WORKER_VERSION,
     source: redactMongoUri(SOURCE_URI),
     target: redactMongoUri(TARGET_URI),
     sourceDb: SOURCE_DB,
     targetDb: TARGET_DB,
     intervalMs: INTERVAL_MS,
-    batchSize: BATCH_SIZE
+    batchSize: BATCH_SIZE,
+    syncsCoin: QUESTROOM_FIELDS.includes("coin"),
+    forbiddenFields: [...FORBIDDEN_SYNC_FIELDS]
   });
   const durationMs = await runSyncCycle();
   scheduleNextCycle(Math.max(0, INTERVAL_MS - durationMs));

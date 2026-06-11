@@ -4,6 +4,7 @@ import test from "node:test";
 
 const require = createRequire(import.meta.url);
 const {
+  FORBIDDEN_SYNC_FIELDS,
   QUESTROOM_FIELDS,
   pickQuestroomFields,
   syncBatch
@@ -11,7 +12,6 @@ const {
 
 test("QuestRoom field list includes progression, coins, quests, and inventory", () => {
   for (const field of [
-    "coin",
     "questCoin",
     "stage",
     "state",
@@ -24,6 +24,8 @@ test("QuestRoom field list includes progression, coins, quests, and inventory", 
   ]) {
     assert.equal(QUESTROOM_FIELDS.includes(field), true, field);
   }
+  assert.equal(QUESTROOM_FIELDS.includes("coin"), false);
+  assert.equal(FORBIDDEN_SYNC_FIELDS.has("coin"), true);
 });
 
 test("pickQuestroomFields excludes unrelated profile fields", () => {
@@ -32,11 +34,12 @@ test("pickQuestroomFields excludes unrelated profile fields", () => {
       discord_id: "123",
       email: "private@example.com",
       coin: "50",
+      questCoin: "25",
       stage: "stage-2",
       ownedAccessories: ["hat"]
     }),
     {
-      coin: "50",
+      questCoin: "25",
       stage: "stage-2",
       ownedAccessories: ["hat"]
     }
@@ -52,7 +55,8 @@ test("syncBatch updates matching discord user without replacing profile data", a
           return [{
             _id: "target-id",
             discord_id: "123",
-            coin: "10",
+            coin: "999",
+            questCoin: "10",
             stage: "stage-1",
             npcQuest: { title: "stale quest" }
           }];
@@ -66,7 +70,14 @@ test("syncBatch updates matching discord user without replacing profile data", a
 
   const result = await syncBatch(
     collection,
-    [{ _id: "source-id", discord_id: "123", coin: "20", stage: "stage-2", email: "ignored@example.com" }],
+    [{
+      _id: "source-id",
+      discord_id: "123",
+      coin: "20",
+      questCoin: "20",
+      stage: "stage-2",
+      email: "ignored@example.com"
+    }],
     true
   );
 
@@ -80,9 +91,10 @@ test("syncBatch updates matching discord user without replacing profile data", a
     updateOne: {
       filter: { _id: "target-id" },
       update: {
-        $set: { coin: "20", stage: "stage-2" },
+        $set: { questCoin: "20", stage: "stage-2" },
         $unset: { npcQuest: "" }
       }
     }
   }]);
+  assert.equal(JSON.stringify(operations).includes('"coin"'), false);
 });

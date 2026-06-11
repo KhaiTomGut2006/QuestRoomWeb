@@ -4,8 +4,8 @@ const { MongoClient } = mongoose.mongo;
 
 const DEFAULT_DB = "dekhub";
 const DEFAULT_BATCH_SIZE = 200;
+const FORBIDDEN_SYNC_FIELDS = new Set(["coin"]);
 const QUESTROOM_FIELDS = [
-  "coin",
   "questCoin",
   "questroomCoin",
   "questroomcoin",
@@ -114,7 +114,7 @@ function bsonEqual(left, right) {
 function pickQuestroomFields(document) {
   const selected = {};
   for (const field of QUESTROOM_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(document, field)) {
+    if (!FORBIDDEN_SYNC_FIELDS.has(field) && Object.prototype.hasOwnProperty.call(document, field)) {
       selected[field] = document[field];
     }
   }
@@ -139,14 +139,16 @@ async function syncBatch(targetCollection, sourceDocuments, confirm) {
     const sourceFields = pickQuestroomFields(sourceDocument);
     const setFields = Object.fromEntries(
       Object.entries(sourceFields).filter(
-        ([field, value]) => !targetDocument || !bsonEqual(value, targetDocument[field])
+        ([field, value]) => !FORBIDDEN_SYNC_FIELDS.has(field)
+          && (!targetDocument || !bsonEqual(value, targetDocument[field]))
       )
     );
     const unsetFields = targetDocument
       ? Object.fromEntries(
         QUESTROOM_FIELDS
           .filter(
-            (field) => Object.prototype.hasOwnProperty.call(targetDocument, field)
+            (field) => !FORBIDDEN_SYNC_FIELDS.has(field)
+              && Object.prototype.hasOwnProperty.call(targetDocument, field)
               && !Object.prototype.hasOwnProperty.call(sourceFields, field)
           )
           .map((field) => [field, ""])
@@ -268,6 +270,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  FORBIDDEN_SYNC_FIELDS,
   QUESTROOM_FIELDS,
   bsonEqual,
   parseArgs,
