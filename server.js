@@ -36,6 +36,7 @@ const SOCKET_TRANSPORTS = process.env.SOCKET_ALLOW_POLLING === "true"
   : ["websocket"];
 const LEVEL_CONFIG_CACHE_TTL_MS = Math.max(30_000, Number(process.env.LEVEL_CONFIG_CACHE_TTL_MS || 300_000));
 const LEVEL_CONFIG_CACHE_MAX = Math.max(50, Number(process.env.LEVEL_CONFIG_CACHE_MAX || 500));
+const LEVEL_CONFIG_VERSION_CHECK_MS = Math.max(1_000, Number(process.env.LEVEL_CONFIG_VERSION_CHECK_MS || 10_000));
 const NPC_CYCLE_RESTORE_ENABLED = process.env.NPC_CYCLE_RESTORE_ENABLED !== "false";
 const NPC_CYCLE_RESTORE_JITTER_MS = Math.max(0, Number(process.env.NPC_CYCLE_RESTORE_JITTER_MS || 30_000));
 const NPC_CYCLE_RESTORE_CACHE_TTL_MS = Math.max(1_000, Number(process.env.NPC_CYCLE_RESTORE_CACHE_TTL_MS || 15_000));
@@ -421,7 +422,35 @@ function pickWeightedNpc() {
   return NPC_POOL[NPC_POOL.length - 1].npc;
 }
 
+// Cross-process invalidation: admin saves bump a version doc in Mongo
+// (src/lib/levelConfigVersion.js). Each worker checks it (throttled) and drops
+// its in-memory level caches when the version moves, instead of serving stale
+// config for up to the full cache TTL.
+let lastLevelConfigVersion = -1;
+let lastLevelConfigVersionCheckedAt = 0;
+
+async function ensureLevelRuntimeConfigFresh() {
+  const now = Date.now();
+  if (now - lastLevelConfigVersionCheckedAt < LEVEL_CONFIG_VERSION_CHECK_MS) return;
+  lastLevelConfigVersionCheckedAt = now;
+  try {
+    const doc = await mongoose.connection.collection("config_meta").findOne(
+      { _id: "levelConfig" },
+      { projection: { version: 1 }, maxTimeMS: DB_QUERY_MAX_TIME_MS }
+    );
+    const version = Number(doc?.version || 0);
+    if (version !== lastLevelConfigVersion) {
+      lastLevelConfigVersion = version;
+      levelConfigCache.clear();
+      npcPoolCache.clear();
+    }
+  } catch (error) {
+    console.warn("Level config version check failed:", error.message);
+  }
+}
+
 async function getLevelConfig(stage, projection) {
+  await ensureLevelRuntimeConfigFresh();
   pruneLevelConfigCache();
   const stageKey = String(stage || "");
   const projectionKey = Object.keys(projection || {}).sort().join(",");
@@ -842,6 +871,7 @@ async function createNpcPoolDocument(stage = "", bucketStart = npcBucketStart())
 }
 
 async function getNpcPool(stage = "", at = Date.now()) {
+  await ensureLevelRuntimeConfigFresh();
   const stageKey = String(stage || "game-demo-1");
   const bucketStart = npcBucketStart(at);
   const key = npcPoolKey(stageKey, bucketStart);
@@ -1365,6 +1395,8 @@ app.prepare().then(() => {
   globalThis.__questRoomInvalidateLevelRuntimeConfig = async () => {
     levelConfigCache.clear();
     npcPoolCache.clear();
+    // Force the next freshness check to re-read the version doc immediately.
+    lastLevelConfigVersionCheckedAt = 0;
     try {
       const collection = await getNpcPoolsCollection();
       await collection.deleteMany({ expiresAt: { $gte: new Date() } }, { maxTimeMS: DB_QUERY_MAX_TIME_MS });

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/db";
 import HintTemplate from "@/models/HintTemplate";
+import { isAuthorized } from "@/lib/levelAdmin";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 const CACHE_TTL_MS = Math.max(30_000, Number(process.env.TEMPLATE_CACHE_TTL_MS || 300_000));
 const TEMPLATE_QUERY_LIMIT = Math.max(10, Number(process.env.TEMPLATE_QUERY_LIMIT || 500));
@@ -42,6 +43,9 @@ export async function GET() {
 // PUT /api/hint-templates   body: { hints: [{title, content, cost?, order?}] }
 // Replaces ALL hint templates with the given list
 export async function PUT(request) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ success: false, error: "unauthorized" }, { status: 401, headers: CORS });
+  }
   try {
     const body = await request.json();
     const incoming = Array.isArray(body?.hints) ? body.hints.slice(0, TEMPLATE_QUERY_LIMIT) : [];
@@ -67,7 +71,7 @@ export async function PUT(request) {
       .maxTimeMS(TEMPLATE_QUERY_MAX_TIME_MS);
     cachedHints = null;
     cachedHintsAt = 0;
-    return NextResponse.json({ hints }, { headers: CORS });
+    return NextResponse.json({ success: true, hints }, { headers: CORS });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 503, headers: CORS });
   }

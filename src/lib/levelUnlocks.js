@@ -1,15 +1,16 @@
 import { getGameItem, getGameNpc } from "@/lib/gameCatalog";
 
-function cleanPercent(value) {
-  return Math.max(0, Math.min(100, Number(value) || 0));
+// Proportional weight, not a percentage — totals are not required to be 100.
+function cleanWeight(value) {
+  return Math.max(0, Math.min(100000, Number(value) || 0));
 }
 
 export function normalizeUnlockItem(item) {
   const itemType = String(item?.itemType || item?.id || "").trim();
   if (!itemType) return null;
   const meta = getGameItem(itemType) || {};
-  const shopChance = cleanPercent(item?.shopChance ?? item?.shopWeight ?? item?.shopPercent);
-  const boxChance = cleanPercent(item?.boxChance ?? item?.boxWeight ?? item?.boxPercent);
+  const shopChance = cleanWeight(item?.shopChance ?? item?.shopWeight ?? item?.shopPercent);
+  const boxChance = cleanWeight(item?.boxChance ?? item?.boxWeight ?? item?.boxPercent);
   return {
     itemType,
     itemName: String(item?.itemName || item?.label || meta.label || itemType),
@@ -29,6 +30,7 @@ export function normalizeUnlockNpc(npc) {
   return {
     npcId,
     name: String(npc?.name || npc?.label || meta.label || npcId),
+    spawnChance: cleanWeight(npc?.spawnChance),
     shadowImage: String(npc?.shadowImage || meta.shadowImage || ""),
     image: String(npc?.image || meta.image || npc?.shadowImage || meta.shadowImage || "")
   };

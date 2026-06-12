@@ -35,6 +35,7 @@ const UnlockItemSchema = new mongoose.Schema({
 const UnlockNpcSchema = new mongoose.Schema({
   npcId:       { type: String, required: true },
   name:        { type: String, default: '' },
+  spawnChance: { type: Number, default: 0 },
   shadowImage: { type: String, default: '' },
   image:       { type: String, default: '' },
 }, { _id: false });

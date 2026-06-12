@@ -1,8 +1,12 @@
 import QuestTemplate from "@/models/QuestTemplate";
 import Level from "@/models/Level";
 import { ACCESSORY_LIST } from "@/lib/accessories";
+import { getLevelConfigVersion } from "@/lib/levelConfigVersion";
 
 const SHOP_QUERY_MAX_TIME_MS = Math.max(500, Number(process.env.SHOP_QUERY_MAX_TIME_MS || 3_000));
+const LEVEL_ITEM_CONFIG_TTL_MS = Math.max(5_000, Number(process.env.LEVEL_ITEM_CONFIG_TTL_MS || 60_000));
+const LEVEL_ITEM_CONFIG_CACHE_MAX = Math.max(50, Number(process.env.LEVEL_ITEM_CONFIG_CACHE_MAX || 500));
+const levelItemConfigCache = new Map();
 
 export const ASSET_TICKET_ITEM_ID = "asset-ticket";
 
@@ -141,11 +145,24 @@ function normalizeConfiguredShopItem(entry) {
   };
 }
 
+// Cached per stage — this runs on every chest open / shop purchase, so it must
+// not hit Mongo every call. Invalidated by TTL and by the level config version.
 async function getLevelItemConfig(stage) {
   if (!stage) return null;
-  return Level.findOne({ stageId: String(stage) }, { npcShop: 1, boxDrops: 1 })
+  const key = String(stage);
+  const version = await getLevelConfigVersion();
+  const cached = levelItemConfigCache.get(key);
+  if (cached && cached.version === version && Date.now() - cached.loadedAt < LEVEL_ITEM_CONFIG_TTL_MS) {
+    return cached.value;
+  }
+
+  const value = await Level.findOne({ stageId: key }, { npcShop: 1, boxDrops: 1 })
     .lean()
     .maxTimeMS(SHOP_QUERY_MAX_TIME_MS);
+
+  if (levelItemConfigCache.size >= LEVEL_ITEM_CONFIG_CACHE_MAX) levelItemConfigCache.clear();
+  levelItemConfigCache.set(key, { value, loadedAt: Date.now(), version });
+  return value;
 }
 
 export async function getNpcShopItems(stage) {

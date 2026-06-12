@@ -8,6 +8,7 @@ import CourseConfig from "@/models/CourseConfig";
 import SocialPost from "@/models/SocialPost";
 import SocialPostReaction from "@/models/SocialPostReaction";
 import { completionRewardForLevel, normalizeLevelUnlocks, unlockRewards } from "@/lib/levelUnlocks";
+import { getLevelConfigVersion } from "@/lib/levelConfigVersion";
 import { markNpcVisitAction, NPC_VISIT_ACTIONS } from "@/lib/npcVisit";
 import {
   challengeFailureAppliesToCurrentStage,
@@ -115,6 +116,7 @@ const MEMBER_RANKING_SELECT = [
 
 let cachedLevels = null;
 let cachedLevelsAt = 0;
+let cachedLevelsVersion = -1;
 let pendingLevelsLoad = null;
 const LEVEL_CACHE_TTL_MS = Math.max(30_000, Number(process.env.LEVEL_CACHE_TTL_MS || 300_000));
 let cachedSocialActivity = null;
@@ -126,7 +128,7 @@ const SOCIAL_ACTIVITY_STALE_TTL_MS = Math.max(
   Number(process.env.SOCIAL_ACTIVITY_STALE_TTL_MS || 120_000)
 );
 const MAX_SOCIAL_ACTIVITY_ITEMS = 100;
-const GLOBAL_POSTS_CACHE_TTL_MS = Math.max(5_000, Number(process.env.GLOBAL_POSTS_CACHE_TTL_MS || 15_000));
+const GLOBAL_POSTS_CACHE_TTL_MS = Math.max(15_000, Number(process.env.GLOBAL_POSTS_CACHE_TTL_MS || 60_000));
 const GLOBAL_POSTS_CACHE_MAX_KEYS = Math.max(20, Number(process.env.GLOBAL_POSTS_CACHE_MAX_KEYS || 200));
 const ACTIVE_CLASSES_CACHE_TTL_MS = Math.max(30_000, Number(process.env.ACTIVE_CLASSES_CACHE_TTL_MS || 60_000));
 const EXCLUDED_ACTIVE_CLASS_KEYS = new Set(
@@ -472,8 +474,12 @@ function pruneStageRankingsCache(now = Date.now()) {
 }
 
 async function ensureLevels({ force = false } = {}) {
+  // Version check (throttled inside getLevelConfigVersion) lets every worker
+  // pick up admin saves within seconds instead of waiting out the TTL.
+  const currentVersion = await getLevelConfigVersion({ force });
   const cacheIsFresh =
     cachedLevels &&
+    cachedLevelsVersion === currentVersion &&
     Date.now() - cachedLevelsAt < LEVEL_CACHE_TTL_MS;
 
   if (!force && cacheIsFresh) return cachedLevels;
@@ -505,11 +511,13 @@ async function ensureLevels({ force = false } = {}) {
         },
       }));
       cachedLevelsAt = Date.now();
+      cachedLevelsVersion = currentVersion;
       return cachedLevels;
     })().catch((err) => {
       console.error("Failed to load levels in player.js", err);
       cachedLevels ||= [];
       cachedLevelsAt = Date.now();
+      cachedLevelsVersion = currentVersion;
       return cachedLevels;
     }).finally(() => {
       pendingLevelsLoad = null;
@@ -2374,13 +2382,6 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId, options = {}
       publishedAt: { $exists: true, $ne: null }
     };
 
-    if (!isAllCourses) {
-      const friends = await getClassFriends(classId);
-      const discordIds = friends.map((friend) => friend.id).filter(Boolean);
-      if (discordIds.length === 0) return { posts: [], nextCursor: "", hasMore: false };
-      query.authorId = { $in: discordIds };
-    }
-
     if (cursor) {
       query.$or = [
         { publishedAt: { $lt: cursor.publishedAt } },
@@ -2388,21 +2389,29 @@ export async function getGlobalQuestPosts(classId, viewerDiscordId, options = {}
       ];
     }
 
-    let posts = await SocialPost.find(query)
+    const postsPromise = SocialPost.find(query)
       .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likeCount dislikeCount publishedAt submittedAt author authorId")
       .sort({ publishedAt: -1, postId: -1 })
       .limit(limit + 1)
       .lean()
       .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
 
+    let friendsIds = null;
+    if (!isAllCourses) {
+      const friends = await getClassFriends(classId);
+      friendsIds = friends.map((friend) => friend.id).filter(Boolean);
+      if (friendsIds.length === 0) return { posts: [], nextCursor: "", hasMore: false };
+    }
+
+    let posts = await postsPromise;
+
+    if (friendsIds) {
+      const friendSet = new Set(friendsIds);
+      posts = posts.filter((p) => friendSet.has(p.authorId));
+    }
+
     if (posts.length === 0 && SOCIAL_POST_AUTO_BACKFILL_ENABLED) {
-      await backfillSocialPostsFromMembers({ force: true });
-      posts = await SocialPost.find(query)
-        .select("-_id postId title description difficulty reward npcType npcName npcCharacter source postText badge evidence likeCount dislikeCount publishedAt submittedAt author authorId")
-        .sort({ publishedAt: -1, postId: -1 })
-        .limit(limit + 1)
-        .lean()
-        .maxTimeMS(SOCIAL_POSTS_QUERY_MAX_TIME_MS);
+      void backfillSocialPostsFromMembers({ force: true }).catch(() => {});
     }
 
     const hasMore = posts.length > limit;
